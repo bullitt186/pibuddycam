@@ -224,9 +224,12 @@ SETUP_OPEN_STATES = PRE_CLAIM_STATES | frozenset({'claimed'})
 #: The finish window: states a *claimable* device (persist already wrote a valid
 #: device + admin password) can legitimately be in while ``finish`` still has to
 #: run. ``persist`` advances to ``storage_ready`` when the camera is not
-#: validated and to ``claimed`` when it is. A claimable device in any other
+#: validated and to ``unclaimed`` when it is; the runtime states are reached only
+#: after a successful ``finish`` (see ``setup_wizard._finalize_provisioning``),
+#: so a failed/interrupted finish stays in setup. ``claimed`` is retained for
+#: compatibility with an older persisted state. A claimable device in any other
 #: state is inconsistent (stale/tampered) and keeps setup closed.
-FINISH_WINDOW_STATES = frozenset({'storage_ready', 'claimed'})
+FINISH_WINDOW_STATES = frozenset({'storage_ready', 'unclaimed', 'claimed'})
 
 _PUBLIC = 'public'
 _PUBLIC_SETUP = 'public_setup'

@@ -584,9 +584,12 @@ class WizardSession:
     def _advance_provisioning(self):
         """Advance the persisted state to the furthest pre-runtime milestone.
 
-        The wizard stops at ``claimed`` (or earlier, as the facts allow) because
-        the runtime states are reached by the camera target after step 10, once
-        the setup hotspot has been stopped. Each edge is persisted by
+        The wizard stops at ``unclaimed`` (or earlier, as the facts allow).
+        ``claimed``/``configured``/``running`` are only reached after a
+        successful :meth:`finish` (via :meth:`_finalize_provisioning`), so a
+        failed or interrupted finish leaves the device recoverable in setup
+        mode: the boot-mode selector keeps serving the provisioning path and the
+        setup hotspot comes back. Each edge is persisted by
         :meth:`provisioning.ProvisioningState.advance`.
         """
         state = provisioning.ProvisioningState.load(self.provisioning_path)
@@ -599,13 +602,55 @@ class WizardSession:
             camera_running=False,
         )
         for _ in range(len(provisioning.STATES)):
-            if state.state == 'claimed':
+            if state.state == 'unclaimed':
                 break
             previous = state.state
             result = state.advance(now=self._clock(), facts=facts)
             if not result.ok or state.state == previous:
                 break
         return state.state
+
+    def _finalize_provisioning(self):
+        """Advance the persisted state to ``running`` after a successful finish.
+
+        :meth:`_advance_provisioning` deliberately caps the pre-finish state at
+        ``unclaimed``; this is the only path that walks the state machine through
+        ``claimed``/``configured``/``running``, and it is called only once the
+        camera target has started. Every edge is persisted by
+        :meth:`provisioning.ProvisioningState.advance`, so a reboot after this
+        returns ``running`` and selects the camera runtime. Sets
+        :attr:`provisioning_state` to the resulting state and returns it; never
+        raises and never carries a secret.
+        """
+        try:
+            state = provisioning.ProvisioningState.load(self.provisioning_path)
+            facts = provisioning.Facts(
+                storage_ready=True,
+                camera_validated=self._camera_validated,
+                admin_password_set=True,
+                device_valid=True,
+                prusa_token_set=bool(self.token),
+                camera_running=True,
+            )
+            for _ in range(len(provisioning.STATES)):
+                if state.state == 'running':
+                    break
+                previous = state.state
+                result = state.advance(now=self._clock(), facts=facts)
+                if not result.ok or state.state == previous:
+                    break
+            self.provisioning_state = state.state
+            if state.state != 'running':
+                log.warning(
+                    'setup_wizard: provisioning state did not reach running '
+                    f'(stayed at {state.state})'
+                )
+            return state.state
+        except Exception as e:  # noqa: BLE001 - finalize must never fail a finish
+            log.warning(
+                f'setup_wizard: could not finalize provisioning: {type(e).__name__}'
+            )
+            return self.provisioning_state
 
     # -- summary / finish ---------------------------------------------------- #
 
@@ -672,6 +717,12 @@ class WizardSession:
         in setup rather than coming up offline. If the camera target fails to
         start, the hotspot is restarted best-effort and the failure is reported
         rather than swallowed.
+
+        Only after the camera target starts is the persisted state finalized to
+        ``running`` (:meth:`_finalize_provisioning`). That finalize is
+        best-effort: a failure to advance the state is logged and must not turn
+        a running camera into a reported failure, because the state stays at
+        ``unclaimed`` and the device remains recoverable in setup mode.
         """
         if not self.persisted:
             return StepResult(False, 'configuration has not been persisted', 'finish')
@@ -720,8 +771,9 @@ class WizardSession:
             if restart_note:
                 reason += f' ({restart_note})'
             return StepResult(False, reason, 'finish', state)
+        self._finalize_provisioning()
         self.finished = True
-        return StepResult(True, '', 'finish', state)
+        return StepResult(True, '', 'finish', self.provisioning_state)
 
     def _activate_station(self):
         """Call the injected station activation callable with SSID + PSK.

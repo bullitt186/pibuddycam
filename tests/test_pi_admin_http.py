@@ -489,15 +489,21 @@ class SetupFailClosedTests(AdminHttpTestBase):
         self.assertTrue(payload['setup_available'])
         self.assertEqual(payload['provisioning_state'], 'claimed')
 
-    def test_claimable_by_facts_refuses_setup_despite_unclaimed_state(self):
-        # The state file and the injected snapshot both say unclaimed, but the
-        # authoritative predicate (admin hash + valid device) says claimed.
+    def test_claimable_in_finish_window_keeps_setup_open_in_unclaimed_state(self):
+        # ``persist`` leaves the state at ``unclaimed`` once the camera is
+        # validated (and at ``storage_ready`` when it is not), while the device
+        # is already claimable by facts. ``finish`` must stay callable in both
+        # finish-window states, otherwise a failed/interrupted finish would
+        # strand the device with neither the portal nor the camera runtime.
         self._write_claimable_config()
         self._write_state('unclaimed')
         app = self._setup_app('unclaimed')
-        self._assert_setup_closed(app)
+        self.assertEqual(app.handle(self.req('GET', '/setup')).status, 200)
+        self.assertNotEqual(
+            app.handle(self.req('POST', '/setup/finish', body={})).status, 409
+        )
         payload = self._status(app)
-        self.assertFalse(payload['setup_available'])
+        self.assertTrue(payload['setup_available'])
         self.assertEqual(payload['provisioning_state'], 'claimed')
         self.assertEqual(payload['provisioning_source'], 'persisted')
 

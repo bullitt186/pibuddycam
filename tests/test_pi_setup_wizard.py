@@ -18,6 +18,7 @@ PI_DIR = Path(__file__).resolve().parents[1] / 'pi-impersonator'
 sys.path.insert(0, str(PI_DIR))
 
 import admin_auth  # noqa: E402
+import boot_mode  # noqa: E402
 import config_schema  # noqa: E402
 import hotspot  # noqa: E402
 import privileged  # noqa: E402
@@ -482,14 +483,16 @@ class PersistTests(WizardTestBase):
         self.assertFalse(os.path.exists(self.device_path))
         self.assertFalse(os.path.exists(self.secrets_path))
 
-    def test_persist_writes_files_and_advances_to_claimed(self):
+    def test_persist_writes_files_and_advances_to_unclaimed(self):
         session = self.make_session()
         for result in self.walk(session):
             self.assertTrue(result.ok, result.reason)
         result = self.persist(session)
         self.assertTrue(result.ok, result.reason)
         self.assertTrue(session.persisted)
-        self.assertEqual(session.provisioning_state, 'claimed')
+        # Persist stops at ``unclaimed``: the post-claim states are only reached
+        # by a successful finish, so an interrupted finish stays recoverable.
+        self.assertEqual(session.provisioning_state, 'unclaimed')
         self.assertEqual(session.step, 'finish')
 
         self.assertTrue(os.path.exists(self.device_path))
@@ -503,6 +506,10 @@ class PersistTests(WizardTestBase):
         self.assertEqual(secrets['prusa']['token'], TOKEN)
         self.assertEqual(secrets['wifi']['psk'], PSK)
         self.assertTrue(secrets['admin']['password_hash'].startswith('scrypt$'))
+        self.assertEqual(
+            provisioning.ProvisioningState.load(self.provisioning_path).state,
+            'unclaimed',
+        )
 
     def test_password_is_hashed_not_written_plaintext(self):
         session = self.make_session()
@@ -522,7 +529,7 @@ class PersistTests(WizardTestBase):
         for secret in (PSK, TOKEN, PASSWORD, session.admin_hash):
             self.assertNotIn(secret, state_text)
         self.assertEqual(provisioning.ProvisioningState.load(
-            self.provisioning_path).state, 'claimed')
+            self.provisioning_path).state, 'unclaimed')
 
     def test_partial_persist_failure_keeps_device_unclaimable(self):
         session = self.make_session()
@@ -567,6 +574,53 @@ class FinishTests(WizardTestBase):
         self.assertEqual(self.events, ['hotspot_stop', 'camera_start'])
         self.assertEqual(self.hotspot.ifnames, ['wlan0'])
         self.assertTrue(session.finished)
+
+    def test_successful_finish_advances_persisted_state_to_running(self):
+        session = self.finish_ready()
+        self.assertEqual(session.provisioning_state, 'unclaimed')
+        result = session.finish()
+        self.assertTrue(result.ok, result.reason)
+        self.assertTrue(session.finished)
+        self.assertEqual(session.provisioning_state, 'running')
+        self.assertEqual(result.state, 'running')
+        self.assertEqual(
+            provisioning.ProvisioningState.load(self.provisioning_path).state,
+            'running',
+        )
+
+    def test_failed_station_activation_leaves_state_unclaimed(self):
+        def activate(ssid, psk):
+            self.events.append('station_activate')
+            return False
+
+        session = self.finish_ready(activate_station=activate)
+        result = session.finish()
+        self.assertFalse(result.ok)
+        self.assertFalse(session.finished)
+        self.assertEqual(session.provisioning_state, 'unclaimed')
+        self.assertEqual(
+            provisioning.ProvisioningState.load(self.provisioning_path).state,
+            'unclaimed',
+        )
+        self.assertEqual(
+            boot_mode.resolve_mode(provisioning_path=self.provisioning_path),
+            boot_mode.MODE_PROVISIONING,
+        )
+
+    def test_failed_camera_start_leaves_state_unclaimed(self):
+        session = self.finish_ready(start_camera=lambda: False)
+        result = session.finish()
+        self.assertFalse(result.ok)
+        self.assertFalse(session.finished)
+        self.assertEqual(session.provisioning_state, 'unclaimed')
+        self.assertEqual(
+            provisioning.ProvisioningState.load(self.provisioning_path).state,
+            'unclaimed',
+        )
+        self.assertEqual(
+            boot_mode.resolve_mode(provisioning_path=self.provisioning_path),
+            boot_mode.MODE_PROVISIONING,
+        )
 
     def test_guard_denies_when_camera_running(self):
         session = self.finish_ready()
