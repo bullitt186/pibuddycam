@@ -6,6 +6,7 @@ build, preflight, switch, health, restart, record_bad, prune, clock, sleeper).
 The only real filesystem operations are inside per-test temporary directories.
 No network, no ``minisign``/``zstd``/``systemctl`` binary is ever invoked.
 """
+import argparse
 import ast
 import importlib
 import json
@@ -1654,6 +1655,61 @@ class InstallerWiringTests(unittest.TestCase):
         self.assertNotIn('/etc/prusa-cam/updater.env', self.text)
 
 
+class ResolveVersionsTests(unittest.TestCase):
+    """The installed version is the active release; a factory build suffix
+    (``0.0.0+local``) must not reach the strict SemVer comparison."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+
+    def _paths(self):
+        return make_paths(self.tmp.name)
+
+    def _activate(self, paths, version):
+        release = os.path.join(paths.releases_dir, version)
+        os.makedirs(release, exist_ok=True)
+        os.symlink(release, paths.current_link)
+
+    def test_factory_version_compares_by_semver_core(self):
+        paths = self._paths()
+        args = argparse.Namespace(current_version='')
+        with patch.object(ui.app_version, 'application_version',
+                          return_value='0.0.0+local'):
+            display, compare = ui._resolve_versions(args, paths)
+        self.assertEqual(display, '0.0.0+local')
+        self.assertEqual(compare, '0.0.0')
+
+    def test_active_release_is_installed_version(self):
+        paths = self._paths()
+        self._activate(paths, '1.2.3')
+        args = argparse.Namespace(current_version='')
+        with patch.object(ui.app_version, 'application_version',
+                          side_effect=AssertionError('factory read')):
+            display, compare = ui._resolve_versions(args, paths)
+        self.assertEqual(display, '1.2.3')
+        self.assertEqual(compare, '1.2.3')
+
+    def test_current_version_override_wins(self):
+        paths = self._paths()
+        self._activate(paths, '1.2.3')
+        args = argparse.Namespace(current_version='9.9.9')
+        with patch.object(ui.app_version, 'application_version',
+                          side_effect=AssertionError('factory read')):
+            display, compare = ui._resolve_versions(args, paths)
+        self.assertEqual(display, '9.9.9')
+        self.assertEqual(compare, '9.9.9')
+
+    def test_factory_version_without_semver_core_skips_comparison(self):
+        paths = self._paths()
+        args = argparse.Namespace(current_version='')
+        with patch.object(ui.app_version, 'application_version',
+                          return_value='v1.2.3-rc1'):
+            display, compare = ui._resolve_versions(args, paths)
+        self.assertEqual(display, 'v1.2.3-rc1')
+        self.assertEqual(compare, '')
+
+
 class CliTests(unittest.TestCase):
     """The scheduled ``check`` must be inert, not a usage error, when unset."""
 
@@ -1676,6 +1732,36 @@ class CliTests(unittest.TestCase):
         self.assertEqual(set(document), set(ui.UPDATE_STATE_KEYS))
         self.assertFalse(document['in_progress'])
         self.assertTrue(document['installed_version'])
+
+    def test_check_factory_version_reports_update_available(self):
+        # Live-acceptance regression: the factory app version ``0.0.0+local``
+        # carries build metadata the strict parser rejects; the CLI must compare
+        # the SemVer core (``0.0.0``) so the first signed update is offered.
+        payload = json.dumps(valid_manifest(version='1.0.0')).encode('utf-8')
+
+        def fake_download(url, target, limit):
+            with open(target, 'wb') as handle:
+                handle.write(payload if not url.endswith('.minisig') else b'sig')
+
+        with patch.dict(os.environ, {}, clear=True), \
+             patch.object(ui.app_version, 'application_version',
+                          return_value='0.0.0+local'), \
+             patch.object(ui, '_download_to', side_effect=fake_download), \
+             patch.object(ui.updater, 'verify_file',
+                          return_value=(True, '')):
+            code = ui.main([
+                'check',
+                '--manifest-url', 'https://example.com/update-manifest.json',
+                '--data-root', self.tmp.name,
+                '--last-check-path', os.path.join(self.tmp.name, 'last.json'),
+                '--force',
+            ])
+        self.assertEqual(code, 0)
+        document = ui.read_update_state(
+            os.path.join(self.tmp.name, 'update-state.json'))
+        self.assertIsNotNone(document)
+        self.assertEqual(document['installed_version'], '0.0.0+local')
+        self.assertEqual(document['latest_version'], '1.0.0')
 
     def test_install_missing_manifest_writes_state(self):
         code = ui.main([

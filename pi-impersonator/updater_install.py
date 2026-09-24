@@ -1619,18 +1619,46 @@ def _write_state(args, installed_version, manifest=None, reason=''):
         path=_state_path(args))
 
 
+def _resolve_versions(args, paths):
+    """Resolve the updater's ``(display_version, compare_version)`` pair.
+
+    ``--current-version`` wins when supplied. Otherwise the active release (the
+    ``current`` symlink basename) is the installed version. On a factory device
+    with no release installed, the image application version is displayed as the
+    installed version, but only its strict SemVer core is used for comparison:
+    the part before the first ``+`` (so ``0.0.0+local`` compares as ``0.0.0``).
+    When that core does not parse, ``compare_version`` is ``''`` and the
+    comparison is skipped, which is the correct first-install behavior. The
+    parser itself stays strict; only the factory fallback is normalized here.
+    Pure: reads the ``current`` symlink and the image build info, no writes.
+    """
+    override = args.current_version or ''
+    if override:
+        return override, override
+    active = _active_version(paths)
+    if active:
+        return active, active
+    display = app_version.application_version()
+    core = display.split('+', 1)[0]
+    try:
+        updater.parse_semver(core)
+    except (ValueError, TypeError):
+        core = ''
+    return display, core
+
+
 def _cli_check(args):
     # Repair any interrupted previous update before deciding availability; the
     # service also runs this via ExecStartPre. Idempotent and best-effort.
     paths = _paths_from_data_root(args.data_root)
     recover_interrupted(paths)
-    current_version = args.current_version or app_version.application_version()
+    display_version, compare_version = _resolve_versions(args, paths)
     if not args.manifest_url:
         # No manifest URL configured (the root-owned /etc/prusa-updater.conf is
         # unset): a scheduled check is a no-op, never a usage error. The state
         # file is still refreshed so HA reflects the installed version.
         print('updater: no update manifest URL is configured; nothing to check')
-        _write_state(args, current_version)
+        _write_state(args, display_version)
         return 0
     tmp = tempfile.mkdtemp(prefix='buddy3d-update-check-')
     try:
@@ -1646,7 +1674,7 @@ def _cli_check(args):
         except Exception as e:  # noqa: BLE001 - fetch failures are reported
             print(f'updater: could not fetch the update manifest '
                   f'({type(e).__name__})', file=sys.stderr)
-            _write_state(args, current_version,
+            _write_state(args, display_version,
                          reason=f'manifest fetch failed ({type(e).__name__})')
             return 1
 
@@ -1659,7 +1687,7 @@ def _cli_check(args):
                 public_key_path=DEFAULT_PUBLIC_KEY_PATH)
 
         result = check_for_update(
-            current_version=current_version,
+            current_version=compare_version,
             current_image_version=args.current_image_version,
             fetch_manifest=fetch_manifest,
             verify=verify,
@@ -1673,25 +1701,30 @@ def _cli_check(args):
         shutil.rmtree(tmp, ignore_errors=True)
 
     if result.outcome == CHECK_AVAILABLE:
-        _write_state(args, current_version, manifest=result.manifest)
+        _write_state(args, display_version, manifest=result.manifest)
         print(f'updater: update {result.manifest.version} is available')
         return 0
     if result.outcome == CHECK_UP_TO_DATE:
-        _write_state(args, current_version, manifest=result.manifest,
+        _write_state(args, display_version, manifest=result.manifest,
                      reason=result.reason)
         print(f'updater: {result.reason or "no update available"}')
         return 0
     if result.outcome == CHECK_SUPPRESSED:
-        _write_state(args, current_version, reason=result.reason)
+        _write_state(args, display_version, reason=result.reason)
         print(f'updater: {result.reason or "no update available"}')
         return 0
-    _write_state(args, current_version, reason=result.reason or result.outcome)
+    _write_state(args, display_version, reason=result.reason or result.outcome)
     print(f'updater: update check failed: {result.reason}', file=sys.stderr)
     return 1
 
 
 def _cli_install(args):
-    current_version = args.current_version or app_version.application_version()
+    # Repair any interrupted previous update before resolving the installed
+    # version, so a dangling ``current`` symlink is repaired first and the
+    # active release is what the version check sees. Idempotent, best-effort.
+    paths = _paths_from_data_root(args.data_root)
+    recover_interrupted(paths)
+    display_version, compare_version = _resolve_versions(args, paths)
     tmp = None
     try:
         manifest_path = args.manifest
@@ -1699,7 +1732,7 @@ def _cli_install(args):
             if not os.path.isfile(manifest_path):
                 print(f'updater: manifest not found: {manifest_path}',
                       file=sys.stderr)
-                _write_state(args, current_version, reason='manifest not found')
+                _write_state(args, display_version, reason='manifest not found')
                 return 2
         elif args.manifest_url:
             # The root service starts ``install`` with no positional manifest; it
@@ -1717,13 +1750,13 @@ def _cli_install(args):
             except Exception as e:  # noqa: BLE001 - fetch failures are reported
                 print(f'updater: could not fetch the update manifest '
                       f'({type(e).__name__})', file=sys.stderr)
-                _write_state(args, current_version,
+                _write_state(args, display_version,
                              reason='manifest fetch failed')
                 return 1
         else:
             print('updater: no manifest or update manifest URL is configured',
                   file=sys.stderr)
-            _write_state(args, current_version, reason='no manifest configured')
+            _write_state(args, display_version, reason='no manifest configured')
             return 2
 
         # The signing key is fixed in the image (AC-32); it is never taken from
@@ -1734,7 +1767,7 @@ def _cli_install(args):
         if not ok:
             print(f'updater: manifest signature verification failed: {reason}',
                   file=sys.stderr)
-            _write_state(args, current_version, reason=reason)
+            _write_state(args, display_version, reason=reason)
             return 1
         try:
             with open(manifest_path, encoding='utf-8') as handle:
@@ -1742,11 +1775,9 @@ def _cli_install(args):
             manifest = updater.parse_manifest(payload)
         except (OSError, updater.ManifestError) as e:
             print(f'updater: invalid manifest: {e}', file=sys.stderr)
-            _write_state(args, current_version, reason='invalid manifest')
+            _write_state(args, display_version, reason='invalid manifest')
             return 1
 
-        paths = _paths_from_data_root(args.data_root)
-        recover_interrupted(paths)
         result = install_update(
             manifest,
             paths=paths,
@@ -1767,11 +1798,11 @@ def _cli_install(args):
             prune=default_prune,
             clock=time.time,
             sleeper=time.sleep,
-            current_version=current_version,
+            current_version=compare_version,
             current_image_version=args.current_image_version,
             force_reinstall=args.force_reinstall,
         )
-        _write_state(args, result.installed_version or current_version,
+        _write_state(args, result.installed_version or display_version,
                      manifest=manifest)
         if result.ok:
             print(f'updater: installed {result.installed_version}')
