@@ -58,6 +58,31 @@ work because `PUT /c/snapshot` is not gated. The device half of WebRTC is
 correct: `/c/info` `registered=True`, signaling `Auth ACK: 0`, `Snapshot: 200`,
 offer + candidates emitted, TURN/STUN configured.
 
+## Signed-update acceptance (WP-R4c, 2026-09-24)
+
+The signed application update path was exercised end to end on the device
+(no reflash): `image/scripts/make-app-release.sh` built and minisign-signed
+`buddy3d-camera-app-<version>.tar.zst` + `update-manifest.json` with the dev key
+(public half matches the image's embedded `buddy3d-release.pub`), served over a
+throwaway HTTPS server whose CA was trusted via `SSL_CERT_FILE`, and triggered
+through the real `prusa-priv install-update` root helper.
+
+- **Install:** factory → `1.0.0` → `1.0.1`. After the three fixes recorded
+  below, the installer quiesced the four launcher units, built the release venv in 52 s,
+  swapped `current`, restarted the units, and passed health. `ps` confirms the
+  app runs `/data/prusa-cam/releases/current/venv/bin/python .../main.py`;
+  `current`/`previous` are `1.0.1`/`1.0.0`; `/c/info registered=True`, signaling
+  `Auth ACK: 0`, snapshots `200`, RTSP 8554/8555 open, admin `302 -> /admin`.
+- **Rollback:** `1.0.2` installed with a deliberately closed health endpoint
+  failed the ≤90 s health check and rolled back to `1.0.1`, leaving
+  `/data/prusa-cam/releases/.bad/1.0.2.json`
+  (`health checks failed; restored the previous release`); the restored release
+  kept serving snapshots and Prusa signaling.
+
+Test state (temporary, removed after): `/etc/prusa-updater.conf` pointed at the
+test manifest URL with `SSL_CERT_FILE`, and `/data/prusa-cam/test-ca.pem` was
+present; both were reverted and ROOT remounted read-only.
+
 ## Defects found only on hardware
 
 | # | Symptom on device | Root cause | Fix |
@@ -76,6 +101,10 @@ offer + candidates emitted, TURN/STUN configured.
 | 12 | USB Ethernet adapter invisible | the Zero 2 W micro-USB data port is OTG and defaults to peripheral mode | `[pi02] dtoverlay=dwc2,dr_mode=host` in `config.txt` (`d041c61`) |
 | 13 | Prusa Connect rejected the device: `/c/info` 403, snapshot 400 "Invalid fingerprint", signaling `ACK=1/3` → **no live view** | NetworkManager randomizes the wlan0 MAC during scans; the identity fingerprint is MAC-derived, so it flapped and stopped matching the token binding | `wifi.scan-rand-mac-address=no`; wizard persists the MAC-derived fingerprint (`34af938`) |
 | 14 | **Live view still absent; token looked invalid** | config files under `/data/prusa-cam/config/` had been rewritten **as root**, so `prusa-cam` could not read `secrets.toml` and the app sent an **empty token** | keep those files `prusa-cam`-owned (`0640`/`0600`) — operational lesson, see below |
+| 15 | Signed install aborts immediately: `install failed (failed): installed version is invalid` | the updater took the "installed version" from the image application version (`0.0.0+local`); the deliberately strict SemVer parser rejects build metadata, so the first install could never run (and on a release device the candidate was always compared against the immutable image version) | resolve the installed version from the active release, and use only the strict SemVer core of the factory version (`747ac8d`) |
+| 16 | Install hangs then fails: `release venv creation failed (TimeoutExpired)`; the whole device goes SSH-unresponsive for ~5 min | the release venv build (`python3 -m venv` + `pip install`) runs while the full camera stack is live; on a 415 MB Pi Zero 2 W with no swap the kernel OOM-kills the build and thrashes | quiesce the four launcher units (~110 MB RSS) around the venv build; the build then takes 52 s and peaks ~76 MB, and the runtime is restored on every failure path (`5de54c9`) |
+| 17 | Install reports success but the device still runs the **factory** app | `default_restart_services` ran `systemctl restart prusa-camera.target`; the launcher units are `WantedBy=multi-user.target` with no `PartOf=`, so restarting the target restarts none of them and health passed against the stale app | restart the four units that exec `launcher.sh` by name (`5de54c9`) |
+| 18 | Same as 17 after fixing the restart: `ps` shows `/opt/prusa-cam/main.py` although `current` points at the release | `tempfile.mkdtemp` creates the staging dir `0700 root`; `switch_release` renamed it unchanged, and the launcher runs as the unprivileged `prusa-cam` user, which cannot traverse a `0700` root dir, so it silently fell back to the factory app | chmod the activated release dir to `0755` (root-owned, world-traversable) in `switch_release` (`22363b2`) |
 
 ## Operational lessons (not code bugs)
 
@@ -116,3 +145,7 @@ data-grow PARTUUID · `9d2dc19` hotspot stop · `a14541c` dma_heap udev · `9c22
 probe bytes · `b4cf8d8` config bridge · `681c3bd` capture budget + RTSP helper ·
 `17b4a86` probe gating + fontconfig cache · `d041c61` USB host mode · `34af938`
 fingerprint stability.
+
+Signed-update acceptance (WP-R4c): `747ac8d` installed-version resolution ·
+`5de54c9` quiesce for the venv build + restart real units · `22363b2` traversable
+release directory.
