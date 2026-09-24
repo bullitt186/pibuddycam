@@ -167,6 +167,12 @@ class Harness:
             return False, 'restart failed'
         return True, ''
 
+    def stop_services(self):
+        self.calls.append('stop_services')
+        if self.fail_at == 'stop':
+            return False, 'stop failed'
+        return True, ''
+
     def record_bad(self, version, reason):
         self.calls.append(('record_bad', version, reason))
 
@@ -175,7 +181,7 @@ class Harness:
 
     # -- runner -------------------------------------------------------------
     def install(self, manifest, *, clock=None, sleeper=None,
-                force_reinstall=False):
+                force_reinstall=False, stop_services=None):
         clock = clock or FakeClock()
         return ui.install_update(
             manifest,
@@ -190,6 +196,7 @@ class Harness:
             switch=self.switch,
             health_check=self.health_check,
             restart_services=self.restart_services,
+            stop_services=stop_services,
             record_bad=self.record_bad,
             prune=self.prune,
             clock=clock,
@@ -764,6 +771,100 @@ class InstallHealthTests(unittest.TestCase):
                                  sleeper=clock.sleep)
         self.assertTrue(result.ok, result.reason)
         self.assertEqual(result.installed_version, '1.1.0')
+
+
+# --------------------------------------------------------------------------- #
+# install_update runtime quiesce (live-acceptance: OOM during the venv build)
+# --------------------------------------------------------------------------- #
+
+class InstallQuiesceTests(unittest.TestCase):
+    """The optional stop/restore of the runtime launcher units."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.paths = make_paths(self.tmp.name)
+
+    def _seed_previous(self, version='1.0.0'):
+        os.makedirs(self.paths.releases_dir, exist_ok=True)
+        previous = os.path.join(self.paths.releases_dir, version)
+        os.makedirs(previous, exist_ok=True)
+        os.symlink(previous, self.paths.current_link)
+        return previous
+
+    def test_stop_before_build_and_restart_after_switch(self):
+        harness = Harness(self.paths)
+        result = harness.install(
+            make_manifest(), stop_services=harness.stop_services)
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(result.outcome, ui.INSTALL_INSTALLED)
+        # The stop happened exactly once, before the venv build.
+        self.assertEqual(harness.calls.count('stop_services'), 1)
+        self.assertLess(
+            harness.calls.index('stop_services'),
+            harness.calls.index('build_venv'))
+        # The restart happened after the switch, exactly once (the finally
+        # restore is skipped once the switch has activated the release).
+        restarts = [c for c in harness.calls
+                    if isinstance(c, tuple) and c[0] == 'restart']
+        self.assertEqual(restarts, [('restart', '1.1.0')])
+        self.assertGreater(
+            harness.calls.index(('restart', '1.1.0')),
+            harness.calls.index('switch'))
+
+    def test_venv_failure_after_stop_restores_active_version(self):
+        self._seed_previous('1.0.0')
+        harness = Harness(self.paths, fail_at='venv')
+        result = harness.install(make_manifest(version='1.1.0'),
+                                 stop_services=harness.stop_services)
+        self.assertFalse(result.ok)
+        self.assertIn('stop_services', harness.calls)
+        restarts = [c for c in harness.calls
+                    if isinstance(c, tuple) and c[0] == 'restart']
+        self.assertEqual(restarts, [('restart', '1.0.0')])
+
+    def test_switch_failure_after_stop_restores_runtime(self):
+        harness = Harness(self.paths, fail_at='switch')
+        result = harness.install(
+            make_manifest(), stop_services=harness.stop_services)
+        self.assertFalse(result.ok)
+        restarts = [c for c in harness.calls
+                    if isinstance(c, tuple) and c[0] == 'restart']
+        # Factory fallback: no active release, so the attempted version is used.
+        self.assertEqual(restarts, [('restart', '1.1.0')])
+
+    def test_stop_failure_restores_runtime(self):
+        harness = Harness(self.paths, fail_at='stop')
+        result = harness.install(
+            make_manifest(), stop_services=harness.stop_services)
+        self.assertFalse(result.ok)
+        self.assertIn('stop', result.reason)
+        # A multi-unit stop can partially stop before failing, so the runtime is
+        # best-effort restored even though the stop reported failure. No venv
+        # build is attempted.
+        self.assertNotIn('build_venv', harness.calls)
+        restarts = [c for c in harness.calls
+                    if isinstance(c, tuple) and c[0] == 'restart']
+        self.assertEqual(restarts, [('restart', '1.1.0')])
+
+    def test_restart_failure_after_switch_rolls_back_without_a_third_restart(self):
+        self._seed_previous('1.0.0')
+        harness = Harness(self.paths, fail_at='restart')
+        result = harness.install(make_manifest(version='1.1.0'),
+                                 stop_services=harness.stop_services)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.outcome, ui.INSTALL_ROLLED_BACK)
+        restarts = [c for c in harness.calls
+                    if isinstance(c, tuple) and c[0] == 'restart']
+        # The switched release is restarted, fails, then the previous release is
+        # restored and restarted; the ``finally`` guard must not add a third.
+        self.assertEqual(restarts, [('restart', '1.1.0'), ('restart', '1.0.0')])
+
+    def test_stop_services_none_is_backward_compatible(self):
+        harness = Harness(self.paths)
+        result = harness.install(make_manifest())
+        self.assertTrue(result.ok, result.reason)
+        self.assertNotIn('stop_services', harness.calls)
 
 
 # --------------------------------------------------------------------------- #
@@ -1410,6 +1511,68 @@ class DefaultHealthCheckTests(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
+# default_restart_services / default_stop_services (unit addressing)
+# --------------------------------------------------------------------------- #
+
+class DefaultServiceUnitTests(unittest.TestCase):
+    """Restart/stop address the launcher units, never ``prusa-camera.target``."""
+
+    def setUp(self):
+        self.returncode = 0
+        self.calls = []
+
+        def fake_run(args, **kwargs):
+            self.calls.append((list(args), kwargs))
+            return subprocess.CompletedProcess(args, self.returncode, '', '')
+
+        runner = patch.object(ui.subprocess, 'run', side_effect=fake_run)
+        runner.start()
+        self.addCleanup(runner.stop)
+        resolver = patch.object(ui, '_resolve_binary',
+                               return_value='/usr/bin/systemctl')
+        resolver.start()
+        self.addCleanup(resolver.stop)
+
+    def test_restart_targets_each_launcher_unit(self):
+        ok, reason = ui.default_restart_services('1.1.0')
+        self.assertTrue(ok, reason)
+        self.assertEqual(len(self.calls), 1)
+        args, kwargs = self.calls[0]
+        self.assertEqual(args[:2], ['/usr/bin/systemctl', 'restart'])
+        for unit in ui.RUNTIME_LAUNCHER_UNITS:
+            self.assertIn(unit, args)
+        self.assertNotIn('prusa-camera.target', args)
+        self.assertNotIn('rpicam-source.service', args)
+        self.assertEqual(kwargs.get('timeout'), ui.COMMAND_TIMEOUT_SECONDS)
+
+    def test_stop_targets_each_launcher_unit(self):
+        ok, reason = ui.default_stop_services()
+        self.assertTrue(ok, reason)
+        args, _kwargs = self.calls[0]
+        self.assertEqual(args[:2], ['/usr/bin/systemctl', 'stop'])
+        for unit in ui.RUNTIME_LAUNCHER_UNITS:
+            self.assertIn(unit, args)
+        self.assertNotIn('prusa-camera.target', args)
+        self.assertNotIn('rpicam-source.service', args)
+
+    def test_nonzero_exit_is_a_bounded_failure(self):
+        self.returncode = 3
+        ok, reason = ui.default_restart_services('1.1.0')
+        self.assertFalse(ok)
+        self.assertIn('exit 3', reason)
+        self.assertLessEqual(len(reason), ui.MAX_REASON_LENGTH)
+        ok, reason = ui.default_stop_services()
+        self.assertFalse(ok)
+        self.assertIn('exit 3', reason)
+
+    def test_missing_systemctl_is_a_bounded_failure(self):
+        with patch.object(ui, '_resolve_binary', return_value=None):
+            ok, reason = ui.default_stop_services()
+        self.assertFalse(ok)
+        self.assertIn('systemctl is unavailable', reason)
+
+
+# --------------------------------------------------------------------------- #
 # default_download + updater.verify_file composition (finding: detached sig)
 # --------------------------------------------------------------------------- #
 
@@ -1792,6 +1955,25 @@ class CliTests(unittest.TestCase):
             ['install', '--force-reinstall',
              os.path.join(self.tmp.name, 'missing.json')])
         self.assertEqual(code, 2)
+
+    def test_cli_install_wires_the_stop_services_callable(self):
+        # The real install path must quiesce the runtime before the venv build.
+        manifest_path = os.path.join(self.tmp.name, 'update-manifest.json')
+        with open(manifest_path, 'w', encoding='utf-8') as handle:
+            json.dump(valid_manifest(), handle)
+        captured = {}
+
+        def fake_install(manifest, **kwargs):
+            captured.update(kwargs)
+            return ui.InstallResult(
+                True, ui.INSTALL_INSTALLED, '1.1.0', '1.1.0')
+
+        with patch.object(ui.updater, 'verify_file', return_value=(True, '')), \
+             patch.object(ui, 'install_update', side_effect=fake_install):
+            code = ui.main(['install', manifest_path,
+                            '--data-root', self.tmp.name])
+        self.assertEqual(code, 0)
+        self.assertIs(captured.get('stop_services'), ui.default_stop_services)
 
 
 class ValidatorAssertionsTests(unittest.TestCase):

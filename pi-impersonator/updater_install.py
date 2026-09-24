@@ -175,6 +175,20 @@ DOWNLOAD_TIMEOUT_SECONDS = 300.0
 COMMAND_TIMEOUT_SECONDS = 300.0
 HEALTH_PROBE_TIMEOUT_SECONDS = 5.0
 
+#: The runtime units that exec ``/opt/prusa-cam/launcher.sh`` and therefore must
+#: be restarted (or stopped) for a switched release to actually run. They are
+#: addressed by name because the launcher units are ``WantedBy=multi-user.target``
+#: with no ``PartOf=``, so ``systemctl restart prusa-camera.target`` restarts none
+#: of them (empirically confirmed live). ``rpicam-source.service`` is deliberately
+#: excluded (it execs the factory ``stream_mux.py`` directly, not the launcher),
+#: as are the ``prusa-updater*`` units.
+RUNTIME_LAUNCHER_UNITS = (
+    'prusa-cam.service',
+    'prusa-rtsp.service',
+    'prusa-ha-rtsp.service',
+    'prusa-admin.service',
+)
+
 #: Absolute binaries for the root service. The systemd unit also pins a fixed
 #: PATH so ``minisign``/``zstd`` (invoked by :mod:`updater`) resolve
 #: deterministically; these two are resolved by absolute path first.
@@ -909,8 +923,9 @@ def _wait_for_health(health_check, clock, sleeper, version):
 
 def install_update(manifest, *, paths, download, verify_manifest_signature,
                    verify_bundle_signature, free_space, extract, build_venv,
-                   preflight, switch, health_check, restart_services, record_bad,
-                   prune, clock, sleeper, secrets=(), current_version='',
+                   preflight, switch, health_check, restart_services,
+                   stop_services=None, record_bad, prune, clock, sleeper,
+                   secrets=(), current_version='',
                    current_image_version='', force_reinstall=False):
     """Install a validated, signed update (§7.2 steps 3-11).
 
@@ -920,6 +935,11 @@ def install_update(manifest, *, paths, download, verify_manifest_signature,
     and to "unknown image" respectively; when supplied they are re-checked
     (downgrade/equal/incompatible-image) before any staging work. A version with
     a ``.bad`` marker is refused unless ``force_reinstall`` is set.
+
+    ``stop_services`` is an optional no-argument callable that quiesces the
+    camera runtime before the memory-heavy release venv build; it must return
+    ``(ok, reason)``. When ``None`` (the default) the runtime is not quiesced,
+    preserving the historical behavior for callers/tests that do not supply it.
     """
     secrets = tuple(s for s in secrets if isinstance(s, str) and s)
     try:
@@ -936,6 +956,7 @@ def install_update(manifest, *, paths, download, verify_manifest_signature,
             switch=switch,
             health_check=health_check,
             restart_services=restart_services,
+            stop_services=stop_services,
             record_bad=record_bad,
             prune=prune,
             clock=clock,
@@ -954,9 +975,9 @@ def install_update(manifest, *, paths, download, verify_manifest_signature,
 
 def _install_update(manifest, *, paths, download, verify_manifest_signature,
                     verify_bundle_signature, free_space, extract, build_venv,
-                    preflight, switch, health_check, restart_services, record_bad,
-                    prune, clock, sleeper, secrets, current_version,
-                    current_image_version, force_reinstall):
+                    preflight, switch, health_check, restart_services,
+                    stop_services, record_bad, prune, clock, sleeper, secrets,
+                    current_version, current_image_version, force_reinstall):
     version = _manifest_version(manifest)
     if version is None:
         return _failed(paths, '', secrets, 'manifest is invalid')
@@ -982,6 +1003,12 @@ def _install_update(manifest, *, paths, download, verify_manifest_signature,
             classification.reason or 'manifest is not installable')
 
     staging = None
+    #: Set once the runtime has been quiesced so the ``finally`` block can bring
+    #: it back up if the update does not reach a successful switch.
+    quiesced = False
+    #: Set after the atomic switch succeeds; from then on the normal restart /
+    #: rollback paths own the runtime and the ``finally`` restore is skipped.
+    activated = False
     try:
         try:
             os.makedirs(paths.releases_dir, exist_ok=True)
@@ -1035,7 +1062,24 @@ def _install_update(manifest, *, paths, download, verify_manifest_signature,
                 paths, version, secrets, reason or 'bundle extraction failed')
         _remove_file(bundle_path)
 
-        # --- venv + preflight (steps 6-7) ---------------------------------
+        # --- quiesce the runtime, then venv + preflight (steps 6-7) --------
+        # The release venv build is the memory peak; on a 415 MB Pi Zero 2 W the
+        # live camera runtime can make the kernel OOM-kill the build. Stopping
+        # the four launcher units frees ~110 MB RSS. The stop is optional so
+        # tests/callers that pass no ``stop_services`` behave exactly as before.
+        if stop_services is not None:
+            # Mark quiesced *before* the attempt: a multi-unit ``systemctl stop``
+            # can stop some units and still return non-zero (for example one stop
+            # job times out and is SIGKILLed under the same memory/IO pressure
+            # this quiesce exists to survive). The ``finally`` guard must then
+            # bring the runtime back up rather than assume nothing stopped.
+            quiesced = True
+            ok, reason = _effect(stop_services)
+            if not ok:
+                return _failed(
+                    paths, version, secrets,
+                    reason or 'could not quiesce the camera runtime')
+
         ok, reason = _effect(build_venv, staging, manifest)
         if not ok:
             return _failed(
@@ -1052,6 +1096,7 @@ def _install_update(manifest, *, paths, download, verify_manifest_signature,
         if not ok:
             return _failed(
                 paths, version, secrets, reason or 'release activation failed')
+        activated = True
 
         # --- restart + health (steps 9-10) --------------------------------
         ok, reason = _effect(restart_services, version)
@@ -1074,6 +1119,13 @@ def _install_update(manifest, *, paths, download, verify_manifest_signature,
             True, INSTALL_INSTALLED, version, version,
             bool(getattr(manifest, 'reboot_required', False)), '')
     finally:
+        # A quiesced runtime that never reached a successful switch (failure in
+        # the venv build, preflight, or the switch itself) must be brought back
+        # up on whatever is active -- the factory app or the previous release.
+        # Once ``activated`` is set the success path or ``_roll_back`` owns the
+        # restart, so this restore is skipped to avoid a double restart.
+        if quiesced and not activated:
+            _effect(restart_services, _active_version(paths) or version)
         # Any failure path removes the staging directory; after a successful
         # switch the staging path no longer exists (it was renamed).
         if staging and os.path.exists(staging):
@@ -1485,21 +1537,54 @@ def default_health_check(version):
     return True
 
 
-def default_restart_services(version):
-    """Restart the camera runtime so it picks up the active release."""
+def _systemctl_units(action, failure):
+    """Run ``systemctl <action>`` on :data:`RUNTIME_LAUNCHER_UNITS`.
+
+    Addresses the launcher units by name rather than through
+    ``prusa-camera.target`` (which does not propagate restart/stop because the
+    units have no ``PartOf=``). Resolves the binary, applies the bounded command
+    timeout, and returns ``(ok, reason)``; a non-zero exit or a missing
+    ``systemctl`` is a bounded failure. Never raises.
+    """
     binary = _resolve_binary(SYSTEMCTL_BINARY, 'systemctl')
     if binary is None:
         return False, 'systemctl is unavailable'
     try:
         result = subprocess.run(
-            [binary, 'restart', 'prusa-camera.target'],
+            [binary, action, *RUNTIME_LAUNCHER_UNITS],
             capture_output=True, text=True,
             timeout=COMMAND_TIMEOUT_SECONDS, check=False)
-    except Exception as e:  # noqa: BLE001 - restart must never raise
-        return False, f'service restart failed ({type(e).__name__})'
+    except Exception as e:  # noqa: BLE001 - a service action must never raise
+        return False, f'{failure} ({type(e).__name__})'
     if result.returncode != 0:
-        return False, f'service restart failed (exit {result.returncode})'
+        return False, f'{failure} (exit {result.returncode})'
     return True, ''
+
+
+def default_restart_services(version):
+    """Restart the camera runtime so it picks up the active release.
+
+    Restarts each :data:`RUNTIME_LAUNCHER_UNITS` entry directly: the launcher
+    units are ``WantedBy=multi-user.target`` with no ``PartOf=``, so
+    ``systemctl restart prusa-camera.target`` would restart none of them and a
+    switched release would never run.
+
+    ``restart`` (not ``try-restart``) is deliberate: after the quiesce the
+    units are stopped, and ``main.py`` re-applies the configured RTSP mode at
+    startup, so briefly starting an intentionally-disabled ``prusa-rtsp`` is
+    self-correcting.
+    """
+    return _systemctl_units('restart', 'service restart failed')
+
+
+def default_stop_services():
+    """Stop the camera runtime to quiesce it for the memory-heavy venv build.
+
+    Stops each :data:`RUNTIME_LAUNCHER_UNITS` entry directly (same reasoning as
+    :func:`default_restart_services`). ``rpicam-source.service`` and the
+    ``prusa-updater*`` units are deliberately not touched.
+    """
+    return _systemctl_units('stop', 'service stop failed')
 
 
 def record_bad_release(paths, version, reason):
@@ -1793,6 +1878,7 @@ def _cli_install(args):
             switch=switch_release,
             health_check=default_health_check,
             restart_services=default_restart_services,
+            stop_services=default_stop_services,
             record_bad=lambda version, bad_reason: record_bad_release(
                 paths, version, bad_reason),
             prune=default_prune,
@@ -1922,6 +2008,7 @@ __all__ = [
     'HEALTH_TIMEOUT_SECONDS',
     'PREFLIGHT_IMPORT_MODULES',
     'PREFLIGHT_TIMEOUT_SECONDS',
+    'RUNTIME_LAUNCHER_UNITS',
     'RTSP_HEALTH_PORTS',
     'INSTALL_FAILED',
     'INSTALL_INSTALLED',
@@ -1941,6 +2028,7 @@ __all__ = [
     'default_preflight',
     'default_prune',
     'default_restart_services',
+    'default_stop_services',
     'install_update',
     'main',
     'read_bad_versions',
