@@ -515,6 +515,16 @@ def switch_release(paths, staging_dir, version):
         target = paths.version_dir(version)
         if os.path.exists(target):
             return False, 'release directory already exists'
+        # ``tempfile.mkdtemp`` creates the staging directory 0700 root, but the
+        # launcher runs as the unprivileged service account and must be able to
+        # traverse an activated release (``releases`` itself is 0755 root-owned,
+        # see persist_restore.ROOT_ONLY_DIRS). Relax only the top-level mode
+        # before activation; the tree stays root-owned and tamper-proof. Applied
+        # before the rename so a chmod failure aborts without activating.
+        try:
+            os.chmod(staging_dir, 0o755)
+        except OSError as e:
+            return False, f'release activation failed ({type(e).__name__})'
         previous = _current_target(paths)
         try:
             os.rename(staging_dir, target)

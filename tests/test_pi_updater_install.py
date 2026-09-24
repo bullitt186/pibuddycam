@@ -276,6 +276,17 @@ class SwitchReleaseTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn('invalid', reason)
 
+    def test_activated_release_is_world_traversable(self):
+        # mkdtemp creates the staging directory 0700 root; the unprivileged
+        # launcher (prusa-cam) must still be able to traverse the activated
+        # release, otherwise it silently falls back to the factory app.
+        staging = self._staging('.1.1.0.staging.abc')
+        os.chmod(staging, 0o700)
+        ok, reason = ui.switch_release(self.paths, staging, '1.1.0')
+        self.assertTrue(ok, reason)
+        mode = os.stat(self.paths.version_dir('1.1.0')).st_mode & 0o777
+        self.assertEqual(mode, 0o755)
+
     def test_active_version_and_current_target(self):
         self.assertEqual(ui._active_version(self.paths), '')
         self.assertEqual(
