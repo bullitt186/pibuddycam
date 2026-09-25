@@ -105,6 +105,7 @@ present; both were reverted and ROOT remounted read-only.
 | 16 | Install hangs then fails: `release venv creation failed (TimeoutExpired)`; the whole device goes SSH-unresponsive for ~5 min | the release venv build (`python3 -m venv` + `pip install`) runs while the full camera stack is live; on a 415 MB Pi Zero 2 W with no swap the kernel OOM-kills the build and thrashes | quiesce the four launcher units (~110 MB RSS) around the venv build; the build then takes 52 s and peaks ~76 MB, and the runtime is restored on every failure path (`5de54c9`) |
 | 17 | Install reports success but the device still runs the **factory** app | `default_restart_services` ran `systemctl restart prusa-camera.target`; the launcher units are `WantedBy=multi-user.target` with no `PartOf=`, so restarting the target restarts none of them and health passed against the stale app | restart the four units that exec `launcher.sh` by name (`5de54c9`) |
 | 18 | Same as 17 after fixing the restart: `ps` shows `/opt/prusa-cam/main.py` although `current` points at the release | `tempfile.mkdtemp` creates the staging dir `0700 root`; `switch_release` renamed it unchanged, and the launcher runs as the unprivileged `prusa-cam` user, which cannot traverse a `0700` root dir, so it silently fell back to the factory app | chmod the activated release dir to `0755` (root-owned, world-traversable) in `switch_release` (`22363b2`) |
+| 19 | Connect configuration reached the app, but video quality never changed; journal said `sudo: prusa-cam : command not allowed` | the quality path still called broad `sudo systemctl` commands, which the appliance's intentionally narrow sudoers policy rejects | add fixed `prusa-priv quality-restart` and route quality changes through it (`c1d3e76`; live-verified HD→FHD on `1.0.4`) |
 
 ## Operational lessons (not code bugs)
 
@@ -149,3 +150,6 @@ fingerprint stability.
 Signed-update acceptance (WP-R4c): `747ac8d` installed-version resolution ·
 `5de54c9` quiesce for the venv build + restart real units · `22363b2` traversable
 release directory.
+
+Live quality control: `c1d3e76` fixed-verb source/RTSP restart (application release
+`1.0.4`, live-verified HD→FHD on the OV5647 pipeline).

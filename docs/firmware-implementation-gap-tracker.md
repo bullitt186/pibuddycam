@@ -975,6 +975,12 @@ closing the gap.
   uses the image's fixed-verb `prusa-priv quality-restart` action. This preserves the privilege
   boundary while restarting exactly `rpicam-source.service` and `prusa-ha-rtsp.service`, followed
   by `try-restart prusa-rtsp.service` so a disabled Prusa RTSP mode stays disabled.
+- **Live-verified 2026-09-25 (`c1d3e76`, application release `1.0.4`):** an authenticated
+  Connect viewer sent the real nested `configuration` form (`tag8.1=2`, then `tag8.1=3`). The
+  running OV5647 encoder changed from `1920×1080` to `1280×720` and back to `1920×1080`; both RTSP
+  endpoints then reported H.264 at `1920×1080`, snapshots continued returning 200, all four
+  runtime services remained active, and the journal contained no `command not allowed` failure.
+  Local verification: 1,574 Python tests passed (2 skipped), plus `compileall`.
 - **RE status 2026-09-20 (Wave 2) [confirmed]:** the persist flag is a **per-payload** flag for
   `change_video_size` — `FUN_00072f08` calls the persistence setter only when `*param_3 != 0` — not
   a registration-time constant. The `save_video_size` handler is in an unexported gap. Best
