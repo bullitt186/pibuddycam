@@ -218,6 +218,36 @@ def make_rootfs(base):
         "[device]\nwifi.scan-rand-mac-address=no\n", encoding="utf-8"
     )
 
+    # Emulated SD mountpoint + Samba share config + volatile Samba tmpfiles.
+    (root / "mnt" / "sdcard").mkdir(parents=True)
+    samba = root / "etc" / "samba"
+    samba.mkdir(parents=True, exist_ok=True)
+    (samba / "smb-sdcard.conf").write_text(
+        "[sdcard]\n"
+        "   path = /mnt/sdcard\n"
+        "   browseable = yes\n"
+        "   read only = no\n"
+        "   guest ok = yes\n"
+        "   force user = prusa-cam\n"
+        "   create mask = 0644\n"
+        "   directory mask = 0755\n",
+        encoding="utf-8",
+    )
+    (samba / "smb.conf").write_text(
+        "[global]\n   workgroup = WORKGROUP\n"
+        "\ninclude = /etc/samba/smb-sdcard.conf\n",
+        encoding="utf-8",
+    )
+    tmpfiles = root / "etc" / "tmpfiles.d"
+    tmpfiles.mkdir(parents=True, exist_ok=True)
+    (tmpfiles / "buddy3d-samba.conf").write_text(
+        "d /var/lib/samba          0755 root root -\n"
+        "d /var/lib/samba/private  0700 root root -\n"
+        "d /var/log/samba          0755 root root -\n"
+        "d /var/cache/samba        0755 root root -\n",
+        encoding="utf-8",
+    )
+
     # Factory application + launcher fallback. The fixture installs the real
     # image asset so the validator's WP-R4c launcher assertions (per-release
     # venv preference, factory fallback) exercise the shipped script.

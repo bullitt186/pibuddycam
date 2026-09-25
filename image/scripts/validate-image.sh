@@ -1272,6 +1272,41 @@ PY
    else
       report ok "no build-time device identity in /data (identity.json/secrets.toml)"
    fi
+
+   # --- /mnt/sdcard mountpoint for the bind mount --------------------------
+   if [ -d "$MOUNT_ROOT/mnt/sdcard" ]; then
+      report ok "/mnt/sdcard directory exists on ROOT (bind-mount target for pi-persist)"
+   else
+      report fail "/mnt/sdcard must exist on ROOT so pi-persist can bind-mount /data/sdcard"
+   fi
+
+   # --- Samba share config and tmpfiles for volatile /var -------------------
+   smb_include="$MOUNT_ROOT/etc/samba/smb-sdcard.conf"
+   if [ -f "$smb_include" ]; then
+      if grep -q 'path = /mnt/sdcard' "$smb_include" 2>/dev/null; then
+         report ok "/etc/samba/smb-sdcard.conf configures the [sdcard] share"
+      else
+         report fail "/etc/samba/smb-sdcard.conf does not set path = /mnt/sdcard"
+      fi
+   else
+      report fail "/etc/samba/smb-sdcard.conf is missing (timelapse SMB share)"
+   fi
+   smb_main="$MOUNT_ROOT/etc/samba/smb.conf"
+   if [ -f "$smb_main" ] && grep -q 'include = /etc/samba/smb-sdcard.conf' "$smb_main" 2>/dev/null; then
+      report ok "smb.conf includes smb-sdcard.conf"
+   else
+      report fail "smb.conf must include /etc/samba/smb-sdcard.conf"
+   fi
+   tmpfiles_samba="$MOUNT_ROOT/etc/tmpfiles.d/buddy3d-samba.conf"
+   if [ -f "$tmpfiles_samba" ]; then
+      if grep -q '/var/lib/samba/private' "$tmpfiles_samba" 2>/dev/null; then
+         report ok "tmpfiles.d/buddy3d-samba.conf provisions volatile Samba state"
+      else
+         report fail "tmpfiles.d/buddy3d-samba.conf missing /var/lib/samba/private entry"
+      fi
+   else
+      report fail "/etc/tmpfiles.d/buddy3d-samba.conf is missing (Samba needs volatile /var dirs)"
+   fi
 fi
 
 ###############################################################################

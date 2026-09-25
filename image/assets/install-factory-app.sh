@@ -98,6 +98,39 @@ install -D -m 0644 "$assets/systemd/journald-volatile.conf" \
 install -D -o root -g root -m 0644 "$assets/udev/50-prusa-cam-camera.rules" \
    "$root/etc/udev/rules.d/50-prusa-cam-camera.rules"
 
+# --- emulated SD mountpoint + Samba share (timelapse SMB) -------------------
+# /mnt/sdcard must exist on ROOT so pi-persist.service can bind-mount
+# /data/sdcard onto it.  ROOT is read-only at runtime; creating the directory
+# there at build time is the only reliable path.
+install -d -m 0755 "$root/mnt/sdcard"
+# The [sdcard] share config is a separate include so the default smb.conf
+# shipped by the samba package is never patched in place.
+install -d -m 0755 "$root/etc/samba"
+cat > "$root/etc/samba/smb-sdcard.conf" << 'SMBEOF'
+[sdcard]
+   path = /mnt/sdcard
+   browseable = yes
+   read only = no
+   guest ok = yes
+   force user = prusa-cam
+   create mask = 0644
+   directory mask = 0755
+SMBEOF
+if ! grep -q 'include = /etc/samba/smb-sdcard.conf' "$root/etc/samba/smb.conf" 2>/dev/null; then
+   printf '\ninclude = /etc/samba/smb-sdcard.conf\n' >> "$root/etc/samba/smb.conf"
+fi
+# Samba needs /var/lib/samba and /var/log/samba, which are lost every boot
+# because /var is tmpfs.  A tmpfiles.d rule recreates them early enough for
+# smbd.service (systemd-tmpfiles-setup runs before most services).
+install -D -o root -g root -m 0644 /dev/stdin \
+   "$root/etc/tmpfiles.d/buddy3d-samba.conf" << 'TMPEOF'
+# Samba volatile state on the tmpfs /var (buddy3d appliance).
+d /var/lib/samba          0755 root root -
+d /var/lib/samba/private  0700 root root -
+d /var/log/samba          0755 root root -
+d /var/cache/samba        0755 root root -
+TMPEOF
+
 # --- stable Wi-Fi identity (hardware fix) -----------------------------------
 # Keep the wlan0 MAC stable: NetworkManager's scan-time MAC randomization made
 # the MAC-derived fingerprint flap and broke the Prusa Connect token binding.
