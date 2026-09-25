@@ -14,6 +14,12 @@ from features import PROTOCOL_VERSION, FEATURES, FIRMWARE_VERSION, MODEL, MANUFA
 
 log = logging.getLogger('prusa-cam.signaling')
 
+# The Socket.IO handshake (10 s) is followed by camera_authentication (10 s).
+# Keep the whole initial attempt bounded so main can always start the supervisor
+# even when a library callback or a half-open network connection fails to
+# unwind normally.
+INITIAL_CONNECT_TIMEOUT_SECONDS = 25
+
 class PrusaSignaling:
     def __init__(self, fingerprint, token, state, mac='', ip='', ssid=''):
         self.fingerprint = fingerprint
@@ -23,6 +29,7 @@ class PrusaSignaling:
         self.ip = ip
         self.ssid = ssid
         self._event_handler = None
+        self._authenticated = False
         self.sio = self._new_client()
         self._setup_handlers()
 
@@ -48,10 +55,19 @@ class PrusaSignaling:
         @self.sio.event
         async def connect():
             log.info('Socket.IO connected, authenticating...')
+            # Never disconnect from inside this callback.  python-socketio is
+            # still completing its connect transaction here; awaiting
+            # ``disconnect()`` on an auth timeout/rejection can prevent
+            # ``sio.connect()`` from ever returning, which in turn used to keep
+            # main from starting the reconnect supervisor.  The supervisor
+            # treats an unauthenticated transport as down and replaces it with
+            # a fresh client.
+            self._authenticated = False
             await self._authenticate()
 
         @self.sio.event
         async def disconnect():
+            self._authenticated = False
             log.warning('Socket.IO disconnected')
 
         @self.sio.event
@@ -126,26 +142,21 @@ class PrusaSignaling:
         try:
             ack = await self.sio.call('camera_authentication', auth_msg, timeout=10)
         except Exception as e:
-            log.error(f'Auth failed: {e}; dropping session for supervised retry')
-            await self._drop_session()
-            return
+            log.error(f'Auth failed: {e}; leaving session for supervised retry')
+            self._authenticated = False
+            return False
         log.info(f'Auth ACK: {ack!r}')
         # GAP-AUTH-01: only the exact integer 0 is a successful ACK (1 = not
         # authorized, 2 = error joining session); anything else (malformed, bool)
-        # must not emit post-auth messages. Drop the session so the supervisor
-        # retries with a fresh client + backoff.
+        # must not emit post-auth messages. Leave it marked unauthenticated so
+        # the supervisor replaces it with a fresh client + backoff.
         if not auth_ack_is_success(ack):
-            log.warning(f'Auth not accepted (ACK={ack!r}); dropping session for supervised retry')
-            await self._drop_session()
-            return
+            log.warning(f'Auth not accepted (ACK={ack!r}); leaving session for supervised retry')
+            self._authenticated = False
+            return False
+        self._authenticated = True
         await self._send_post_auth()
-
-    async def _drop_session(self):
-        """Close the current client so ``supervise`` reconnects on its backoff."""
-        try:
-            await self.sio.disconnect()
-        except Exception:
-            pass
+        return True
 
     def _log_ack(self, event):
         def cb(*args):
@@ -365,7 +376,16 @@ class PrusaSignaling:
 
     async def connect(self):
         try:
-            await self._connect_once()
+            await asyncio.wait_for(
+                self._connect_once(), timeout=INITIAL_CONNECT_TIMEOUT_SECONDS
+            )
+        except asyncio.TimeoutError:
+            # GAP-AUTH-01 reliability: main starts supervise() only after this
+            # method returns.  An unbounded initial attempt therefore disables
+            # all Socket.IO controls while independent snapshot tasks continue.
+            log.warning(
+                'initial signaling connect timed out; supervisor will retry'
+            )
         except Exception as e:
             # Let the supervisor retry with a fresh client rather than aborting
             # startup (firmware CheckSocketServerConnection behaviour).
@@ -381,6 +401,15 @@ class PrusaSignaling:
             },
             transports=['websocket'],
             wait_timeout=10,
+        )
+
+    def _session_is_usable(self):
+        """Return true only for a transport with a successful camera auth ACK."""
+        eio_state = getattr(self.sio.eio, 'state', '?')
+        return (
+            bool(self.sio.connected)
+            and eio_state == 'connected'
+            and self._authenticated
         )
 
     async def supervise(self):
@@ -403,7 +432,11 @@ class PrusaSignaling:
             try:
                 await asyncio.sleep(delay)
                 eio_state = getattr(self.sio.eio, 'state', '?')
-                alive = bool(self.sio.connected) and eio_state == 'connected'
+                # A transport connection without a successful camera auth ACK
+                # is not usable: Connect will not route trigger,
+                # configuration, or WebRTC events to it.  Treat it exactly like
+                # a closed Engine.IO link and replace the client.
+                alive = self._session_is_usable()
                 if alive:
                     if failures:
                         log.info(f'signaling link recovered after {failures} failed attempt(s)')
@@ -420,6 +453,7 @@ class PrusaSignaling:
                     await self.sio.disconnect()
                 except Exception:
                     pass
+                self._authenticated = False
                 self.sio = self._new_client()
                 self._setup_handlers()
                 try:

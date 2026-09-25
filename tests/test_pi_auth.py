@@ -3,6 +3,7 @@ import sys
 import types
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 PI_DIR = Path(__file__).resolve().parents[1] / 'pi-impersonator'
@@ -54,24 +55,21 @@ class _FakeSignaling:
         self.fingerprint = 'fingerprint-value'
         self.token = 'token-value'
         self.post_auth_count = 0
+        self._authenticated = False
 
     async def _send_post_auth(self):
         self.post_auth_count += 1
 
-    async def _drop_session(self):
-        # Mirrors PrusaSignaling._drop_session so the supervised-retry path can
-        # be asserted without importing the socketio runtime.
-        await self.sio.disconnect()
-
-
 class AuthenticateFlowTests(unittest.TestCase):
     def _authenticate(self, sio):
         sig = _FakeSignaling(sio)
-        asyncio.run(signaling.PrusaSignaling._authenticate(sig))
-        return sig
+        accepted = asyncio.run(signaling.PrusaSignaling._authenticate(sig))
+        return sig, accepted
 
     def test_ack_zero_proceeds_to_post_auth(self):
-        sig = self._authenticate(_FakeSio(ack=0))
+        sig, accepted = self._authenticate(_FakeSio(ack=0))
+        self.assertTrue(accepted)
+        self.assertTrue(sig._authenticated)
         self.assertEqual(sig.post_auth_count, 1)
         self.assertEqual(sig.sio.calls[0][0], 'camera_authentication')
         self.assertEqual(sig.sio.disconnects, 0)
@@ -79,21 +77,67 @@ class AuthenticateFlowTests(unittest.TestCase):
     def test_rejected_acks_emit_no_post_auth(self):
         for ack in (1, 5, True, False, '0', None, b'', [], {}):
             with self.subTest(ack=ack):
-                sig = self._authenticate(_FakeSio(ack=ack))
+                sig, accepted = self._authenticate(_FakeSio(ack=ack))
+                self.assertFalse(accepted)
+                self.assertFalse(sig._authenticated)
                 self.assertEqual(sig.post_auth_count, 0)
-                # WP-1 hardening: a rejected ACK drops the session so the
-                # supervisor retries with a fresh client + backoff.
-                self.assertEqual(sig.sio.disconnects, 1)
+                # Disconnecting inside python-socketio's connect callback can
+                # deadlock the initial connection.  The unauthenticated flag
+                # makes the supervisor replace this client instead.
+                self.assertEqual(sig.sio.disconnects, 0)
 
     def test_timeout_emits_no_post_auth(self):
-        sig = self._authenticate(_FakeSio(error=TimeoutError('auth timeout')))
+        sig, accepted = self._authenticate(
+            _FakeSio(error=TimeoutError('auth timeout'))
+        )
+        self.assertFalse(accepted)
+        self.assertFalse(sig._authenticated)
         self.assertEqual(sig.post_auth_count, 0)
-        self.assertEqual(sig.sio.disconnects, 1)
+        self.assertEqual(sig.sio.disconnects, 0)
 
     def test_exception_emits_no_post_auth(self):
-        sig = self._authenticate(_FakeSio(error=RuntimeError('boom')))
+        sig, accepted = self._authenticate(_FakeSio(error=RuntimeError('boom')))
+        self.assertFalse(accepted)
+        self.assertFalse(sig._authenticated)
         self.assertEqual(sig.post_auth_count, 0)
-        self.assertEqual(sig.sio.disconnects, 1)
+        self.assertEqual(sig.sio.disconnects, 0)
+
+
+class InitialConnectBoundTests(unittest.TestCase):
+    def test_initial_connect_timeout_returns_for_supervisor(self):
+        class _HungSignaling:
+            async def _connect_once(self):
+                await asyncio.Event().wait()
+
+        original = signaling.INITIAL_CONNECT_TIMEOUT_SECONDS
+        signaling.INITIAL_CONNECT_TIMEOUT_SECONDS = 0.01
+        try:
+            # A timeout is swallowed deliberately: main must continue and start
+            # the long-lived reconnect supervisor.
+            asyncio.run(signaling.PrusaSignaling.connect(_HungSignaling()))
+        finally:
+            signaling.INITIAL_CONNECT_TIMEOUT_SECONDS = original
+
+
+class SupervisedSessionHealthTests(unittest.TestCase):
+    def _usable(self, connected, eio_state, authenticated):
+        sig = SimpleNamespace(
+            sio=SimpleNamespace(
+                connected=connected,
+                eio=SimpleNamespace(state=eio_state),
+            ),
+            _authenticated=authenticated,
+        )
+        return signaling.PrusaSignaling._session_is_usable(sig)
+
+    def test_transport_without_auth_ack_is_not_usable(self):
+        self.assertFalse(self._usable(True, 'connected', False))
+
+    def test_authenticated_connected_transport_is_usable(self):
+        self.assertTrue(self._usable(True, 'connected', True))
+
+    def test_closed_transport_is_not_usable_even_after_prior_auth(self):
+        self.assertFalse(self._usable(False, 'disconnected', True))
 
 
 if __name__ == '__main__':

@@ -450,7 +450,7 @@ These are explicit recovery prerequisites, not permission to guess:
 | `client_trigger` | Dedicated 6-field descriptor `0x3f6f58` (strings 1/2/4, uvarints 3/5/6); emitted as a Socket.IO **event**, ack callbacks are the server receipt ack; nine sender wrappers recovered. **Wave 2 confirmed:** tag5 = result/error code (`FUN_000a2d68`=2, `FUN_000a2ca0`=5), tag6 = upgrade/progress value (`FUN_000a2e3c`=1, `FUN_000a2fec`=2, `FUN_000a2f80`=3), tag3 = timelapse-video-make status (`FUN_000a2bbc`=1 IN_PROGRESS / 2 FINISHED); tag1 = constant, tag4 = `FUN_0008286c()` (token-shaped), tag2 = shared global | The message/subtype split among the string tags 1/2/4 is `[assumption]`; emission is **deferred** until those strings are pinned and a consumer exists (this Connect version exposes no make-video/file-list UI) |
 | RTSP port | **Resolved Wave 2 [confirmed]:** the shipped firmware default is `554` (`FUN_000b04d4` logs `"RTSP server started on port %d"` with the literal `0x22a`=554). The Pi intentionally listens on `8554` (privileged-port avoidance) and advertises `rtsp://<ip>:8554/live`, which Connect consumes (the local stream works) | Documented intentional Pi exception; no firmware-parity change |
 | WebRTC audio | **Resolved Wave 2 [confirmed]:** the Pi offers video-only and the stream plays live in both the app and the browser, so Connect accepts a video-only offer | Audio is optional/not required; video-only is intentional (GAP-WEBRTC-07 closed) |
-| Signaling session lifecycle (residual long-run question) | **Superseded 2026-09-20:** the observed "server ACKs `camera_authentication` (ACK `0`) then closes the WebSocket in the same tick (`Server sent close packet data 0`)" was caused by the unsolicited post-auth burst (`send_sio_info` + `status` + `protobuf_version` + `features`); removing it (`ba48dc8`, live-verified) gave a stable session (0 `CameraIsNotSessionMemberError`, one connection). The client still supervises reconnection with a fresh client per attempt and exponential backoff (15s→120s), and drops the session on a rejected ACK/exception so the supervisor retries (`signaling.supervise`/`_drop_session`). | Whether the service can still be closed by a server-side eligibility/session policy over a long run is **not proven**. **Ruled out 2026-09-19:** handshake URL (`param_3` is an empty map; only `&t=` which engineio already sends), token `origin` (re-registered via the Buddy3D flow, `/c/info` `origin` went `OTHER`→`WEB`, close persists), post-auth pacing (immediate send and no-ACK batching both close), headers/transport, and stale-session resume. The post-auth-burst fix removes the known cause; any remaining close would need a fresh capture. |
+| Signaling session lifecycle (residual long-run question) | **Updated 2026-09-25:** removing the unsolicited post-auth burst (`ba48dc8`, live-verified 2026-09-20) fixed the earlier immediate server close. A later full-image run exposed a separate startup recovery bug: awaiting disconnect inside the Socket.IO `connect` callback could strand the initial connection before the supervisor started, leaving snapshots healthy but all Socket.IO controls silent. `GAP-AUTH-01` now bounds the initial attempt, returns normally from failed auth callbacks, requires the auth-success flag in session health, and replaces unusable clients with exponential backoff (15s→120s). | Whether the service can still be closed by a server-side eligibility/session policy over a long run is **not proven**. **Ruled out:** registration/identity (current token independently ACKed `0`), protobuf field order, the SD-vs-image Socket.IO dependency delta, handshake URL, token `origin`, headers/transport, and stale-session resume. Any remaining close needs a fresh capture. |
 
 ### Gap-to-firmware cross-reference
 
@@ -1165,7 +1165,7 @@ closing the gap.
 
 ### GAP-AUTH-01 — Require successful authentication ACK
 
-- [x] **P2 · Implemented and unit-tested (d1ec311); live-verified 2026-09-20 (ACK `0`, stable session)**
+- [~] **P2 · Wire behavior live-verified 2026-09-20; startup recovery fix implemented and unit-tested 2026-09-25, appliance redeploy pending**
 - **Firmware behavior:** continues its post-authentication flow only on the successful ACK path.
   **[confirmed]**
 - **Current behavior:** only the exact success ACK `0` proceeds; no post-auth events are sent
@@ -1174,11 +1174,26 @@ closing the gap.
   `send_sio_info` event and the unsolicited `protobuf_version` (which the server answered with
   `CameraIsNotSessionMemberError`) are gone.
 - **Implementation:** require the exact success value `0` (`FUN_0009e53c`: `0`=OK, `1`=not
-  authorized, `2`=error joining session); log and disconnect/back off otherwise. Post-auth sends
-  removed (firmware `FUN_000a05e4` only logs/resets counters).
+  authorized, `2`=error joining session); mark the session unauthenticated and let the supervisor
+  replace/back off otherwise. Post-auth sends removed (firmware `FUN_000a05e4` only logs/resets
+  counters).
 - **Acceptance:** ACK `0` proceeds; ACK `1`, `2`, `5`, malformed values, and timeout do not send any
   post-auth event.
-- **Code:** [`signaling.py`](../pi-impersonator/signaling.py#L96-L105)
+- **Reliability regression found 2026-09-25:** the full-image appliance continued uploading
+  snapshots and serving all local H.264 endpoints, but Connect settings and WebRTC both stopped.
+  Browser WebSocket capture showed the viewer sending its `webrtc` request with no camera-side
+  frames. The registered appliance token/fingerprint authenticated from an independent client with
+  ACK `0`, and both the SD card's known-working dependency versions and the image's newer versions
+  behaved identically, ruling out registration, protobuf field order, and dependency drift.
+- **Root cause/fix:** `main` starts `supervise()` only after the initial `sio.connect()` returns, but
+  the auth error path previously awaited `sio.disconnect()` from inside python-socketio's own
+  `connect` callback. A transient startup timeout/rejection could therefore strand the initial
+  call before the supervisor existed. The initial attempt is now bounded at 25 seconds, auth
+  failure returns from the callback without a nested disconnect, and supervisor health requires
+  both an Engine.IO connection and an exact successful auth ACK. Tests cover the bounded initial
+  attempt and reject a connected-but-unauthenticated session.
+- **Code:** [`signaling.py`](../pi-impersonator/signaling.py#L137-L159),
+  [`signaling.py`](../pi-impersonator/signaling.py#L377-L463)
 
 ### GAP-CONTROL-01 — Apply and publish camera-name changes
 
