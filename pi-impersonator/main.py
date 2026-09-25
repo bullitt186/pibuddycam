@@ -306,7 +306,7 @@ async def snapshot_loop(token, fingerprint, server, session):
         if state.periodic_snapshot_allowed():
             width, height = state.resolution()
             try:
-                jpeg = capture_jpeg(width, height)
+                jpeg = await asyncio.to_thread(capture_jpeg, width, height)
                 local_http.last_jpeg = jpeg
                 t0 = time.monotonic()
                 status, result_class = await upload_snapshot(
@@ -381,7 +381,7 @@ async def timelapse_loop():
             await asyncio.sleep(1)
             continue
         try:
-            jpeg = capture_jpeg(*state.resolution())
+            jpeg = await asyncio.to_thread(capture_jpeg, *state.resolution())
             path = timelapse.save_frame(jpeg)
             log.info(f'Timelapse: stored {os.path.basename(path)}')
         except Exception as e:
@@ -780,7 +780,7 @@ async def main():
             # snapshot_upload_enabled switch and all streams consume the shared
             # mux independently (GAP-SNAPSHOT-02/04).
             try:
-                jpeg = capture_jpeg(*state.resolution())
+                jpeg = await asyncio.to_thread(capture_jpeg, *state.resolution())
                 await upload_snapshot(session, jpeg, token, fingerprint, server)
             except Exception as e:
                 log.error(
