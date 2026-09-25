@@ -24,6 +24,7 @@ import stat
 import subprocess
 import sys
 
+import migrations
 import quality
 import rtsp_control
 import settings_store
@@ -270,16 +271,21 @@ def main():
         log.warning('persist: /data is not a mountpoint; nothing to restore')
         return 0
 
+    # OTA-deployed ROOT migrations run first — they may create mountpoints or
+    # install config files that the rest of this function depends on (e.g.
+    # /mnt/sdcard, samba config, prusa-priv fixes).  The migration runner
+    # handles rw/ro remount and idempotency tracking.
+    try:
+        applied = migrations.run_pending()
+        if applied:
+            log.info(f'persist: applied {len(applied)} migration(s): {", ".join(applied)}')
+    except Exception as e:
+        log.warning(f'persist: migration runner failed: {e}')
+
     service_user = os.environ.get('SERVICE_USER', DEFAULT_SERVICE_USER)
-    # The service user (not root) must write state.json, configuration, releases,
-    # backups, and frames, so hand over every durable directory the app touches.
     ensure_durable_layout(service_user)
 
     _bind_mount(DATA_SDCARD, SD_MOUNT)
-    # B4: the station profile lives under /etc, which is volatile on the
-    # read-only-root appliance. Bind the durable copy in before NetworkManager
-    # starts (pi-persist runs Before=data-ready.target; NM is After it), so the
-    # profile created at claim survives reboot.
     _bind_mount(DATA_NETWORK_CONNECTIONS, NM_CONNECTIONS)
     _restore_settings(service_user)
     _prune_timelapse()

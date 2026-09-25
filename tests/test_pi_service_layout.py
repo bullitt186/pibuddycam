@@ -79,6 +79,7 @@ class DurableLayoutCreationTests(unittest.TestCase):
     def test_main_creates_and_chowns_every_dir(self):
         calls = {'makedirs': [], 'chmod': [], 'chown': []}
         with patch.object(persist_restore.settings_store, 'available', return_value=True), \
+                patch.object(persist_restore.migrations, 'run_pending', return_value=[]), \
                 patch.object(persist_restore.os, 'makedirs',
                              side_effect=lambda p, exist_ok=False: calls['makedirs'].append(p)), \
                 patch.object(persist_restore.os, 'chmod',
@@ -120,6 +121,7 @@ class DurableLayoutCreationTests(unittest.TestCase):
     def test_service_user_env_override(self):
         users = []
         with patch.object(persist_restore.settings_store, 'available', return_value=True), \
+                patch.object(persist_restore.migrations, 'run_pending', return_value=[]), \
                 patch.object(persist_restore.os, 'makedirs'), \
                 patch.object(persist_restore.os, 'chmod'), \
                 patch.object(persist_restore, '_chown',
