@@ -222,6 +222,13 @@ class MakeAppReleaseTests(unittest.TestCase):
         (src / "sub").mkdir(parents=True)
         (src / "main.py").write_text("print('hi')\n", encoding="utf-8")
         (src / "sub" / "mod.py").write_text("VALUE = 1\n", encoding="utf-8")
+        # WP-UI1: the local admin web shell and its allowlisted assets must
+        # travel in the signed application bundle, not just the factory image.
+        (src / "web").mkdir()
+        (src / "web" / "index.html").write_text(
+            "<!doctype html><title>shell</title>\n", encoding="utf-8")
+        (src / "web" / "app.css").write_text(":root{--bg:#fff}\n", encoding="utf-8")
+        (src / "web" / "app.js").write_text("export {};\n", encoding="utf-8")
         (src / "tests").mkdir()
         (src / "tests" / "test_x.py").write_text("def test(): pass\n")
         (src / "__pycache__").mkdir()
@@ -415,6 +422,24 @@ class MakeAppReleaseTests(unittest.TestCase):
             member = archive.getmember("./requirements.lock")
             copied = archive.extractfile(member).read().decode("utf-8")
         self.assertEqual(copied, LOCK_TEXT)
+
+    def test_web_assets_are_bundled(self):
+        # WP-UI1/AC-2: the static shell and allowlisted assets are part of the
+        # signed application release, so an OTA install keeps the local UI.
+        result = self.release()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        names = {member.name.lstrip("./") for member in self.members(self.bundle())}
+        for asset in ("web/index.html", "web/app.css", "web/app.js"):
+            self.assertIn(asset, names)
+        dest = self.dir / "extracted-web"
+        ok, reason = updater.extract_bundle(
+            str(self.bundle()), str(dest),
+            expected_sha256=self.read_manifest()["bundle_sha256"],
+        )
+        self.assertTrue(ok, reason)
+        self.assertTrue((dest / "web" / "index.html").is_file())
+        self.assertTrue((dest / "web" / "app.css").is_file())
+        self.assertTrue((dest / "web" / "app.js").is_file())
 
     def test_dashed_requirement_matches_underscored_wheel(self):
         # pip normalizes '-' to '_' in wheel filenames; the checker must too.

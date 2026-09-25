@@ -68,6 +68,7 @@ server-side and are never emitted. No token, PSK, password hash or cookie value
 is returned in a body or written to a log.
 """
 import dataclasses
+import hashlib
 import http.cookies
 import ipaddress
 import json
@@ -119,6 +120,55 @@ TRUSTED_LAN_INTERFACES = (
     {'name': 'Prusa RTSP', 'port': 8554, 'authenticated': False},
     {'name': 'HA RTSP', 'port': 8555, 'authenticated': False},
 )
+
+# --------------------------------------------------------------------------- #
+# Local static application assets (WP-UI1; AC-1/AC-2/AC-3)
+# --------------------------------------------------------------------------- #
+
+#: Directory holding the packaged application shell and its assets. Resolved
+#: relative to this module so the same tree ships in the factory image and in a
+#: signed application release. Injectable for tests.
+WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web')
+
+#: The shell document served for ``GET /admin``. It is not an allowlisted
+#: ``/assets/<name>`` entry: it is rendered by the admin handler so the
+#: trusted-LAN notice and asset version can be substituted.
+SHELL_FILE = 'index.html'
+
+#: The only files served under ``GET /assets/<name>``. Keys are exact URL
+#: basenames (never paths), so a separator, dot-segment, or unknown name can
+#: never resolve to a file. Values are the response ``Content-Type``.
+ASSET_ALLOWLIST = {
+    'app.css': 'text/css; charset=utf-8',
+    'app.js': 'text/javascript; charset=utf-8',
+    'favicon.svg': 'image/svg+xml',
+}
+
+#: ``Cache-Control`` for allowlisted assets. The shell references them with a
+#: content-hash query, and each response carries a strong ``ETag``, so a stale
+#: asset after an application update is revalidated rather than reused blindly.
+ASSET_CACHE_CONTROL = 'public, max-age=3600'
+
+#: Baseline security headers applied to every response.
+SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+    'X-Frame-Options': 'DENY',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), usb=()',
+}
+
+#: CSP for the local HTML shell: only same-origin assets, no inline code.
+HTML_CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; "
+    "img-src 'self' data:; connect-src 'self'; font-src 'self'; "
+    "base-uri 'none'; form-action 'self'; frame-ancestors 'none'; "
+    "object-src 'none'"
+)
+
+#: CSP for standalone SVG assets: no scripts, no styles, no external loads.
+SVG_CSP = "default-src 'none'"
 
 
 def is_trusted_lan(peer_ip):
@@ -298,6 +348,7 @@ class AdminApp:
         start_camera=None,
         activate_station=None,
         mqtt_probe=None,
+        web_dir=None,
     ):
         if mode not in ('setup', 'admin'):
             raise ValueError("mode must be 'setup' or 'admin'")
@@ -335,6 +386,9 @@ class AdminApp:
         self._activate_station = activate_station
         # WP-R2: the optional broker-test callable; None reports unavailable.
         self._mqtt_probe = mqtt_probe
+        # WP-UI1: packaged static asset root (injectable for tests).
+        self._web_dir = web_dir if web_dir is not None else WEB_DIR
+        self._asset_version_cache = None
 
         # Lazily built wizard session and reset confirmation state.
         self._wizard = None
@@ -354,6 +408,10 @@ class AdminApp:
         return (
             Route('GET', re.compile(r'^/$'), _PUBLIC, self._handle_root),
             Route('GET', re.compile(r'^/admin$'), _PUBLIC, self._handle_admin),
+            Route(
+                'GET', re.compile(r'^/assets/(?P<name>[^/]+)$'),
+                _PUBLIC, self._handle_asset,
+            ),
             Route('GET', re.compile(r'^/setup$'), _PUBLIC_SETUP, self._handle_setup_page),
             Route(
                 'POST', re.compile(r'^/setup/step/(?P<n>[^/]+)$'),
@@ -364,6 +422,10 @@ class AdminApp:
                 _PUBLIC_SETUP, self._handle_setup_finish,
             ),
             Route('GET', re.compile(r'^/api/status$'), _PUBLIC, self._handle_status),
+            Route(
+                'GET', re.compile(r'^/api/session$'),
+                _AUTHENTICATED, self._handle_session,
+            ),
             Route('POST', re.compile(r'^/api/login$'), _PUBLIC, self._handle_login),
             Route(
                 'POST', re.compile(r'^/api/mqtt/test$'),
@@ -412,6 +474,21 @@ class AdminApp:
     # ------------------------------------------------------------------ #
 
     def handle(self, request):
+        """Dispatch ``request`` and attach the baseline security headers.
+
+        Every response -- HTML, JSON, text, redirect, asset, or error -- gets
+        :data:`SECURITY_HEADERS`; the HTML shell and standalone SVG assets also
+        get a restrictive CSP (see :meth:`_html` and :meth:`_handle_asset`).
+        """
+        return self._secure(self._dispatch(request))
+
+    def _secure(self, response):
+        """Add the baseline security headers to ``response`` (never overwrites)."""
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
+    def _dispatch(self, request):
         """Dispatch ``request`` to the route table and return a :class:`Response`."""
         method = (request.method or 'GET').upper()
         path = request.path or '/'
@@ -701,16 +778,91 @@ class AdminApp:
         return self._redirect('/admin')
 
     def _handle_admin(self, request, match, body_data, now):
-        """Minimal admin console shell; all data lives behind the authed API."""
-        html = (
-            '<!doctype html><html><head><meta charset="utf-8">'
-            '<title>Buddy3D Camera</title></head><body>'
-            '<h1>Buddy3D Camera administration</h1>'
-            '<p>Sign in through the admin API; the session cookie is HttpOnly.</p>'
-            '<p>' + lan_warning() + '</p>'
-            '</body></html>'
-        )
+        """Serve the local application shell.
+
+        The shell is the packaged ``web/index.html`` with two server-side
+        substitutions: a content-derived asset version (cache-busting query on
+        the CSS/JS/favicon references) and the current trusted-LAN notice. It
+        contains no device data; the unauthenticated client sees only the login
+        form. Device data stays behind the authenticated ``/api/*`` routes.
+        """
+        html = self._read_shell()
+        html = html.replace('__ASSET_VERSION__', self._asset_version())
+        html = html.replace('__TRUSTED_LAN_NOTICE__', lan_warning())
         return self._html(request, 200, html)
+
+    def _read_shell(self):
+        """Return the shell document text, falling back to a minimal login page."""
+        path = os.path.join(self._web_dir, SHELL_FILE)
+        try:
+            with open(path, encoding='utf-8') as handle:
+                return handle.read()
+        except OSError:
+            log.warning('admin_http: application shell missing at %s', path)
+            return (
+                '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+                '<meta name="viewport" content="width=device-width, initial-scale=1">'
+                '<title>Buddy3D Camera</title></head><body>'
+                '<h1>Buddy3D Camera</h1>'
+                '<p>The local application assets are missing. Sign in through the '
+                'admin API to continue.</p>'
+                '<p>' + lan_warning() + '</p>'
+                '</body></html>'
+            )
+
+    def _asset_version(self):
+        """Return a short content hash of the allowlisted assets (cached).
+
+        Used as a cache-busting query on the shell's asset references. A missing
+        asset contributes its name so the value stays stable and never raises.
+        """
+        if self._asset_version_cache is not None:
+            return self._asset_version_cache
+        digest = hashlib.sha256()
+        for name in sorted(ASSET_ALLOWLIST):
+            try:
+                with open(os.path.join(self._web_dir, name), 'rb') as handle:
+                    digest.update(handle.read())
+            except OSError:
+                digest.update(name.encode('utf-8'))
+        self._asset_version_cache = digest.hexdigest()[:12]
+        return self._asset_version_cache
+
+    def _handle_asset(self, request, match, body_data, now):
+        """Serve one explicitly allowlisted local asset.
+
+        Only the exact basenames in :data:`ASSET_ALLOWLIST` are served; the
+        route pattern already forbids a separator, and an unknown or traversal
+        name is a 404. Responses carry the correct MIME type, a strong ETag, and
+        a bounded ``Cache-Control``; a matching ``If-None-Match`` gets a bodyless
+        304. SVG assets additionally get :data:`SVG_CSP`.
+        """
+        name = match.group('name')
+        content_type = ASSET_ALLOWLIST.get(name)
+        if content_type is None:
+            return self._error(request, 404, 'not found')
+        path = os.path.join(self._web_dir, name)
+        # Defence in depth: the allowlist has no separators, but confirm the
+        # resolved path still sits directly in the asset directory.
+        if os.path.dirname(os.path.abspath(path)) != os.path.abspath(self._web_dir):
+            return self._error(request, 404, 'not found')
+        try:
+            with open(path, 'rb') as handle:
+                data = handle.read()
+        except OSError:
+            return self._error(request, 404, 'not found')
+
+        etag = _etag(data)
+        headers = {
+            'Content-Type': content_type,
+            'Cache-Control': ASSET_CACHE_CONTROL,
+            'ETag': etag,
+        }
+        if content_type.startswith('image/svg'):
+            headers['Content-Security-Policy'] = SVG_CSP
+        if _if_none_match(request) == etag:
+            return Response(304, headers, b'')
+        return Response(200, headers, data)
 
     def _handle_status(self, request, match, body_data, now):
         """Public status JSON, including the trusted-LAN labelling.
@@ -747,6 +899,21 @@ class AdminApp:
         if self._ssh_runner is not None:
             payload['ssh'] = _ssh_view(self._ssh_runner)
         return self._json(request, 200, payload)
+
+    def _handle_session(self, request, match, body_data, now):
+        """Return the live session's mode and per-session CSRF token.
+
+        Authenticated (the session was validated by ``_authorize`` before this
+        handler ran). It lets the shell resume after a reload and gives every
+        authenticated request a 401 path that the client turns into the login
+        view. No device data is returned.
+        """
+        token = _session_token(request)
+        return self._json(request, 200, {
+            'ok': True,
+            'mode': self.mode,
+            'csrf': self._sessions.csrf_for(token),
+        })
 
     def _handle_login(self, request, match, body_data, now):
         """Rate-limited password login; sets the hardened session cookie."""
@@ -1083,10 +1250,14 @@ class AdminApp:
         return Response(status, {'Content-Type': 'application/json; charset=utf-8'}, body)
 
     def _html(self, request, status, text):
-        """Return minimal HTML after literal-secret scrubbing."""
+        """Return HTML after literal-secret scrubbing, with the local-only CSP."""
         safe = admin_auth.redact(text, self._known_secrets())
         return Response(
-            status, {'Content-Type': 'text/html; charset=utf-8'},
+            status,
+            {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Content-Security-Policy': HTML_CSP,
+            },
             safe.encode('utf-8') if isinstance(safe, str) else safe,
         )
 
@@ -1161,6 +1332,17 @@ def _header(headers, name):
         if isinstance(key, str) and key.lower() == lowered:
             return value
     return None
+
+
+def _etag(data):
+    """Return a strong, quoted ETag for ``data`` (a content hash)."""
+    return '"' + hashlib.sha256(data).hexdigest()[:32] + '"'
+
+
+def _if_none_match(request):
+    """Return the request's ``If-None-Match`` value, or ``''``."""
+    value = _header(request.headers, 'If-None-Match')
+    return value if isinstance(value, str) else ''
 
 
 def _without_csrf_header(headers):
@@ -1288,9 +1470,16 @@ __all__ = [
     'Request',
     'Response',
     'Route',
+    'ASSET_ALLOWLIST',
+    'ASSET_CACHE_CONTROL',
+    'HTML_CSP',
+    'SECURITY_HEADERS',
+    'SHELL_FILE',
+    'SVG_CSP',
     'TRUSTED_LAN_INTERFACES',
     'TRUSTED_LAN_NOTICE',
     'REAUTH_WINDOW_SECONDS',
+    'WEB_DIR',
     'is_trusted_lan',
     'lan_warning',
 ]

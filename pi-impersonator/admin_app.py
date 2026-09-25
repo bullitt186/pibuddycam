@@ -80,10 +80,12 @@ VALID_MODES = ('setup', 'admin')
 ROUTES = (
     ('GET', '/'),
     ('GET', '/admin'),
+    ('GET', '/assets/{name}'),
     ('GET', '/setup'),
     ('POST', '/setup/step/{n}'),
     ('POST', '/setup/finish'),
     ('GET', '/api/status'),
+    ('GET', '/api/session'),
     ('POST', '/api/login'),
     ('POST', '/api/mqtt/test'),
     ('POST', '/api/logout'),

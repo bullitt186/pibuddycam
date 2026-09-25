@@ -1158,6 +1158,16 @@ PY
       report fail "factory application entry point /opt/prusa-cam/main.py missing"
    fi
 
+   # WP-UI1/AC-2: the factory app tree ships the local admin shell and its
+   # allowlisted assets; admin_http serves only those under /assets/<name>.
+   if [ -f "$MOUNT_ROOT/opt/prusa-cam/web/index.html" ] \
+      && [ -f "$MOUNT_ROOT/opt/prusa-cam/web/app.css" ] \
+      && [ -f "$MOUNT_ROOT/opt/prusa-cam/web/app.js" ]; then
+      report ok "local admin web assets present under /opt/prusa-cam/web"
+   else
+      report fail "local admin web assets missing under /opt/prusa-cam/web"
+   fi
+
    launcher=""
    for candidate in launcher.sh run.sh bin/launcher.sh; do
       if [ -x "$MOUNT_ROOT/opt/prusa-cam/$candidate" ]; then

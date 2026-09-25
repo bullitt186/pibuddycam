@@ -260,6 +260,13 @@ def make_rootfs(base):
     # umask would otherwise make it group-writable.
     app.chmod(0o755)
     (app / "main.py").write_text("# synthetic factory app\n", encoding="utf-8")
+    # WP-UI1/AC-2: the factory tree ships the local admin shell + assets.
+    web = app / "web"
+    web.mkdir()
+    (web / "index.html").write_text(
+        "<!doctype html><title>synthetic shell</title>\n", encoding="utf-8")
+    (web / "app.css").write_text(":root{--bg:#fff}\n", encoding="utf-8")
+    (web / "app.js").write_text("export {};\n", encoding="utf-8")
     launcher = app / "launcher.sh"
     shutil.copy2(REPO_ROOT / "image" / "assets" / "launcher.sh", launcher)
     launcher.chmod(0o755)
@@ -1393,6 +1400,53 @@ class LauncherWiringValidationTests(unittest.TestCase):
             "launcher must prefer the per-release venv and fall back to the factory venv",
             result.stdout,
         )
+
+
+class AdminWebAssetValidationTests(unittest.TestCase):
+    """WP-UI1/AC-2: the factory image ships the local admin shell + assets."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.image = make_image(Path(cls.tmp) / "image.img")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _root(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        return make_rootfs(tmp)
+
+    def _web(self, root):
+        return Path(root) / "opt" / "prusa-cam" / "web"
+
+    def test_good_rootfs_reports_web_assets(self):
+        root = self._root()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(
+            "local admin web assets present under /opt/prusa-cam/web",
+            result.stdout,
+        )
+
+    def test_missing_web_assets_fail(self):
+        root = self._root()
+        shutil.rmtree(self._web(root))
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(
+            "local admin web assets missing under /opt/prusa-cam/web",
+            result.stdout,
+        )
+
+    def test_missing_shell_fails(self):
+        root = self._root()
+        (self._web(root) / "index.html").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("local admin web assets missing", result.stdout)
 
 
 class PrivateKeyScanTests(unittest.TestCase):
