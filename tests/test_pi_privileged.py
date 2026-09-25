@@ -68,7 +68,7 @@ class AllowlistTests(unittest.TestCase):
             frozenset({
                 'start-camera', 'stop-provisioning', 'hotspot-start',
                 'hotspot-stop', 'wifi-station-apply', 'install-update',
-                'rtsp-start', 'rtsp-stop',
+                'rtsp-start', 'rtsp-stop', 'quality-restart',
             }),
         )
 
@@ -80,7 +80,7 @@ class AllowlistTests(unittest.TestCase):
             / 'assets'
             / 'prusa-priv'
         ).read_text(encoding='utf-8')
-        for verb in ('rtsp-start', 'rtsp-stop'):
+        for verb in ('rtsp-start', 'rtsp-stop', 'quality-restart'):
             self.assertIn(f'{verb})', helper)
 
     def test_unknown_verb_is_rejected_without_running(self):
@@ -123,6 +123,16 @@ class WrapperTests(unittest.TestCase):
         result = privileged.install_update(runner=runner)
         self.assertFalse(result)
         self.assertIn('install-update failed', result.reason)
+
+    def test_quality_restart_uses_fixed_helper_verb(self):
+        runner = make_runner()
+        result = privileged.quality_restart(runner=runner)
+        self.assertTrue(result)
+        self.assertEqual(
+            runner.calls[0][0],
+            ['sudo', '-n', '/usr/libexec/prusa-cam/prusa-priv',
+             'quality-restart'],
+        )
 
     def test_start_camera_failure_returns_false(self):
         runner = make_runner(default=FakeResult(1, ''))

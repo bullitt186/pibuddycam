@@ -177,38 +177,15 @@ class HandleQualityTests(QualityControlTestCase):
 
 
 class RestartServicesTests(unittest.TestCase):
-    @patch('quality_control.subprocess.run')
-    def test_restarts_shared_source_and_ha_then_try_restarts_prusa(self, run):
-        run.side_effect = [
-            type('Result', (), {'returncode': 0})(),
-            type('Result', (), {'returncode': 0})(),
-        ]
-
+    @patch('quality_control.privileged.quality_restart', return_value=True)
+    def test_restart_uses_fixed_privileged_action(self, restart):
         self.assertEqual(quality_control.restart_services(), 0)
+        restart.assert_called_once_with()
 
-        self.assertEqual(run.call_count, 2)
-        self.assertEqual(run.call_args_list[0].args[0], [
-            'sudo', 'systemctl', 'restart',
-            'rpicam-source.service', 'prusa-ha-rtsp.service',
-        ])
-        self.assertEqual(run.call_args_list[1].args[0], [
-            'sudo', 'systemctl', 'try-restart', 'prusa-rtsp.service',
-        ])
-
-    @patch('quality_control.subprocess.run')
-    def test_any_restart_failure_is_returned(self, run):
-        run.side_effect = [
-            type('Result', (), {'returncode': 3})(),
-            type('Result', (), {'returncode': 0})(),
-        ]
-        self.assertEqual(quality_control.restart_services(), 3)
-
-        run.reset_mock()
-        run.side_effect = [
-            type('Result', (), {'returncode': 0})(),
-            type('Result', (), {'returncode': 4})(),
-        ]
-        self.assertEqual(quality_control.restart_services(), 4)
+    @patch('quality_control.privileged.quality_restart', return_value=False)
+    def test_restart_failure_is_returned(self, restart):
+        self.assertEqual(quality_control.restart_services(), 1)
+        restart.assert_called_once_with()
 
 
 if __name__ == '__main__':

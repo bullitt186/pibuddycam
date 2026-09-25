@@ -59,7 +59,6 @@ import app_metrics
 import app_version
 import config_schema
 import mqtt_service
-import privileged
 import updater_install
 from settings_coordinator import SettingsCoordinator, persist_state
 

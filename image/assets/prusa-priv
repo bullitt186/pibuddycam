@@ -16,6 +16,7 @@
 #   install-update       systemctl start prusa-updater-install.service
 #   rtsp-start           systemctl start prusa-rtsp.service
 #   rtsp-stop            systemctl stop prusa-rtsp.service
+#   quality-restart      restart source/HA RTSP, try-restart Prusa RTSP
 #
 # The Wi-Fi PSK is never an argument: it is forwarded on stdin to
 # wifi_station.py, which writes it to a 0600 NetworkManager ``passwd-file`` and
@@ -49,6 +50,10 @@ case "$verb" in
       ;;
    rtsp-stop)
       exec "$SYSTEMCTL" stop prusa-rtsp.service
+      ;;
+   quality-restart)
+      "$SYSTEMCTL" restart rpicam-source.service prusa-ha-rtsp.service
+      exec "$SYSTEMCTL" try-restart prusa-rtsp.service
       ;;
    hotspot-start)
       exec "$PYTHON" "$APP_ROOT/hotspot_ctl.py" start

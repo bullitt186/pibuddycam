@@ -48,6 +48,7 @@ VERBS = frozenset({
     'install-update',
     'rtsp-start',
     'rtsp-stop',
+    'quality-restart',
 })
 
 #: Bounded wall-clock timeout for a privileged invocation.
@@ -183,6 +184,16 @@ def rtsp_start(runner=None):
 def rtsp_stop(runner=None):
     """Stop ``prusa-rtsp.service`` as root (see :func:`rtsp_start`)."""
     return _invoke('rtsp-stop', runner=runner)
+
+
+def quality_restart(runner=None):
+    """Restart the shared camera pipeline after a quality change as root.
+
+    The helper owns the exact unit list and uses ``try-restart`` for the
+    Prusa-controlled RTSP endpoint so changing quality cannot enable a stream
+    whose configured mode is disabled. Returns a :class:`PrivilegedResult`.
+    """
+    return _invoke('quality-restart', runner=runner)
 
 
 def hotspot_start(runner=None):

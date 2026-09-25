@@ -12,9 +12,9 @@ before the write and restored when the restart fails, so a later restart or
 process start cannot run the encoder on a tier that was never accepted.
 """
 import logging
-import subprocess
 
 import quality
+import privileged
 from state import RAW_TO_ENUM
 
 log = logging.getLogger('prusa-cam.quality')
@@ -33,16 +33,8 @@ def restart_services():
     Prusa-controlled RTSP service when its configured mode is disabled. The HA
     endpoint is independent and always restarted with the encoder.
     """
-    shared = subprocess.run(
-        ['sudo', 'systemctl', 'restart',
-         'rpicam-source.service', 'prusa-ha-rtsp.service'],
-        capture_output=True,
-    )
-    prusa = subprocess.run(
-        ['sudo', 'systemctl', 'try-restart', 'prusa-rtsp.service'],
-        capture_output=True,
-    )
-    return shared.returncode or prusa.returncode
+    result = privileged.quality_restart()
+    return 0 if result else 1
 
 
 def _restore_live(previous):

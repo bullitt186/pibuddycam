@@ -52,6 +52,9 @@ class PrusaPrivAssetTests(unittest.TestCase):
             'hotspot-stop',
             'wifi-station-apply',
             'install-update',
+            'rtsp-start',
+            'rtsp-stop',
+            'quality-restart',
         ):
             self.assertIn(f'{verb})', text)
         # Nothing else is dispatched.
@@ -103,6 +106,13 @@ class PrusaPrivAssetTests(unittest.TestCase):
         self.assertIn('exec "$SYSTEMCTL" start prusa-camera.target', text)
         self.assertIn('exec "$SYSTEMCTL" stop prusa-provisioning.service', text)
         self.assertIn('exec "$SYSTEMCTL" start prusa-updater-install.service', text)
+        self.assertIn(
+            '"$SYSTEMCTL" restart rpicam-source.service prusa-ha-rtsp.service',
+            text,
+        )
+        self.assertIn(
+            'exec "$SYSTEMCTL" try-restart prusa-rtsp.service', text
+        )
         self.assertNotIn('\n      exec systemctl', text)
 
 

@@ -967,7 +967,14 @@ closing the gap.
 
 ### GAP-QUALITY-02 — Reproduce the quality persistence flag and recover event wiring
 
-- [~] **P2 · Partial (d1ec311): live/persist split and failure rollback implemented and tested; event→flag wiring still unrecovered**
+- [~] **P2 · Partial: live/persist split, failure rollback, and appliance privilege path implemented and tested; event→flag wiring still unrecovered**
+- **Live failure evidence 2026-09-25:** Connect's nested configuration reached the running
+  appliance and decoded as quality `3`, but the service account's legacy direct
+  `sudo systemctl restart ...` calls were rejected by the image's deliberately narrow sudoers
+  policy (`command not allowed`), so the encoder was never reconfigured. The quality restart now
+  uses the image's fixed-verb `prusa-priv quality-restart` action. This preserves the privilege
+  boundary while restarting exactly `rpicam-source.service` and `prusa-ha-rtsp.service`, followed
+  by `try-restart prusa-rtsp.service` so a disabled Prusa RTSP mode stays disabled.
 - **RE status 2026-09-20 (Wave 2) [confirmed]:** the persist flag is a **per-payload** flag for
   `change_video_size` — `FUN_00072f08` calls the persistence setter only when `*param_3 != 0` — not
   a registration-time constant. The `save_video_size` handler is in an unexported gap. Best
