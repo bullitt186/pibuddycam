@@ -182,8 +182,13 @@ def ensure_durable_layout(service_user):
     return created
 
 
-def _restore_settings():
-    """Materialize quality.env and rtsp.mode from the persisted state.json."""
+def _restore_settings(service_user=DEFAULT_SERVICE_USER):
+    """Materialize quality.env and rtsp.mode from the persisted state.json.
+
+    pi-persist runs as root, so the files it creates are root-owned. The
+    service account must be able to overwrite them at runtime, so each
+    restored file is chowned to the service user after writing.
+    """
     data = settings_store.load()
     if not data:
         log.info('persist: no persisted settings to restore')
@@ -192,12 +197,14 @@ def _restore_settings():
     if type(tier) is int and tier in quality.RESOLUTIONS:
         try:
             quality.write_current(tier)
+            _chown(quality.QUALITY_ENV, service_user)
             log.info(f'persist: restored quality tier {tier} to {quality.QUALITY_ENV}')
         except OSError as e:
             log.warning(f'persist: could not restore quality tier {tier}: {e}')
     mode = data.get('rtsp_mode')
     if mode in (rtsp_control.RTSP_DISABLED, rtsp_control.RTSP_ENABLED):
         if rtsp_control.write_mode(mode):
+            _chown(rtsp_control.RTSP_MODE_FILE, service_user)
             log.info(f'persist: restored rtsp mode {mode} to {rtsp_control.RTSP_MODE_FILE}')
         else:
             log.warning(f'persist: could not restore rtsp mode {mode}')
@@ -274,7 +281,7 @@ def main():
     # starts (pi-persist runs Before=data-ready.target; NM is After it), so the
     # profile created at claim survives reboot.
     _bind_mount(DATA_NETWORK_CONNECTIONS, NM_CONNECTIONS)
-    _restore_settings()
+    _restore_settings(service_user)
     _prune_timelapse()
     return 0
 
