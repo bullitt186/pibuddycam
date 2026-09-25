@@ -10,6 +10,6 @@ Before=prusa-data-ready.service data-ready.target rpicam-source.service prusa-ca
 [Service]
 Type=oneshot
 Environment=SERVICE_USER=prusa-cam
-ExecStart=/opt/prusa-cam/venv/bin/python /opt/prusa-cam/persist_restore.py
+ExecStart=/opt/prusa-cam/launcher.sh persist_restore.py
 [Install]
 WantedBy=multi-user.target

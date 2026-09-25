@@ -91,7 +91,29 @@ def _003_mask_console_setup(root):
     return True
 
 
-def _004_prusa_priv_no_block(root):
+def _004_pi_persist_use_launcher(root):
+    """Switch pi-persist.service to use the launcher for OTA-deployed code."""
+    unit = os.path.join(root, 'etc', 'systemd', 'system', 'pi-persist.service')
+    if not os.path.isfile(unit):
+        log.warning('migrations: pi-persist.service not found at %s', unit)
+        return False
+    with open(unit) as f:
+        content = f.read()
+    old = 'ExecStart=/opt/prusa-cam/venv/bin/python /opt/prusa-cam/persist_restore.py'
+    new = 'ExecStart=/opt/prusa-cam/launcher.sh persist_restore.py'
+    if new in content:
+        return True
+    if old not in content:
+        log.warning('migrations: pi-persist.service ExecStart line not found')
+        return False
+    content = content.replace(old, new)
+    with open(unit, 'w') as f:
+        f.write(content)
+    subprocess.run(['systemctl', 'daemon-reload'], capture_output=True, timeout=10)
+    return True
+
+
+def _005_prusa_priv_no_block(root):
     """Change start-camera in prusa-priv to use --no-block."""
     helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
     if not os.path.isfile(helper):
@@ -118,7 +140,8 @@ MIGRATIONS = [
     ('001_create_mnt_sdcard', _001_create_mnt_sdcard),
     ('002_install_samba_config', _002_install_samba_config),
     ('003_mask_console_setup', _003_mask_console_setup),
-    ('004_prusa_priv_no_block', _004_prusa_priv_no_block),
+    ('004_pi_persist_use_launcher', _004_pi_persist_use_launcher),
+    ('005_prusa_priv_no_block', _005_prusa_priv_no_block),
 ]
 
 

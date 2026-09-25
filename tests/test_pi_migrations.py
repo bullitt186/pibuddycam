@@ -130,7 +130,7 @@ class PrusaPrivNoBlockTests(unittest.TestCase):
             helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
             os.makedirs(os.path.dirname(helper))
             Path(helper).write_text(self.ORIGINAL)
-            self.assertTrue(migrations._004_prusa_priv_no_block(root))
+            self.assertTrue(migrations._005_prusa_priv_no_block(root))
             self.assertIn('--no-block', Path(helper).read_text())
 
     def test_already_patched(self):
@@ -138,19 +138,19 @@ class PrusaPrivNoBlockTests(unittest.TestCase):
             helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
             os.makedirs(os.path.dirname(helper))
             Path(helper).write_text(self.FIXED)
-            self.assertTrue(migrations._004_prusa_priv_no_block(root))
+            self.assertTrue(migrations._005_prusa_priv_no_block(root))
 
     def test_missing_helper_returns_false(self):
         with tempfile.TemporaryDirectory() as root:
-            self.assertFalse(migrations._004_prusa_priv_no_block(root))
+            self.assertFalse(migrations._005_prusa_priv_no_block(root))
 
     def test_idempotent(self):
         with tempfile.TemporaryDirectory() as root:
             helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
             os.makedirs(os.path.dirname(helper))
             Path(helper).write_text(self.ORIGINAL)
-            migrations._004_prusa_priv_no_block(root)
-            migrations._004_prusa_priv_no_block(root)
+            migrations._005_prusa_priv_no_block(root)
+            migrations._005_prusa_priv_no_block(root)
             content = Path(helper).read_text()
             self.assertEqual(content.count('--no-block'), 1)
 
@@ -182,14 +182,21 @@ class RunPendingTests(unittest.TestCase):
             Path(os.path.join(samba_dir, 'smb.conf')).write_text('[global]\n')
             systemd_dir = os.path.join(root, 'etc', 'systemd', 'system')
             os.makedirs(systemd_dir)
+            Path(os.path.join(systemd_dir, 'pi-persist.service')).write_text(
+                '[Service]\n'
+                'ExecStart=/opt/prusa-cam/venv/bin/python /opt/prusa-cam/persist_restore.py\n'
+            )
 
-            # Patch out remount (test runs unprivileged)
+            # Patch out remount and daemon-reload (test runs unprivileged)
             original_remount = migrations._remount
+            original_run = migrations.subprocess.run
             migrations._remount = lambda mode: True
+            migrations.subprocess.run = lambda *a, **k: None
             try:
                 applied = migrations.run_pending(root=root, state_path=state)
             finally:
                 migrations._remount = original_remount
+                migrations.subprocess.run = original_run
 
             self.assertEqual(len(applied), len(migrations.MIGRATIONS))
             # State file records them
@@ -216,3 +223,49 @@ class RunPendingTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PiPersistUseLauncherTests(unittest.TestCase):
+    ORIGINAL = (
+        '[Service]\n'
+        'ExecStart=/opt/prusa-cam/venv/bin/python /opt/prusa-cam/persist_restore.py\n'
+    )
+    FIXED = (
+        '[Service]\n'
+        'ExecStart=/opt/prusa-cam/launcher.sh persist_restore.py\n'
+    )
+
+    def test_patches_exec_start(self):
+        with tempfile.TemporaryDirectory() as root:
+            unit = os.path.join(root, 'etc', 'systemd', 'system', 'pi-persist.service')
+            os.makedirs(os.path.dirname(unit))
+            Path(unit).write_text(self.ORIGINAL)
+            # Patch out daemon-reload
+            orig = migrations.subprocess.run
+            migrations.subprocess.run = lambda *a, **k: None
+            try:
+                self.assertTrue(migrations._004_pi_persist_use_launcher(root))
+            finally:
+                migrations.subprocess.run = orig
+            self.assertIn('launcher.sh', Path(unit).read_text())
+
+    def test_already_patched(self):
+        with tempfile.TemporaryDirectory() as root:
+            unit = os.path.join(root, 'etc', 'systemd', 'system', 'pi-persist.service')
+            os.makedirs(os.path.dirname(unit))
+            Path(unit).write_text(self.FIXED)
+            self.assertTrue(migrations._004_pi_persist_use_launcher(root))
+
+    def test_idempotent(self):
+        with tempfile.TemporaryDirectory() as root:
+            unit = os.path.join(root, 'etc', 'systemd', 'system', 'pi-persist.service')
+            os.makedirs(os.path.dirname(unit))
+            Path(unit).write_text(self.ORIGINAL)
+            orig = migrations.subprocess.run
+            migrations.subprocess.run = lambda *a, **k: None
+            try:
+                migrations._004_pi_persist_use_launcher(root)
+                self.assertTrue(migrations._004_pi_persist_use_launcher(root))
+            finally:
+                migrations.subprocess.run = orig
+            self.assertEqual(Path(unit).read_text().count('launcher.sh'), 1)

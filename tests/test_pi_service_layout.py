@@ -172,7 +172,7 @@ class UnitLayoutTests(unittest.TestCase):
         self.assertIn('ExecStart=/opt/prusa-cam/bootlog.sh', unit('bootlog.service'))
         persist = unit('pi-persist.service')
         self.assertIn('Environment=SERVICE_USER=prusa-cam', persist)
-        self.assertIn('/opt/prusa-cam/persist_restore.py', persist)
+        self.assertIn('launcher.sh persist_restore.py', persist)
         self.assertIn('RequiresMountsFor=/data', persist)
         self.assertIn('ConditionPathIsMountPoint=/data', persist)
 
