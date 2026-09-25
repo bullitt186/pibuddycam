@@ -37,7 +37,12 @@ SYSTEMCTL=/usr/bin/systemctl
 verb="${1:-}"
 case "$verb" in
    start-camera)
-      exec "$SYSTEMCTL" start prusa-camera.target
+      # --no-block: the target Conflicts= prusa-provisioning.service, so a
+      # blocking start deadlocks when called from within provisioning itself
+      # (provisioning can't exit while its subprocess waits for the target,
+      # and the target can't activate until provisioning exits).  The caller
+      # (privileged.start_camera) polls is-active after the --no-block start.
+      exec "$SYSTEMCTL" --no-block start prusa-camera.target
       ;;
    stop-provisioning)
       exec "$SYSTEMCTL" stop prusa-provisioning.service

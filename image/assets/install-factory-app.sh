@@ -225,6 +225,9 @@ chroot "$root" systemctl enable \
    data-ready.target prusa-data-ready.service prusa-data-grow.service \
    pi-persist.service bootlog.service prusa-boot-mode.service \
    prusa-updater.timer >/dev/null 2>&1 || true
+# console-setup.service tries to write /etc/console-setup on a read-only ROOT
+# and fails every boot.  Headless appliance — mask it.
+chroot "$root" systemctl mask console-setup.service >/dev/null 2>&1 || true
 
 # SSH is installed but disabled by default (AC-13/AC-20). The disable runs in
 # image/layer/post-build.sh, which executes after every layer — the reused

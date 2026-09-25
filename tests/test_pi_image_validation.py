@@ -218,6 +218,9 @@ def make_rootfs(base):
         "[device]\nwifi.scan-rand-mac-address=no\n", encoding="utf-8"
     )
 
+    # console-setup.service masked (headless, ro ROOT).
+    os.symlink("/dev/null", systemd / "console-setup.service")
+
     # Emulated SD mountpoint + Samba share config + volatile Samba tmpfiles.
     (root / "mnt" / "sdcard").mkdir(parents=True)
     samba = root / "etc" / "samba"

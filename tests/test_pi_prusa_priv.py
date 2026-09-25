@@ -103,7 +103,7 @@ class PrusaPrivAssetTests(unittest.TestCase):
         # longer applies once the path is absolute.)
         text = PRUSA_PRIV.read_text(encoding='utf-8')
         self.assertIn('SYSTEMCTL=/usr/bin/systemctl', text)
-        self.assertIn('exec "$SYSTEMCTL" start prusa-camera.target', text)
+        self.assertIn('exec "$SYSTEMCTL" --no-block start prusa-camera.target', text)
         self.assertIn('exec "$SYSTEMCTL" stop prusa-provisioning.service', text)
         self.assertIn('exec "$SYSTEMCTL" start prusa-updater-install.service', text)
         self.assertIn(

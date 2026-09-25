@@ -1307,6 +1307,14 @@ PY
    else
       report fail "/etc/tmpfiles.d/buddy3d-samba.conf is missing (Samba needs volatile /var dirs)"
    fi
+
+   # --- console-setup masked (headless appliance, ro ROOT) -----------------
+   console_mask="$SYSTEMD_DIR/console-setup.service"
+   if [ -L "$console_mask" ] && [ "$(readlink "$console_mask")" = "/dev/null" ]; then
+      report ok "console-setup.service is masked (headless, ro ROOT)"
+   else
+      report fail "console-setup.service must be masked on the headless ro-ROOT appliance"
+   fi
 fi
 
 ###############################################################################

@@ -148,12 +148,36 @@ def _invoke(verb, *extra, input=None, runner=None, timeout=None):
 # Wrappers
 # --------------------------------------------------------------------------- #
 
-def start_camera(runner=None):
+def start_camera(runner=None, poll_timeout=30):
     """Start ``prusa-camera.target`` as root; returns a plain ``bool``.
 
-    The wizard's finish callback treats a falsy result as a failed hand-off.
+    The helper issues ``systemctl --no-block start`` (the target conflicts with
+    provisioning, so a blocking start deadlocks when called from within the
+    provisioning service). After the non-blocking start returns, this function
+    polls ``systemctl is-active`` up to *poll_timeout* seconds for the target to
+    reach active. The wizard's finish callback treats a falsy result as a failed
+    hand-off.
     """
-    return _invoke('start-camera', runner=runner).ok
+    result = _invoke('start-camera', runner=runner)
+    if not result.ok:
+        return False
+    import time
+    deadline = time.monotonic() + poll_timeout
+    run = runner or _default_runner
+    while time.monotonic() < deadline:
+        try:
+            probe = run(
+                ['systemctl', 'is-active', '--quiet', 'prusa-camera.target'],
+                timeout=5,
+            )
+            if _returncode(probe) == 0:
+                return True
+        except Exception:
+            pass
+        time.sleep(2)
+    log.warning('privileged: prusa-camera.target did not reach active within '
+                f'{poll_timeout}s after --no-block start')
+    return False
 
 
 def stop_provisioning(runner=None):
