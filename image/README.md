@@ -65,7 +65,7 @@ MBR, exactly three primary partitions, PERSIST last:
 | Partition | Size in image | Filesystem | Label | Mount |
 |---|---:|---|---|---|
 | 1 | 512 MiB | FAT32 | `BOOT` | `/boot/firmware` |
-| 2 | 4 GiB | ext4 | `ROOT` | `/` (immutable overlay lower) |
+| 2 | 4 GiB | ext4 | `ROOT` | `/` (direct read-only root) |
 | 3 | 512 MiB | ext4 | `PERSIST` | `/data` (grown to end of device on first boot) |
 
 The MBR disk signature is fixed (`image.disksig`), so the kernel-derived
@@ -73,10 +73,12 @@ PARTUUIDs are deterministic: `<signature>-01/02/03`. `cmdline.txt` and
 `/etc/fstab` therefore reference PARTUUIDs and never `/dev/mmcblk0pN`. The
 signature is a build constant, not device identity.
 
-`ROOT` is mounted read-only and `overlayroot` supplies the tmpfs upper layer
-(`overlayroot="tmpfs:recurse=0"` in `/etc/overlayroot.conf`, `overlayroot=tmpfs`
-in `cmdline.txt`). `PERSIST` is mounted directly at `/data` and is never part of
-the overlay.
+`ROOT` is mounted directly read-only. Hardware bring-up proved that the configured `overlayroot`
+did not activate, so correctness must not depend on a tmpfs overlay upper. Writable operating state
+is explicit: `/var` and `/etc/prusa-cam` are tmpfs; durable configuration, network profiles, media,
+and signed application releases live on `PERSIST` at `/data`. The legacy overlayroot configuration
+still present in the composition should be treated as inert compatibility scaffolding until it is
+removed in a dedicated image change.
 
 ## Service ordering (AC-12)
 
@@ -91,9 +93,9 @@ local-fs.target
 
 The grow unit and target are image-only. The application units are **reused
 verbatim** from `pi-impersonator/systemd/` (never copied or diverged). The extra
-ordering is added with drop-ins under `assets/systemd/`. Optional future units
-(MQTT/admin/updater) must be `Wants=` under `prusa-camera.target`, never
-`Requires=`, so their failures stay isolated.
+ordering is added with drop-ins under `assets/systemd/`. Auxiliary units such as admin, updater,
+and optional MQTT integration must be `Wants=` under `prusa-camera.target`, never `Requires=`, so
+their failures stay isolated.
 
 ## Local verification (no image build, no root)
 
@@ -135,14 +137,12 @@ revision, not invented syntax:
 
 ## Documented limitations / unresolved concerns
 
-1. **No local build here.** There is no native arm64 Trixie host in this
-   environment, so the image is not built or flashed. The build script is
-   syntax-checked and the layer is metadata-linted against the pinned parser.
-2. **`overlayroot` package availability.** v2.8.0 has no built-in read-only
-   overlay layer, so the image installs the `overlayroot` package and writes its
-   configuration. This is the mechanism already proven on the development Pi
-   (`pi-impersonator/deploy.sh`), but it must be confirmed resolvable from the
-   pinned Trixie/Raspberry Pi repositories at build time.
+1. **Build host is separate.** Release images are built on the controlled native arm64 Trixie host,
+   not on arbitrary developer workstations. Run both the image build and `validate-image.sh`, then
+   record the artifact/version used for hardware acceptance.
+2. **`overlayroot` is not active.** The package/configuration is present, but live hardware boots a
+   direct read-only ext4 ROOT. The product's writable-path contract is therefore explicit tmpfs +
+   `/data`; do not document or test overlay semantics as the current appliance behavior.
 3. **Hash-locked Python deps (WP-R3).** `requirements.lock` pins the direct
    deps (aiohttp, python-socketio, paho-mqtt) and their transitive closure with
    `--hash=sha256` entries. `install-factory-app.sh` copies it to
@@ -285,18 +285,17 @@ record the exclusion in the release-candidate report.
 
 ### Unresolved concerns (WP-2b)
 
-1. **`init_format: systemd` and the read-only overlay root.** Imager's
-   `systemd` customisation writes a first-boot script and expects it to persist,
-   but this image's ROOT is a read-only overlay with a volatile tmpfs upper
-   layer. Bridging Imager-supplied Wi-Fi/hostname/SSH customization into the
+1. **`init_format: systemd` and read-only ROOT.** Imager's `systemd` customisation writes a
+   first-boot script and expects writable ROOT. Bridging Imager-supplied Wi-Fi/hostname/SSH customization into the
    durable DATA partition is a provisioning (WP-3) task. The exact
    `init_format` must be reconfirmed against the released image before publish;
    `PRUSA_IMAGER_INIT_FORMAT` overrides the rendered value.
-2. **No release signing key in this checkout (D2).** Signing is implemented but
-   untested end-to-end here; `minisign` is not installed and no key exists.
-3. **No native arm64 Trixie runner here (D1).** Release images are produced on
-   the controlled arm64 runner; `make-release.sh` is host-testable and does not
-   claim a foreign-architecture build.
+2. **No release signing key in this checkout (intentional).** Signing is live-accepted end to end
+   with a private key held outside the repository; the committed public key verifies bundles on
+   the appliance. Never add the private key or its location to tracked documentation.
+3. **Native arm64 builds are remote/controlled.** Release images are produced on the controlled
+   arm64 Trixie runner; ordinary workstations may run host tests and release assembly but must not
+   claim a supported foreign-architecture image build.
 4. **No byte-identical reproducibility claim.** `xz -T1 -9e` with pinned check
    types produces a stable stream for a given xz version, but reproducibility is
    not proven across xz versions.

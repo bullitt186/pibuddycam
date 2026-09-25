@@ -12,9 +12,15 @@ protocol from the ARM firmware and reimplements it so you can:
 - **Proxy** an already-registered camera's cloud WebRTC stream to a local RTSP URL and
   send control commands (reboot, resolution, IR mode). → [`proxy/`](proxy/)
 
-> **Status:** the Pi impersonator is **working end to end** — it registers, uploads snapshots,
-> streams RTSP, and serves **live cloud WebRTC video in both the Prusa app and the browser**
-> (verified live 2026-09-19/20). Video-quality tier-switching is still partial. Genuinely open:
+> **Current status (2026-09-25):** the appliance registers, uploads snapshots, accepts nested
+> settings, streams both local RTSP endpoints, and has a live-verified WebRTC implementation.
+> Cloud WebRTC did play in the app/browser on 2026-09-19/20, but the **currently registered token**
+> is absent from Prusa's camera-service registry (`GET /v1/cameras/<token>` → 404). Connect now
+> lists it under “Other cameras,” and the UI hides live/settings controls. Earlier WebRTC viewer
+> probes returned ACK 5, while a 2026-09-25 authenticated control viewer returned ACK 0 and relayed
+> settings; the current result is an enrollment/UI block, not a blanket signaling failure. Signed application
+> release `1.0.4` live-verified configuration-driven FHD→HD→FHD switching on 2026-09-25.
+> Genuinely open:
 > wiring the RTSP `configuration` `tag3.11`/`tag3.12`, the remaining `configuration` `tag3`
 > subfields, the `file_list` envelope (implemented + unit-tested but not app-exercisable), and
 > thermal throttling/cooling on the passively cooled Pi. See
@@ -59,7 +65,7 @@ protocol from the ARM firmware and reimplements it so you can:
 │   └── journal/              raw research journal (archive; contains superseded claims)
 ├── pi-impersonator/          Python impersonator that runs on the Pi (primary impl)
 │   ├── bootstrap.sh          one-command fresh-Pi provisioning (run from your machine)
-│   ├── deploy.sh             overlay-aware deploy (dev: fast rsync; prod: maintenance dance)
+│   ├── deploy.sh             legacy developer-install deploy (not the appliance OTA path)
 │   ├── config.ini.example    config template (copy → config.ini, fill in token — never commit)
 │   └── systemd/              ready-to-install unit files
 ├── proxy/                    Rust cloud-stream proxy + camera control tool

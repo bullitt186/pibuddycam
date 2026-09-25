@@ -323,7 +323,8 @@ Incoming SDP offers/ICE candidates from server. See Section 10 for full field ta
    - Headers: Origin: https://connect.prusa3d.com, User-Agent: Chrome/...
 2. emit("client_authentication", {token: camera_token, client_kind: "client", access_jwt})
    - access_jwt = OAuth2 PKCE JWT from account.prusa3d.com
-   - ACK 0 = success, ACK 5 = rejected (camera not in camera-service registry)
+   - ACK 0 = success, ACK 5 = rejected (observed in historical WebRTC viewer probes; the exact
+     server-side rejection reason is not encoded in the ACK)
 3. emit("trigger", {field1: 1, token})  — subscribe to camera state
 4. emit("trigger", {field2: 1, token})  — subscribe to features
 5. GET https://camera-service-api.prusa3d.com/v1/camera-webrtc-config (TURN/STUN config)
@@ -336,10 +337,15 @@ Incoming SDP offers/ICE candidates from server. See Section 10 for full field ta
 
 ### Server-side gate
 
-**Confirmed (tested 2026-07-07):** the viewer's `client_authentication` gets ACK `5`
-(rejected) for tokens with origin `OTHER` and `WEB`, and those tokens return 404 from
-`GET camera-service-api.prusa3d.com/v1/cameras/<token>` — so viewers cannot connect and the
-camera never receives any relayed events.
+**Historical result (tested 2026-07-07):** WebRTC viewer `client_authentication` got ACK `5`
+(rejected) for tested `OTHER` and `WEB` tokens, and those tokens returned 404 from
+`GET camera-service-api.prusa3d.com/v1/cameras/<token>`.
+
+**Current nuance (2026-09-25):** the running and copied known-working tokens still return registry
+404 and Connect hides live/settings controls under “Other cameras,” but a non-WebRTC control
+viewer authenticated with ACK `0` and relayed `trigger` plus nested `configuration`. Therefore
+registry 404/UI classification, viewer authentication, control-event relay, and WebRTC admission
+must be measured separately; “404 means no viewer events can ever relay” is too broad.
 
 **Inferred (untested):** that this `camera-service-api` registry is the exact gate. **Revised
 2026-07-09:** `origin: LINK` is very likely not the answer — the official pairing manual shows
@@ -848,9 +854,10 @@ persists enabled mode and starts the service; `set_webrtc_mode(0)` persists disa
 it. Mode and runtime state must be reported truthfully rather than bypassed by hardcoding status.
 
 Older revisions attributed delivery of `set_webrtc_mode` to the camera registration `origin`.
-Controlled `WEB` versus `OTHER` tests disproved `origin` as the registry/viewer-auth gate; do not
-use it as an implementation condition. The currently observed block happens earlier: the test
-camera is absent from the camera-service registry and viewer authentication returns ACK `5`.
+Controlled `WEB` versus `OTHER` tests disproved `origin` as a sufficient registry/viewer-auth
+condition; do not use it as an implementation condition. The current Connect UI does not start a
+WebRTC session while registry lookup returns 404. Historical WebRTC viewers saw ACK 5; a 2026-09-25
+control viewer saw ACK 0, so keep the two paths distinct.
 
 ---
 

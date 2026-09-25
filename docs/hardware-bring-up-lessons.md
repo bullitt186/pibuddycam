@@ -13,8 +13,9 @@
 - **Target:** Raspberry Pi Zero 2 W Rev 1.0, OV5647 CSI camera (Pi Camera v1),
   appliance image built by `image/scripts/build-image.sh` on `rpi5.stahmer.lan`
   (native arm64).
-- **Environment quirks:** the image uses a read-only ROOT with `overlayroot`,
-  the app runs as the unprivileged `prusa-cam` account, and configuration moved
+- **Environment quirks:** the image uses a direct read-only ext4 ROOT (`overlayroot` is present but
+  did not activate), explicit tmpfs mounts for `/var` and `/etc/prusa-cam`, and durable `/data`.
+  The app runs as the unprivileged `prusa-cam` account, and configuration moved
   from the dev-Pi `config.ini` to `/data/prusa-cam/config/device.toml` +
   `secrets.toml`.
 - **Diagnostic method that saved the day:** an SSH-injected card
@@ -23,7 +24,7 @@
   iterate on the device (remount ROOT rw, patch a file, restart a unit) instead
   of swapping the SD card.
 
-## Live view (WebRTC) is gated by Prusa's camera-service registry
+## Current Connect live-view state (updated 2026-09-25)
 
 Symptom: registration, `/c/info`, snapshots and RTSP all work, but the **live
 view** never appears in the Prusa Connect website or the app. The device logs:
@@ -35,9 +36,9 @@ SIO OUT webrtc ... 5=3 (offer) / 5=4 (candidates)
 WebRTC stream ended (no-ice-connection)
 ```
 
-The device sends its offer and ICE candidates but receives **no answer and no
-remote candidates**, so ICE never connects. The web UI exposes only the snapshot
-(no `<video>` player for the external camera).
+In the 2026-09-24 probe the device sent its offer and ICE candidates but received **no answer and
+no remote candidates**, so ICE never connected. A clean browser session on 2026-09-25 instead
+listed the device under “Other cameras” and exposed neither live nor settings controls.
 
 Cause (verified on the device, 2026-09-24):
 
@@ -46,17 +47,17 @@ GET https://camera-service-api.prusa3d.com/v1/cameras/<token>
   -> 404 {"statusCode":404,"errorCode":"NOT_FOUND"}
 ```
 
-`docs/protocol.md` §5 "Server-side gate" already recorded this: the viewer's
-`client_authentication` is rejected (ACK 5) for tokens not in Prusa's
-camera-service registry and `GET .../v1/cameras/<token>` returns 404, so
-"viewers cannot connect and the camera never receives any relayed events".
+The copied known-working SD token also returned 404. Historical WebRTC viewer probes received
+`client_authentication` ACK 5, but a 2026-09-25 non-WebRTC control viewer received ACK 0 and
+successfully relayed `trigger` and nested `configuration`; that configuration drove a live
+FHD→HD→FHD test on application release `1.0.4`.
 
-**Conclusion:** the live stream is blocked by a **Prusa backend gate** (a
-real-hardware allowlist or a staged feature rollout — the docs leave which one
-open), not by an appliance defect. It cannot be fixed from the device. Snapshots
-work because `PUT /c/snapshot` is not gated. The device half of WebRTC is
-correct: `/c/info` `registered=True`, signaling `Auth ACK: 0`, `Snapshot: 200`,
-offer + candidates emitted, TURN/STUN configured.
+**Conclusion:** the normal live-view path is currently blocked by Connect UI/backend enrollment,
+not by a demonstrated media regression. Registry 404, UI classification, viewer authentication,
+control relay, and WebRTC admission are separate observations; do not collapse them into “no
+viewer events can relay.” The device half of WebRTC was live-verified on 2026-09-19/20, while the
+latest 2026-09-25 replay verified control/configuration only. Full WebRTC was not rerun after that
+state change.
 
 ## Signed-update acceptance (WP-R4c, 2026-09-24)
 
@@ -118,8 +119,8 @@ present; both were reverted and ROOT remounted read-only.
 2. **Prefer SSH over SD-card swaps.** The diagnostic card injection (host key +
    `authorized_keys` + `ssh.service`) and USB host mode give a stable wired SSH
    path. On-device iteration is far faster than rebuild + reflash.
-3. **Persist forensics to the FAT partition.** The journal is volatile and ROOT
-   is an overlay, so `bootlog.sh` writes unit states, `nmcli`, camera detection
+3. **Persist forensics to the FAT partition.** The journal is volatile and `/var` is tmpfs, so
+   `bootlog.sh` writes unit states, `nmcli`, camera detection
    and the relevant journals to `/boot/firmware/bootlog.txt` — readable on any
    PC, no console needed. It is also `WantedBy=prusa-camera.target` so the
    claim→runtime boot is captured.
@@ -153,3 +154,6 @@ release directory.
 
 Live quality control: `c1d3e76` fixed-verb source/RTSP restart (application release
 `1.0.4`, live-verified HD→FHD on the OV5647 pipeline).
+
+Signaling recovery: `66d2de4` bounded initial auth and prevents disconnect deadlock after a failed
+ACK. Acceptance record: `cb2ab83`.

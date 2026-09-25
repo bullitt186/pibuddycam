@@ -1,20 +1,47 @@
 # Next Steps Plan — Prusa Buddy3D Camera Impersonator
 
-**Created:** 2026-07-07. **Revised 2026-09-18** after tracing token and fingerprint provenance
+**Created:** 2026-07-07. **Revised 2026-09-25** after appliance OTA and live configuration
+acceptance. Earlier revisions traced token and fingerprint provenance
 through the complete 3.1.6 decompilation. Earlier revisions incorporated Prusa's official Buddy3D pairing
 manual and PrusaLink camera guide — see `status.md`'s Bottom line for the full story.
 **Firmware follow-up (2026-09-17):** 3.1.6 was compared directly with 3.1.5 and contains no
 cloud-protocol change; see [`firmware-3.1.6.md`](firmware-3.1.6.md).
-**Context (superseded 2026-09-19):** WebRTC live view now works in both the app and the
-browser; the old "the mobile app never sends WebRTC offers / Kamera-Kommunikation
-Fehlgeschlagen" framing was wrong. The gate was four firmware-parity bugs (auth field
-order + ACK `0`, TURN credentials, camera-is-offerer + candidate handling, H.264 SPS
-profile), not a backend gate, so the MAC/fingerprint retest lead is obsolete. See the
-CURRENT section below and `status.md`'s 2026-09-19 / 2026-09-20 sections.
+**Current context:** WebRTC live view worked in both app and browser on 2026-09-19/20 after four
+firmware-parity fixes. The current token is now absent from the known camera-service registry and
+Connect hides live/settings controls under “Other cameras.” A 2026-09-25 control viewer still
+authenticated with ACK 0 and relayed configuration, so this is not a blanket Socket.IO failure.
+See `status.md` before relying on the historical investigation below.
 
 ---
 
-## CURRENT (2026-09-20) — WebRTC works; timelapse + persistence done
+## CURRENT (2026-09-25) — continue from the accepted appliance, not the legacy Pi install
+
+1. **Use the tracker as the implementation queue.** The authoritative open work is the `[ ]`/`[~]`
+   set in `firmware-implementation-gap-tracker.md`. Do not resurrect a historical hypothesis from
+   this file without reconciling it against the tracker, `status.md`, and `dead-ends.md`.
+2. **Close GAP-QUALITY-02 from evidence.** Live quality application now works on appliance 1.0.4,
+   but the exact event/per-payload persistence flag mapping is still unrecovered. Capture or
+   decompile it; do not infer `save_video_size = persist` merely from the name.
+3. **Preserve the accepted deployment split.** Application changes go through a committed, signed
+   OTA bundle. Helpers/units/packages/boot changes go into `image/` and need image validation; an
+   authorized live ROOT patch is only a temporary test and must match the repo byte-for-byte.
+4. **Complete fresh-image acceptance.** Exercise clean-card onboarding, recovery, Home Assistant
+   coexistence, abrupt-power behavior, and update/rollback on the image acceptance matrix. The
+   current device proves the main runtime and signed updater, not every card size/onboarding path.
+5. **Treat WebRTC enrollment as an external-state investigation.** Before changing media code,
+   obtain a controlled token that is demonstrably present in the registry or Prusa-side evidence.
+   Current facts: UI hidden, registry 404, historical WebRTC ACK 5, current control ACK 0.
+
+### Accepted baseline
+
+- Application release `1.0.4`; commits `66d2de4` (signaling recovery) and `c1d3e76` (fixed-verb
+  quality restart), documented by `cb2ab83`.
+- Pi Zero 2 W + OV5647; encoder and both RTSP endpoints restored to FHD after live HD/FHD test.
+- ROOT is direct ext4 mounted read-only; `/var` and `/etc/prusa-cam` are tmpfs; `/data` is durable.
+- Active application is `/data/prusa-cam/releases/current`; `/opt/prusa-cam` is factory fallback.
+- Local validation at acceptance: 1,574 Python tests passed, 2 skipped, plus `compileall`.
+
+## HISTORICAL CURRENT (2026-09-20) — WebRTC worked; timelapse + persistence done
 
 The sections below are historical. **Superseded:** WebRTC live view works in both the
 app and the browser (live-verified); the old "backend gate / no offer" framing was
@@ -109,8 +136,9 @@ Also open (smaller):
   (`send_sio_info` + `status` + `protobuf_version` + `features`); post-auth now sends nothing
   (firmware parity) and the session is stable with the answer relayed immediately.
 
-Live access: `.agent/pi-ops.md` (git-ignored). Deployment requires the overlay
-maintenance dance (`deploy.sh`); rsync-only edits are lost on reboot.
+Live access: `.agent/pi-ops.md` (git-ignored). The overlay/deploy statement below belonged to the
+legacy developer install. The appliance uses signed application releases and image-owned ROOT
+assets as described in `AGENTS.md`.
 
 ## Identity migration runbook (GAP-IDENTITY-02/03) — only if the fingerprint is ever changed
 

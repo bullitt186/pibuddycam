@@ -8,71 +8,77 @@
 | Device | What | Access |
 |---|---|---|
 | **Pi** | Raspberry Pi Zero 2 W, Debian 13 (trixie). Runs the impersonator. | `ssh <PI_USER>@<PI_IP>` (SSH **key** auth, no password) |
-| **Camera** | Prusa Buddy3D Camera, firmware 3.1.6 (Rockchip, ARM). The RE target. | via Prusa Connect / SD-card overlay |
+| **Camera** | Optional genuine Prusa Buddy3D Camera, firmware 3.1.6 (Rockchip, ARM). The RE target. | via Prusa Connect / read-only SD copy |
 
-App lives on the Pi at `~/prusa-cam/` (== `/home/<PI_USER>/prusa-cam/`). Repo source of truth is
-`pi-impersonator/` in this checkout.
+On the appliance, the factory app lives at `/opt/prusa-cam` and the launcher prefers the signed
+release at `/data/prusa-cam/releases/current`. Repo source of truth is `pi-impersonator/`; image
+assets and fixed root helpers live under `image/`.
 
 ## SSH quick checks
 
 ```bash
 PI=<PI_USER>@<PI_IP>   # fill in your Pi
-ssh $PI 'systemctl is-active rpicam-source prusa-rtsp prusa-cam'   # expect: active active active
+ssh $PI 'systemctl is-active rpicam-source prusa-ha-rtsp prusa-rtsp prusa-cam'
 ssh $PI 'journalctl -u prusa-cam -n 50 --no-pager'                 # impersonator log
 ssh $PI 'journalctl -fu prusa-cam'                                 # follow live
+ssh $PI 'readlink -f /data/prusa-cam/releases/current; findmnt -no OPTIONS /'
 ```
 
 ## Deploy code changes (repo → Pi, only when explicitly authorized)
 
-Repository edits/tests do not authorize a live deployment. When deployment has been explicitly
-requested, use the overlay-aware script; do not manually `rsync` or edit application files on the
-Pi. The script excludes `config.ini`, preserves the live secret, backs up the running Python files,
-handles the read-only overlay maintenance cycle, restarts services, and verifies them.
+Repository edits/tests do not authorize a live deployment. For the appliance, application code is
+deployed as a signed bundle made by `image/scripts/make-app-release.sh`; record the clean source
+commit in the manifest and install via `prusa-priv install-update`. Document in the private copy:
+
+- signing-key location and wheel cache (never commit either);
+- temporary HTTPS/CA procedure;
+- exact backup/restore procedure for `/etc/prusa-updater.conf`;
+- post-install checks and cleanup.
 
 ```bash
-cd ~/Documents/Repositories/prusa-buddy3d-camera-re
-PI=<PI_USER>@<PI_IP> pi-impersonator/deploy.sh
+image/scripts/make-app-release.sh --version X.Y.Z --out-dir <dir> --wheels <dir> \
+  --url-base https://<temporary-server> --key <private-key> --source-commit <git-sha>
+# On the device, after configuring the explicitly temporary manifest/CA:
+/usr/libexec/prusa-cam/prusa-priv install-update
 ```
 
-Systemd units currently on the Pi use `User=<PI_USER>` and `/home/<PI_USER>/...` paths (the repo
-`pi-impersonator/systemd/*.service` are `pi`/`/home/pi` templates — adjust if you reinstall).
-`main.py` now loads `config.ini` next to itself, so deploy path no longer matters.
+The legacy `pi-impersonator/deploy.sh` flow is only for the old developer install, not the appliance.
+An application OTA cannot update image-owned files. For an explicitly authorized helper/unit test,
+copy the exact repo asset to `/tmp`, verify its hash, remount `/` rw, install it root-owned with the
+repo mode, and remount `/` ro. Commit the identical image change in the same session.
 
 ## Service management
 
 ```bash
-# three units, in dependency order:
+# four runtime units:
 #   rpicam-source.service  -> rpicam-vid H264 to tcp://0.0.0.0:8888
 #   prusa-rtsp.service     -> rtsp_server.py, rtsp://<pi>:8554/live  (toggled by main.py)
+#   prusa-ha-rtsp.service  -> rtsp_server.py, rtsp://<pi>:8555/live  (always on)
 #   prusa-cam.service      -> main.py (registers to Prusa, uploads, signaling/WebRTC)
-ssh $PI 'sudo systemctl restart prusa-cam'
-ssh $PI 'sudo systemctl stop prusa-rtsp && sudo systemctl start prusa-rtsp'
+ssh $PI 'systemctl restart prusa-cam'
+ssh $PI 'systemctl try-restart prusa-rtsp'
 vlc rtsp://<PI_IP>:8554/live      # verify local stream
 ```
 
 ## Rotate / change the registration token
 
-Token + fingerprint live in `~/prusa-cam/config.ini` (`[identity]`). To re-register or change
-origin, mint a new token in Prusa Connect (which "add camera" flow you use fixes the origin —
-see the `prusa-connect-origin-mapping` note), then:
+Token and fingerprint live in `/data/prusa-cam/config/secrets.toml` and `device.toml`. Prefer the
+admin/onboarding path. Direct root edits are hazardous: the files must remain owned by
+`prusa-cam:prusa-cam` (`0600` secrets, `0640` device). Token rotation and backend registration are
+separate, explicitly authorized operations.
 
 ```bash
-ssh $PI 'nano ~/prusa-cam/config.ini && sudo systemctl restart prusa-cam'
+ssh $PI 'stat -c "%U:%G %a %n" /data/prusa-cam/config/*.toml'
 ```
 
 ## Flash / reimage the Pi (SD card)
 
-Standard Raspberry Pi OS Lite 64-bit via `rpi-imager` (enable SSH + Wi-Fi in imager settings).
-After first boot, recreate the deployment:
+Build and validate the project image on the native arm64 build host, then let the user perform the
+flash/card move. A normal image has SSH disabled; diagnostic SSH must be deliberately re-injected.
+Never write a reference/known-working card. Copy it block-for-block while unmounted and kernel-ro,
+hash the image, then mount only the copy read-only through a loop device.
 
-```bash
-ssh $PI 'sudo apt update && sudo apt install -y python3-gi python3-gst-1.0 gstreamer1.0-tools \
-    gstreamer1.0-plugins-{base,good,bad} gstreamer1.0-rtsp rpicam-apps'
-# then follow pi-impersonator/README.md "Install" (venv --system-site-packages, pip deps,
-# cp config.ini.example config.ini, install systemd/*.service)
-```
-
-## Update the CAMERA firmware / OTA  ⚠️ destructive
+## Update a genuine CAMERA firmware / OTA  ⚠️ destructive
 
 `research/RK_OTA_update.sh` is the Rockchip on-device updater: for each `/dev/block/by-name/*`
 it finds a matching `<name>.img` and does `flash_eraseall` + `nandwrite`, then erases `misc`.
@@ -80,7 +86,11 @@ This **overwrites the camera's NAND partitions** — a bad image bricks the came
 the camera itself (not the Pi), with known-good images, and a recovery plan. Prefer letting the
 camera OTA itself via `connect-ota.prusa3d.com` unless you specifically need a custom image.
 
-## Backups on the Pi
+## End-of-session checks
 
-Rolling backups already exist under `~/prusa-cam/backups/` (timestamped dirs + a few
-`*_pre_*` snapshots). The deploy step above adds a fresh one each time.
+- active release points to the expected version and all four services are active;
+- `/` is read-only and temporary updater URLs/CAs are gone;
+- config ownership/modes are unchanged;
+- repo is clean and every device-side edit has an identical committed image source;
+- snapshot and both RTSP endpoints work; record whether Connect validation was UI-visible or used
+  an authenticated signaling replay because the registry gate hid the controls.

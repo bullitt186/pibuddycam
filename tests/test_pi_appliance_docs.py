@@ -2,8 +2,8 @@
 
 These tests are stdlib-only, never build or flash an image, and never touch the
 network or hardware. They assert that the operator-facing appliance guide exists
-and covers the documented topics, that it does not claim completed hardware
-acceptance, and that the deferred personal-username cleanup stayed fixed.
+and covers the documented topics, distinguishes the accepted core runtime from
+the incomplete release matrix, and keeps the personal-username cleanup fixed.
 """
 
 import unittest
@@ -80,10 +80,11 @@ class ApplianceUserGuideTests(unittest.TestCase):
             with self.subTest(doc=doc):
                 self.assertIn(doc, self.text, f"guide does not reference {doc}")
 
-    def test_guide_marks_hardware_acceptance_pending(self):
-        # An explicit non-completion statement must be present.
-        self.assertIn("not yet hardware-accepted", self.lower)
-        self.assertIn("pending", self.lower)
+    def test_guide_scopes_hardware_acceptance(self):
+        # Core runtime acceptance is complete on the named rig, while the wider
+        # card/onboarding/recovery release matrix remains explicitly incomplete.
+        self.assertIn("core runtime is hardware-accepted", self.lower)
+        self.assertIn("not yet release-matrix complete", self.lower)
 
     def test_guide_does_not_claim_completed_hardware_acceptance(self):
         for claim in FORBIDDEN_ACCEPTANCE_CLAIMS:

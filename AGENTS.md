@@ -27,22 +27,51 @@ device — but keep hardware and repo in sync (below). The full field record is
 [`docs/hardware-bring-up-lessons.md`](docs/hardware-bring-up-lessons.md); read it
 before touching the image layer, units, camera path, or NetworkManager config.
 
-### The loop (preferred: patch the running device, then commit to the repo)
+### Current appliance baseline (2026-09-25)
+
+- The accepted hardware is a Pi Zero 2 W + OV5647 running application release `1.0.4`.
+- The launcher prefers `/data/prusa-cam/releases/current`; `/opt/prusa-cam` is the immutable
+  factory fallback. Editing `/opt/prusa-cam/*.py` does **not** change a running release.
+- ROOT is a directly mounted read-only ext4 filesystem. `overlayroot` is configured but did not
+  activate on the appliance. `/var` and `/etc/prusa-cam` provide the required volatile state on
+  tmpfs; durable configuration, state, media, and application releases live under `/data`.
+- Signed application install and rollback are live-accepted. The latest field record is
+  [`docs/hardware-bring-up-lessons.md`](docs/hardware-bring-up-lessons.md).
+
+### Choose the deployment path by ownership
+
+| Change | Correct live path | Persistent source of truth |
+|---|---|---|
+| Python application/static application asset | Build and install a signed application release; do not patch `/opt` | `pi-impersonator/` + signed bundle |
+| Image-owned helper, unit, udev/NM rule, package, boot config | Patch ROOT only for an explicitly authorized hardware test, then add the identical change to `image/`; validate with a fresh image when required | `image/` and reused `pi-impersonator/systemd/` assets |
+| Device configuration/state | Write through the application/admin path where possible | `/data/prusa-cam/` |
+| Kernel, boot firmware, partitioning, base packages | New image + user-performed flash | `image/` |
+
+The legacy `pi-impersonator/deploy.sh` overlay maintenance flow is for the older developer install,
+not the current appliance image.
+
+### The hardware loop
 
 1. Make the change in the repo (source/units/image assets) with its tests.
-2. Push the changed file(s) to the running device and restart the affected unit.
-   ROOT is read-only, so remount first:
+2. Commit the exact source that will be deployed, so an application manifest can record its
+   source commit.
+3. For an application-only change, build a signed application release with
+   `image/scripts/make-app-release.sh` and install it through `prusa-priv install-update` using the
+   private runbook. For an image-owned file needed in the same authorized session, remount ROOT,
+   install the exact repo file with root ownership/mode, then remount ROOT read-only:
    ```sh
    mount -o remount,rw /
-   cat > /opt/prusa-cam/<file>      # pipe the repo file over SSH
+   install -o root -g root -m <mode> /tmp/<file> <exact-image-owned-destination>
+   mount -o remount,ro /
    systemctl restart <unit>         # e.g. prusa-cam prusa-admin prusa-rtsp rpicam-source
    ```
    Config files under `/data/prusa-cam/config/` **must stay `prusa-cam`-owned**
-   (`0640` `device.toml`, `0600` `secrets.toml`). A root-side write makes the app
-   read an empty document and Prusa Connect rejects everything. After any root
-   edit: `chown prusa-cam:prusa-cam /data/prusa-cam/config/*`.
-3. Verify live (snapshot, RTSP, admin UI, `journalctl -u <unit>`).
-4. Commit the repo change in the same session.
+   (`0640` `device.toml`, `0600` `secrets.toml`). Prefer the app/admin writer. If an authorized
+   diagnostic root write is unavoidable, restore each file's exact owner and mode explicitly; a
+   root-owned secrets document makes the app read an empty token and Connect rejects everything.
+4. Verify the active release path, snapshot, both RTSP endpoints, admin UI, affected journal, and
+   relevant Connect behavior. Restore temporary updater URLs/CAs and ROOT read-only state.
+5. Record the hardware evidence and application/image version in the named `GAP-*` item.
 
 ### Keeping hardware and repo in sync (mandatory)
 
@@ -51,8 +80,11 @@ before touching the image layer, units, camera path, or NetworkManager config.
 - Anything the device needs that is not produced by the image — a udev rule, an
   NM conf drop-in, a `config.txt` line, a unit change, a package — is a **repo
   bug**: add it to the image so the next flash persists it.
-- Do not rely on the device's remounted-rw root: it reverts to read-only on
-  reboot; correctness must come from the image.
+- A remounted-rw ROOT write is persistent, which makes it a drift risk. Never leave a device-only
+  fix behind; correctness must also come from the image. ROOT's mount mode returns to read-only on
+  reboot, but the bytes written while it was writable remain.
+- An OTA bundle cannot replace image-owned files such as `/usr/libexec/prusa-cam/prusa-priv`, base
+  units, packages, or boot configuration.
 
 ### Build + flash (only when the change must persist / be validated on a fresh card)
 
@@ -83,10 +115,15 @@ before touching the image layer, units, camera path, or NetworkManager config.
 - libcamera is single-consumer: probe only pre-runtime; snapshots come from the
   `stream_mux` TCP fan-out, never a second `rpicam` capture while the source runs.
 - MBR PARTUUIDs are zero-padded (`b33dcafe-03`), so compare numerically.
-- The **Prusa Connect live view (WebRTC) is gated by Prusa's camera-service
-  registry** (`GET camera-service-api.prusa3d.com/v1/cameras/<token>` → 404);
-  viewers get `client_authentication` ACK 5 and never answer, so the camera ends
-  at `no-ice-connection`. Not fixable from the device; snapshots are not gated.
+- The normal **Prusa Connect live-view UI is currently gated/hidden** while
+  `GET camera-service-api.prusa3d.com/v1/cameras/<token>` returns 404 and the camera is listed under
+  “Other cameras.” Earlier WebRTC viewer probes received `client_authentication` ACK 5. Do not
+  generalize that to all viewer sessions: on 2026-09-25 a non-WebRTC authenticated control client
+  received ACK 0 and successfully relayed nested configuration. The current end-to-end WebRTC
+  result is therefore “UI/backend enrollment blocked,” not “all signaling rejected.”
+- Nested Connect configuration delivery is working. Release `1.0.4` live-verified quality changes
+  FHD→HD→FHD after routing the restart through `prusa-priv quality-restart`. The Connect UI may
+  still hide those controls while the camera is classified under “Other cameras.”
 
 ### Authorization during a hardware session
 

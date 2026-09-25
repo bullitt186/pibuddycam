@@ -11,10 +11,10 @@ and `GetSnapshotUri` against the facade. Home Assistant's exact `WSDiscovery` 2.
 found the facade with its type/scope filter and parsed the expected XAddr, name, hardware, and MAC
 scopes. This is protocol-client evidence, not Pi or Home Assistant live acceptance.
 
-Partial live evidence on 2026-09-20 (deployment of `312b59b`): the overlay-aware deployment
+Partial live evidence on 2026-09-20 (legacy developer deployment of `312b59b`): the deployment
 completed, required services were active after reboot, Connect `/c/info` and snapshots returned 200,
 and Socket.IO authentication returned ACK 0. The pinned `WSDiscovery` client found exactly one
-camera at `http://192.168.0.162:80/onvif/device_service` with the expected name/hardware/MAC scopes.
+camera at `http://<pi>:80/onvif/device_service` with the expected name/hardware/MAC scopes.
 SOAP device information and the JPEG endpoint worked; ports 8554 and 8555 both exposed H.264
 1280×720. During a sustained 25-second connection to port 8555, Connect snapshots continued at
 10-second cadence. The first deploy verifier queried ONVIF before the application's 41-second startup
@@ -25,7 +25,7 @@ Prusa WebRTC/quality-change concurrency test was run, so the remaining live crit
 
 Make the impersonator easy to add through Home Assistant's built-in ONVIF integration while
 preserving every existing Prusa Connect, Prusa app, RTSP, WebRTC, quality-control, persistence, and
-overlay behavior.
+read-only-appliance behavior.
 
 The implementation must satisfy two independent requirements:
 
@@ -92,8 +92,9 @@ fan-out; it does not start a second encoder.
     started.
   - Keep the existing TURN/scoped-quality lock before any restart or state write.
 - `bootstrap.sh` and `deploy.sh`
-  - Install, enable, restart, and verify the HA RTSP unit.
-  - Retain overlay-aware and persistence logic.
+  - Legacy developer path: install, enable, restart, and verify the HA RTSP unit.
+  - Appliance path: keep the unit and image drop-ins in the image; ship Python changes through a
+    signed application release.
 
 ### ONVIF device/media facade and discovery
 
@@ -190,7 +191,8 @@ Coverage expectations:
 
 1. Before deployment, record Prusa registration, snapshot cadence, RTSP mode, WebRTC mode, quality,
    and service states.
-2. Deploy through `deploy.sh`; never bypass the overlay workflow.
+2. On the appliance, deploy committed application changes through a signed release. Use
+   `deploy.sh` only for the explicitly legacy developer installation.
 3. Confirm `rpicam-source`, `prusa-ha-rtsp`, and `prusa-cam` are active. `prusa-rtsp` may correctly
    be inactive when its Prusa mode is disabled.
 4. Verify `ffprobe` or VLC can open `rtsp://<pi>:8555/live` for at least five minutes.
@@ -203,7 +205,8 @@ Coverage expectations:
 9. During the TURN lock, request a quality change and verify the change/restarts remain blocked.
 10. Stop or obstruct local HTTP/WS-Discovery and prove cloud registration, snapshots, signaling,
     and WebRTC continue.
-11. Reboot with overlay enabled and confirm service enablement/configuration survives.
+11. Reboot with ROOT read-only and confirm service enablement plus durable `/data` configuration
+    survive.
 
 ### Home Assistant acceptance tests (requires explicit authorization)
 
@@ -241,7 +244,8 @@ Live acceptance (do not mark complete without evidence):
 - Prusa Connect snapshots continue at configured cadence during HA RTSP and Prusa WebRTC viewing.
 - Prusa app and website behavior remains unchanged with HA viewing continuously.
 - Prusa's RTSP mode still controls only port 8554; port 8555 remains available.
-- Resolution changes, reboot persistence, and overlay deployment pass the integration checks.
+- Resolution changes, reboot persistence, and the signed-release/read-only-ROOT deployment pass
+  the integration checks.
 - Evidence (commands, timestamps, relevant logs, HA result, date/commit) is added to
   `docs/firmware-implementation-gap-tracker.md`; only then may `GAP-SNAPSHOT-04` be closed.
 
@@ -257,7 +261,8 @@ Live acceptance (do not mark complete without evidence):
 ## Rollback
 
 For a code rollback, revert the ONVIF/HA-specific files and changes listed above, restore the old
-snapshot streaming guards, and run the complete regression suite. For an authorized live rollback,
-disable/remove only `prusa-ha-rtsp.service`, deploy the prior known-good revision using the overlay
-workflow, and verify `rpicam-source`, `prusa-cam`, optional `prusa-rtsp`, Connect snapshots, and
+snapshot streaming guards, and run the complete regression suite. For an authorized appliance
+rollback, use the signed updater's retained `previous` release for application code; an image-owned
+unit rollback requires an image change (or an explicitly authorized, repo-matched ROOT patch for
+testing). Then verify `rpicam-source`, `prusa-cam`, optional `prusa-rtsp`, Connect snapshots, and
 WebRTC. Do not modify the token or persistent data as part of this rollback.

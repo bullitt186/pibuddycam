@@ -87,6 +87,8 @@ lives in [`journal/findings.md`](journal/findings.md) and [`status.md`](status.m
 ## Symptom still open
 
 - After all corrections, the Prusa app can still show **"Kamera-Kommunikation fehlgeschlagen"**
-  (camera communication failed) in some states even though auth + `/c/info` succeed. The
-  remaining gap is in the live WebRTC/signaling handshake, not the info upload. See
+  (camera communication failed) or hide live/settings controls even though camera auth, `/c/info`,
+  snapshots, and control-event relay succeed. On 2026-09-25 registry lookup was 404 and the device
+  appeared under “Other cameras”; a control viewer ACKed 0 and changed quality, so the remaining
+  issue must not be described as a blanket Socket.IO/configuration failure. See
   [`status.md`](status.md) and [`next-steps.md`](next-steps.md).

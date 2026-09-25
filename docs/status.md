@@ -12,16 +12,41 @@ Evidence markers: **[confirmed]** = verified live against the real backend or fi
 
 ## Bottom line
 
-A Raspberry Pi impersonates the camera end to end: **snapshots, `/c/info`, Socket.IO
-auth, settings, RTSP, and — as of 2026-09-19 — the app's live WebRTC video stream
-works** (verified live). The earlier "backend gate / no offer relayed" story is
-superseded; see the 2026-09-19 section below.
+The appliance's device-side implementation is functional: snapshots, `/c/info`, camera-side
+Socket.IO authentication, nested configuration, dynamic quality, both RTSP endpoints, and the
+WebRTC offer/answer/media path have all been live-verified. However, **the current Connect token is
+backend-gated**: `camera-service-api /v1/cameras/<token>` returns 404, Connect lists the device
+under “Other cameras” without live or settings controls, and earlier WebRTC viewer probes returned
+`client_authentication` ACK 5. The same registry lookup also returns
+404 for the copied formerly working SD token. A 2026-09-25 non-WebRTC control viewer nevertheless
+received ACK 0 and delivered nested configuration. This does not invalidate the successful
+2026-09-19/20 WebRTC implementation tests; it means the current backend/enrollment state prevents
+reaching that path from the normal UI, not that all viewer signaling is rejected.
 
 Timelapse storage is **live-confirmed (2026-09-19)** and **persistent across reboots
 (2026-09-20, `GAP-PERSIST-01`)**: the app shows timelapse as available with
 size/used/free and a configurable interval, and the store now survives a real reboot.
 See the 2026-09-20 section below and `firmware-implementation-gap-tracker.md`
 (`GAP-TIMELAPSE-01`).
+
+### 2026-09-25 — appliance 1.0.4, configuration fixed; current WebRTC registry gate confirmed
+
+- Compared the current repository with a block-for-block, read-only copy of the known-working SD
+  card and the matching historical commit. `signaling.py`, `proto.py`, and `webrtc.py` did not
+  contain a missing known-good WebRTC implementation; the regression was in appliance integration.
+- Fixed a signaling startup deadlock after failed authentication (`66d2de4`): a failed auth callback
+  no longer awaits disconnect inside Socket.IO connect, initial connect is bounded, and the
+  supervisor requires both transport and authentication before considering the link usable.
+- Fixed configuration-driven quality changes (`c1d3e76`): the appliance service account had called
+  broad `sudo systemctl` commands that its narrow sudoers policy correctly rejected. Release
+  `1.0.4` uses `prusa-priv quality-restart`; a real nested Connect configuration changed the OV5647
+  pipeline FHD→HD→FHD while snapshots and both RTSP endpoints stayed operational.
+- Signed OTA install, service restart, and cleanup were live-verified. The active release is
+  `/data/prusa-cam/releases/1.0.4`; ROOT is direct ext4 mounted read-only, not an overlay.
+- A clean Playwright reload still classified the device under “Other cameras,” with registry 404
+  and no browser live/settings controls. A purpose-built control viewer authenticated with ACK 0
+  and relayed the configuration used for the quality test; no current end-to-end WebRTC claim was
+  made from that control-only replay.
 
 ### 2026-09-19 — live WebRTC works; config is protobuf; emulated SD added
 
@@ -45,7 +70,8 @@ each verified live:
    **SPS-patched copy on port 8889** (profile/constraint/level → `42 e0 1f`,
    constrained baseline level 3.1, matched by NAL type); the WebRTC branch reads
    8889. After the patch the answer is `m=video 9 …` and the stream plays.
-   Requires `gstreamer1.0-nice` (installed by `deploy.sh`/`bootstrap.sh`).
+   Requires `gstreamer1.0-nice` (image-owned on the appliance; installed by `bootstrap.sh` on the
+   legacy developer path).
 
 **`configuration` is a nested protobuf, not JSON** (descriptor `0x3f73a4`,
 dispatcher `FUN_000a7940`; the earlier `FUN_000a89e0` "handler" was not a function).
@@ -245,9 +271,9 @@ This is necessary for an offer to work after enrollment is unblocked, but cannot
 | Camera info / metadata (`/c/info`) | ✅ Working | 200; name, firmware, model, Wi-Fi shown in app **[confirmed]** |
 | Appears online & paired, survives reboot | ✅ Working | web + mobile app; `Restart=always` **[confirmed]** |
 | Local RTSP live view | ✅ Working | `rtsp://<pi>:8554/live` in VLC, 1080p, `--rotation 180` **[confirmed]**; the firmware default is `554` (`FUN_000b04d4`), so `8554` is a documented privileged-port Pi exception that Connect consumes (GAP-RTSP-01 closed) |
-| Dynamic video-quality tier-switching | ✅ Working (live-verified) | raw-byte mapping `{5:1,6:2,7:3}`; the app set HD and the encoder ran `1280x720` (GAP-QUALITY-01 closed); the persisted tier survives reboot (GAP-QUALITY-03); the TURN/scoped-quality lock is implemented (`state.turn_online` + `quality_change_allowed`). `GAP-QUALITY-02`'s persist flag is a **per-payload** flag for `change_video_size` (`FUN_00072f08`); the `save_video_size` handler is in an unexported gap `[assumption]`. |
-| Classified as a genuine Buddy camera | ❌ No | listed under "Other cameras" **[confirmed]** — a UI classification only. It was never the WebRTC blocker; the superseded "registry-membership gate" theory is in `dead-ends.md`, and genuine cameras are `origin: OTHER` too. |
-| Live WebRTC stream (app + browser) | ✅ Working | offer/answer/ICE completes and video plays live in both the Prusa app and the browser **[confirmed 2026-09-19/20]**; the video-only offer is accepted (audio optional, GAP-WEBRTC-07 closed) and the inbound field names are confirmed (GAP-WEBRTC-05) |
+| Dynamic video-quality tier-switching | ✅ Device path working (live-verified 2026-09-25) | authenticated nested `configuration` changed the real encoder FHD→HD→FHD on release 1.0.4 through `prusa-priv quality-restart`; Connect currently hides its settings UI because of the registry/classification state. The unresolved GAP-QUALITY-02 persist flag remains separate. |
+| Classified as a genuine Buddy camera | ❌ No | currently listed under “Other cameras” **[confirmed 2026-09-25]**. `origin: OTHER` alone is not proof of invalidity because genuine Buddy3D registration also uses OTHER, but the current UI classification accompanies registry 404. |
+| Live WebRTC stream (app + browser) | ⚠️ Implementation verified; current UI blocked | offer/answer/ICE and video played in app/browser on 2026-09-19/20. On 2026-09-25 the current and formerly working tokens both returned registry 404 and Connect exposed no play control. A control viewer ACKed 0 and delivered configuration, but full WebRTC was not re-established. |
 
 ---
 
@@ -266,16 +292,17 @@ This is necessary for an offer to work after enrollment is unblocked, but cannot
   Continuous video (needs `do-timestamp=true` on `tcpclientsrc`). Single upstream client;
   see [RTSP notes in `protocol.md` §12](protocol.md). Default **1080p @ 30 fps**, `--rotation 180`
   (camera mounted inverted).
-- **Dynamic video-quality plumbing (partial)** — configuration strings (`sd`/`hd`/`fhd`) can
-  reconfigure the encoder, and `main.py handle_quality()` writes the tier to
-  `/etc/prusa-cam/quality.env` before restarting the source. Resolutions in `quality.py` are
+- **Dynamic video-quality plumbing (partial parity, working live apply)** — nested configuration
+  and direct raw events share `handle_quality()`. The live tier is written to
+  `/etc/prusa-cam/quality.live.env`, then the fixed `prusa-priv quality-restart` action restarts the
+  source/RTSP pipeline; persistence is a separate write to `quality.env`. Resolutions in `quality.py` are
   correct: SD 640×480 / HD 1280×720 / FHD 1920×1080. The raw
   `change_video_size`/`save_video_size` handler now maps bytes correctly (`{5:1,6:2,7:3}`,
   implemented + unit-tested). Firmware 3.1.6 uses `5=SD`, `6=HD`, `7=FHD`, and its shared
   handler persists only when a **per-payload** callback flag is nonzero (Wave 2). The
   TURN/scoped-quality lock is implemented (`state.turn_online` + `quality_change_allowed`).
-  Until `GAP-QUALITY-01` live verification and `GAP-QUALITY-02` flag wiring close, raw-event
-  parity is not confirmed.
+  `GAP-QUALITY-01` is closed and the appliance live path is verified. Only
+  `GAP-QUALITY-02`'s exact per-payload persistence-flag wiring remains open.
 
 ### Streaming latency (measured 2026-07-14, [confirmed])
 
@@ -298,27 +325,28 @@ Headless measurement (ffmpeg from a LAN host, time-to-first-frame over RTSP):
 
 ---
 
-## The core blocker: live WebRTC streaming
+## The current cloud blocker: live WebRTC enrollment
 
-> **[superseded 2026-09-19/20]** Retained as history. **WebRTC works live** in both the
-> app and the browser (see the 2026-09-19 and 2026-09-20 sections above); the
-> "backend gate / no offer relayed" story below was wrong — it was four firmware-parity
-> bugs (auth order/ACK, ICE+TURN, camera-is-offerer + candidate handling, SPS patch).
-> By this repo's convention, superseded material belongs in
-> [`dead-ends.md`](dead-ends.md); this passage is kept here pending a move.
+The 2026-09-19/20 sessions proved that the device-side WebRTC implementation works once a viewer is
+admitted. The current 2026-09-25 state is different: Connect exposes no play control and the known
+registry lookup is 404. A control-only viewer can still authenticate and deliver settings. Keep
+control signaling, UI enrollment, and WebRTC media admission separate; do not regress the working
+media implementation while investigating backend enrollment.
 
 ### Root cause
 
-**Confirmed by direct test:** the viewer handshake `client_authentication` is rejected with
-ACK `5` for both our tokens (`OTHER` and `WEB`), and a direct lookup
-`GET camera-service-api.prusa3d.com/v1/cameras/<token>` returns **404** — the camera is not in
-that registry. So the server never relays a `webrtc` offer. The firmware shows the matching
+**Confirmed by direct test on 2026-09-25:** a direct lookup
+`GET camera-service-api.prusa3d.com/v1/cameras/<token>` returns **404** for both the running token
+and the known-working SD token, and Connect shows no play control. Earlier WebRTC viewer probes
+were rejected with ACK 5; the 2026-09-25 control viewer instead authenticated with ACK 0 and
+delivered configuration. Full WebRTC was not re-run manually, so the precise current media gate
+remains narrower than “viewer auth always fails.” The firmware shows the matching
 camera-side gate: `FUN_000b996c` silently drops any offer unless `webrtc_mode` (`+0x13d`) and
 `webrtc_status` (`+0x13e`) are both set, and those are only set when the server sends
 `set_webrtc_mode`.
 
-**Inferred, not verified:** that `camera-service-api` registration is the precise gate. What
-gates entry into that registry is now the open question — **not** `origin`, since genuine Buddy3D
+**Inferred, not verified:** what controls membership in that registry. It is **not** simply
+`origin`, since genuine Buddy3D
 cameras register as `origin: OTHER` too (confirmed from the official pairing manual — see Bottom
 line). Two live leads: (a) a real-hardware allowlist keyed on something we haven't identified
 (MAC/OUI is the cheapest untested candidate — `next-steps.md` P.2), or (b) cloud WebRTC streaming
@@ -329,15 +357,16 @@ rollout). See [`protocol.md` §5 (server-side gate) and §10 (enable gate)](prot
 
 ### The evidence chain
 
-1. **No inbound events, ever** — across stable 45 s–6 min connections the camera never received
-   a single `webrtc`, `trigger`, or `configuration` event. **[confirmed]**
+1. **Camera-side auth works** — the running appliance receives camera auth ACK 0 and reconnects
+   after server closes. **[confirmed 2026-09-25]**
 2. **The phone never touches the Pi** — full `tcpdump` on `wlan0` during a live app-open showed
    zero packets from the phone toward the Pi (no ARP/TCP/UDP). The failing check is therefore
    **server-side**, not a local probe. **[confirmed]**
-3. **Viewer-flow test** — replaying the buddy3d-proxy viewer handshake
-   (`client_authentication` with a valid account JWT) returns ACK `5` for both `OTHER` and
-   `WEB` tokens, camera online or offline. **[confirmed]**
-4. **Registry lookup** — `.../v1/cameras/<token>` → 404 for both tokens. **[confirmed]**
+3. **Viewer-flow tests differ by purpose/time** — historical WebRTC viewer probes returned ACK 5;
+   the 2026-09-25 control replay with a current account JWT returned ACK 0 and successfully sent
+   `trigger`/`configuration`. Do not use one result as evidence for the other path.
+4. **Registry lookup** — `.../v1/cameras/<token>` → 404 for the running and copied known-working
+   tokens. **[confirmed 2026-09-25]**
 
 ### What was ruled out (so nobody re-chases it)
 
@@ -396,13 +425,10 @@ All corrected and matched against a real camera / the buddy3d-proxy captures. Fu
 
 ## Current deployment state
 
-**Hardware:** Raspberry Pi Zero 2 W, Debian 13 (trixie), OV5647 (Pi Cam v1, 1920×1080, mounted
-inverted → `--rotation 180` on all capture paths). App in
-`~/prusa-cam/` (venv `--system-site-packages`). Paired to a Prusa CORE One. Live token in
-`~/prusa-cam/config.ini` (secret; not in repo). **2026-07-09:** switched to a freshly-registered
-`origin: OTHER` camera (currently id `577960`, see the origin-ruled-out experiment above) — the prior
-`origin: WEB` camera (id `572286`) is deregistered from active use but still exists on the
-account; its config is backed up on the Pi as `config.ini.bak.<timestamp>`.
+**Hardware:** Raspberry Pi Zero 2 W, Debian 13 (trixie), OV5647 (Pi Cam v1, mounted inverted).
+The appliance launcher runs the signed release under `/data/prusa-cam/releases/current` and keeps
+the immutable factory application under `/opt/prusa-cam` as fallback. Configuration is durable TOML
+under `/data/prusa-cam/config`; no live identifiers or secrets belong in this document.
 
 **Services (systemd, `enabled`, survive reboot):**
 
@@ -461,16 +487,17 @@ Design to make an abrupt cut a non-event, layered:
    **[done]**
 3. **FS/boot hardening** — ext4 `fsck.repair=yes`, `noatime`, zram swap (already); `/boot/firmware`
    → `ro`. **[partial]**
-4. **Read-only overlayfs root** — writes → tmpfs, discarded on reboot, so the SD can't be
-   corrupted at runtime. Uses `overlayroot`+`initramfs-tools`+`auto_initramfs=1` on this minimal
-   Debian. Deploy is overlay-aware via `pi-impersonator/deploy.sh`; 3.1.6 deployment and a full
-   reboot were verified on 2026-09-18. **[done]**
+4. **Read-only ROOT + explicit tmpfs** — hardware acceptance found `overlayroot` did not activate.
+   ROOT is the real ext4 filesystem mounted `ro`; `/var` and `/etc/prusa-cam` carry volatile state
+   on tmpfs, while `/data` carries durable state. Signed application releases avoid routine ROOT
+   writes. **[done, corrected 2026-09-25]**
 5. Hardware UPS/GPIO clean-shutdown — optional, documented only.
 
 ⚠️ **2026-07-14 incident:** an abrupt-shutdown *test* via `sysrq b` (unsynced reset) corrupted
 the rootfs and left the Pi unbootable (no initramfs → bad root mount halts boot before Wi-Fi);
 recovery = SD fsck or reflash (see `.agent/pi-ops.md`). Lesson recorded there: **never
-hard-reset this headless Pi to test** — verify overlay/robustness structurally instead. The
+hard-reset this headless Pi to test** — verify read-only-ROOT/tmpfs robustness through the bounded
+acceptance procedure instead. The
 incident is itself the argument for step 4. Layers 1–2 are committed; steps 3–4 resume once the
 Pi is recovered.
 
@@ -485,9 +512,10 @@ Pi is recovered.
   wasn't this session — see `next-steps.md` P.1 for the headless fallback that was used
   instead), then `struct field_xrefs`/`rename_field` per offset. Helpers in
   [`../research/`](../research/).
-- **Direct registration** — whether `camera-service-api.prusa3d.com` exposes a registration
-  endpoint (e.g. `POST /v1/cameras` with a bearer JWT) that would place our camera in the
-  registry. Unexplored.
+- **Registry enrollment** — direct probing found no public registration endpoint. Determining what
+  causes a legitimate token to enter/leave the camera-service registry requires a controlled
+  genuine-camera/account comparison or Prusa-side information; do not guess or mutate backend
+  state during ordinary development.
 - **Real Buddy3D pairing QR format** — the official manual confirms the QR generated by Connect's
   "Add WiFi Camera" wizard carries Wi-Fi credentials plus a registration token (both scanned
   optically by the camera itself); exact encoding/format is still unconfirmed (firmware
@@ -500,6 +528,17 @@ is catalogued in [`dead-ends.md`](dead-ends.md) — consult it before trusting o
 ---
 
 ## Recommended next steps (by likely payoff)
+
+Current order (2026-09-25):
+
+1. Keep appliance and repo synchronized: exercise signed OTA for app changes and fresh-image
+   validation for image-owned changes.
+2. Close remaining named tracker gaps from decompiler/capture evidence, especially the
+   GAP-QUALITY-02 per-payload persist flag; do not infer event wiring.
+3. If WebRTC enrollment is revisited, use a controlled read-only comparison with a token that is
+   demonstrably present in `camera-service-api`; device code changes are not evidence for a viewer
+   ACK-5/registry-404 failure.
+4. Complete the fresh-card/onboarding, HA coexistence, and power-loss acceptance matrices.
 
 > **[superseded 2026-09-19/20]** Retained as history. These leads (MAC/OUI fingerprint
 > retest, mitmproxy/SSL-unpinning, real-hardware comparison) were all chasing the

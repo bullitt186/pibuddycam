@@ -1066,8 +1066,9 @@ closing the gap.
   through one `apply_mode` path that starts/stops `prusa-rtsp.service`, sets `state.rtsp_mode`, and
   resolves `state.rtsp_running` from `systemctl is-active` (falling back to the commanded state when
   the unit cannot be probed). The configured mode persists at `/etc/prusa-cam/rtsp.mode`
-  (`PRUSA_RTSP_MODE_FILE` override) and is read at startup; on the read-only overlay a runtime write
-  is durable only once it reaches the lower filesystem via `deploy.sh`. Tests:
+  (`PRUSA_RTSP_MODE_FILE` override) and is read at startup. On the appliance, persistence is owned
+  by `/data/prusa-cam/state.json`; `/etc/prusa-cam` is tmpfs re-materialized at boot. The older
+  lower-filesystem/`deploy.sh` statement applied only to the legacy developer install. Tests:
   `test_pi_rtsp_control.py`. Default mode when the file is absent is `2` (enabled), matching the
   shipped unit; the firmware's shipped default remains unrecovered. Client tracking is unchanged
   (`/proc/net/tcp`).
@@ -1220,7 +1221,7 @@ closing the gap.
 - **Connect impact (resolved):** rename control has a durable, visible effect.
 - **Before (superseded):** logged the value only; all outbound metadata stayed `Buddy3D Camera`.
 - **Implementation:** store the configured name in shared state, update status, mark `/c/info` dirty,
-  and define safe persistence under the read-only-overlay deployment model.
+  and define safe persistence under the appliance's direct read-only ROOT + durable `/data` model.
 - **Acceptance:** rename is reflected in both outbound surfaces and survives the intended reboot
   policy.
 
@@ -1279,9 +1280,10 @@ closing the gap.
 ### GAP-PERSIST-01 — Persist settings + timelapse storage on /data
 
 - [x] **P2 · Live-verified 2026-09-20: settings + timelapse store survive a reboot**
-- **Problem:** the Pi root is a read-only overlay (`overlayroot=tmpfs`), so `/etc/prusa-cam/*`
-  (quality/rtsp/identity) and `/mnt/sdcard` (timelapse frames, `.avi`,
-  `.timelapse_videos.csv`) live in the tmpfs upper layer and are discarded on every reboot.
+- **Historical problem (legacy deployment):** `/etc/prusa-cam/*` (quality/rtsp/identity) and
+  `/mnt/sdcard` (timelapse frames, `.avi`, `.timelapse_videos.csv`) lived in volatile storage and
+  were discarded on reboot. The appliance now uses direct read-only ext4 ROOT, explicit tmpfs for
+  volatile state, and `/data` for durability; `overlayroot` did not activate on accepted hardware.
   `CameraState` settings (quality tier, camera name, snapshot/timelapse intervals and enables,
   RTSP/WebRTC modes) were memory-only.
 - **Design:** a new 4 GB ext4 partition (`mmcblk0p3`, label `PERSIST`, PARTUUID `46f0d7c3-03`)
@@ -1399,9 +1401,9 @@ closing the gap.
 ### GAP-DEVICE-03 — Host stability: unexpected reboot + thermal throttling
 
 - [~] **P2 · Investigated 2026-09-19; forensics + journal-flood mitigations deployed, hardware action open**
-- **Reboot (~21:07 2026-09-19):** cause **undeterminable** — the reboot happened with the read-only
-  overlay active, so journald (volatile), `/tmp`, wtmp and cloud-init all wrote to the RAM upper
-  layer and were discarded; there is no RTC (boot clocks jumped +51/+88 min on NTP sync), and no
+- **Reboot (~21:07 2026-09-19, legacy developer deployment):** cause **undeterminable** — volatile
+  journald, `/tmp`, wtmp and cloud-init evidence was discarded; there is no RTC (boot clocks
+  jumped +51/+88 min on NTP sync), and no
   `pstore`/ramoops. Current-boot `dmesg` shows no panic/oops, no under-voltage, no OOM, no mmc/ext4
   errors. Most likely an **external power cut** (the Pi is printer-powered by design per
   `CLAUDE.md`) or a **1-minute hardware-watchdog reset** (`RuntimeWatchdogUSec=1min`, `get_rsts=20`,
@@ -1462,8 +1464,8 @@ closing the gap.
   `identity.resolve_fingerprint`: an explicit `config.ini` `[identity] fingerprint` wins (the value
   the registered token is bound to; live-verified 2026-09-18), then the MAC derivation, then this
   persisted seed. It reports an empty MAC when none is read. **Assumption:** the exact firmware alphabet
-  of `FUN_000997f8(..., 10, 1)` is unrecovered; alphanumeric is used. On the read-only overlay the
-  seed survives only after deployment, so a restart without the file regenerates it (with a warning).
+  of `FUN_000997f8(..., 10, 1)` is unrecovered; alphanumeric is used. This note describes the
+  legacy `config.ini` developer path; appliance identity is stored in durable TOML under `/data`.
   Tests: `test_pi_identity.py` (`FallbackSeedTests`).
 
 ### GAP-IDENTITY-02 — Deploy exact fingerprint only with a fresh token
@@ -1490,11 +1492,11 @@ closing the gap.
    (success; the earlier note recording `1` was a misread — `1` is "not authorized"). A
   deploy that switched to the MAC-derived fingerprint instead caused
   `400 {"detail":"Invalid fingerprint"}` / `403`; the configured value was restored.
-- **Implementation/operation (optional):** the step-by-step migration runbook is in
+- **Historical legacy operation (optional):** the step-by-step `config.ini` migration runbook is in
   [`next-steps.md`](next-steps.md) ("Identity migration runbook"): read
   `/sys/class/net/wlan0/address`; mint a fresh Connect token via the Buddy3D add-camera flow
   (`origin: OTHER`); remove `[identity] fingerprint` from `config.ini` and set the fresh token;
-  deploy overlay-aware (`PI=user@host ./deploy.sh`); verify `/c/info` 200 (`origin=OTHER`,
+  deploy with the legacy developer workflow; verify `/c/info` 200 (`origin=OTHER`,
   `registered=True`), `PUT /c/snapshot` 200, `camera_authentication` ACK `0`, and the
   `X-Camera-Fingerprint` header = `md5("<UPPERCASE:COLON:MAC>")`.
 - **Acceptance:** `/c/info`, snapshot, and `camera_authentication` all succeed using the derived

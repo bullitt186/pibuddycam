@@ -3,8 +3,9 @@
 Runs on a Raspberry Pi and registers to Prusa Connect **as a genuine Buddy3D camera**.
 It authenticates with a camera registration token, uploads camera-info and snapshots,
 speaks the Socket.IO signaling protocol, streams H.264 via local RTSP, negotiates
-WebRTC, and exposes an ONVIF-compatible LAN facade for Home Assistant. The root filesystem is locked read-only with overlayfs so abrupt power cuts
-(the Pi powers on/off with the printer) can't corrupt the SD card.
+WebRTC, and exposes an ONVIF-compatible LAN facade for Home Assistant. In the appliance image,
+ROOT is mounted directly read-only, volatile operating state is on tmpfs, and durable state and
+signed application releases live on `/data`.
 
 Protocol spec: [`../docs/protocol.md`](../docs/protocol.md) —
 what works vs. what's still gated: [`../docs/status.md`](../docs/status.md) —
@@ -17,7 +18,19 @@ implementation backlog: [`../docs/firmware-implementation-gap-tracker.md`](../do
   module works; adjust `--rotation` in `systemd/rpicam-source.service` for your physical mount.
 - **MicroSD** — 8 GB minimum, 16 GB recommended.
 
-## Quick start — one command
+## Supported appliance path
+
+For a new appliance, build/flash the image described in [`../image/README.md`](../image/README.md)
+and follow the onboarding flow in
+[`../docs/appliance-user-guide.md`](../docs/appliance-user-guide.md). A released appliance runs as
+the dedicated `prusa-cam` account, reads durable TOML configuration from `/data/prusa-cam/config`,
+and launches `/data/prusa-cam/releases/current` with `/opt/prusa-cam` as the factory fallback.
+
+Application updates use signed bundles built by `image/scripts/make-app-release.sh`; image-owned
+units, root helpers, packages, and boot configuration require an image change. See `AGENTS.md` and
+the private `.agent/pi-ops.md` before live work.
+
+## Legacy developer install — one command
 
 Flash **Raspberry Pi OS Lite 64-bit** via `rpi-imager` (enable SSH + Wi-Fi in settings,
 username `pi`). Then from this repo on your machine:
@@ -26,16 +39,21 @@ username `pi`). Then from this repo on your machine:
 PI=pi@<PI_IP> pi-impersonator/bootstrap.sh
 ```
 
-`bootstrap.sh` installs all apt deps, builds the venv, installs and enables the four
-systemd units, and deploys the code. When it finishes, drop in your `config.ini`:
+`bootstrap.sh` installs dependencies, creates the dedicated account and `/opt/prusa-cam`, builds
+the venv, installs the runtime units, and deploys the code. Follow the final commands printed by
+the script to install `config.ini` as `prusa-cam`; do not copy it into the SSH user's home.
 
 ```bash
-scp pi-impersonator/config.ini.example pi@<PI_IP>:~/prusa-cam/config.ini
-ssh pi@<PI_IP> 'nano ~/prusa-cam/config.ini'   # set token
+cp pi-impersonator/config.ini.example /tmp/config.ini
+# edit /tmp/config.ini: set token
+scp /tmp/config.ini pi@<PI_IP>:/tmp/config.ini
+ssh pi@<PI_IP> 'sudo install -o prusa-cam -g prusa-cam -m 0600 \
+  /tmp/config.ini /opt/prusa-cam/config.ini && unlink /tmp/config.ini'
 ssh pi@<PI_IP> 'sudo systemctl restart prusa-cam'
 ```
 
-Then lock the SD read-only (strongly recommended — Pi cuts power with the printer):
+The following overlay step applies only to this legacy Raspberry Pi OS developer installation. It
+is not the deployment mechanism for the appliance image:
 
 ```bash
 PI=pi@<PI_IP> pi-impersonator/deploy.sh --enable-overlay
@@ -108,9 +126,9 @@ writes `/etc/prusa-cam/quality.env` for the next boot.
 | `quality.py` | Video-quality tier state (SD/HD/FHD) — atomic writes, crash-safe |
 | `stream_mux.py` | TCP broadcast mux: fans the H264 stream from `rpicam-vid` out to multiple clients (RTSP server, snapshot code) on port 8888. libcamera is single-consumer; this replaces the old `--listen` single-client model. |
 | `config.ini.example` | Config template |
-| `deploy.sh` | Overlay-aware deploy helper (dev: fast rsync; prod: maintenance dance) |
+| `deploy.sh` | Legacy developer-install overlay deploy helper; not the appliance OTA path |
 | `bootstrap.sh` | One-command fresh-Pi provisioning |
-| `systemd/` | Ready-to-install unit files (run as the dedicated `prusa-cam` service account from `/opt/prusa-cam`; installed verbatim) |
+| `systemd/` | Ready-to-install unit files (run with `User=prusa-cam` from `/opt/prusa-cam`; installed verbatim) |
 
 ## Local development
 
@@ -130,7 +148,21 @@ For coding agents, repository edits and these tests are local-only. They do not 
 the deployment/bootstrap commands below, changing a Connect token, or operating a physical device.
 Those actions require an explicit user request and the private `.agent/pi-ops.md` runbook.
 
-## Deployment
+## Appliance deployment
+
+Do not `rsync` application code into the appliance. Commit and test the source, create a signed
+application bundle with `../image/scripts/make-app-release.sh`, then install it through the updater's
+fixed root action. The launcher atomically selects `/data/prusa-cam/releases/current`, retains
+`previous` for rollback, and falls back to `/opt/prusa-cam` only when no valid release exists.
+
+ROOT is the real ext4 filesystem mounted read-only; `overlayroot` did not activate during hardware
+acceptance. `/var` and `/etc/prusa-cam` are tmpfs, while `/data` is durable. A remount-rw ROOT edit
+persists and therefore creates drift: use it only for an explicitly authorized test of an
+image-owned asset, restore read-only state, and commit the identical `image/` change immediately.
+
+The commands below are retained only for the legacy developer installation.
+
+## Legacy developer-install deployment
 
 The root filesystem runs as **read-only overlayfs** — runtime writes go to RAM and are
 discarded on reboot. A bare `rsync` or `nano` on a running Pi is silently lost. Always deploy
@@ -153,55 +185,17 @@ PI=pi@<PI_IP> pi-impersonator/deploy.sh --disable-overlay
 PI=pi@<PI_IP> pi-impersonator/deploy.sh --enable-overlay   # verifies initramfs before rebooting
 ```
 
-**Intentionally ephemeral** (resets on reboot — don't fight it):
-- `/etc/prusa-cam/quality.env` — video tier resets to FHD; that's fine
+**By contrast, intentionally ephemeral on the appliance** (re-materialized from `/data` on boot):
+- `/etc/prusa-cam/quality.env` and `/etc/prusa-cam/quality.live.env`
 - journald logs — in RAM (`Storage=volatile`); read with `journalctl -u prusa-cam`
 
-## Manual install (without bootstrap.sh)
+## Manual/developer install
 
-This is a **developer path**, separate from the supported appliance image. The shipped systemd
-units target the dedicated `prusa-cam` service account and `/opt/prusa-cam`; this path retargets
-them to your login user and `~/prusa-cam` (the supported path is `bootstrap.sh`, which creates the
-service account and `/opt/prusa-cam`).
-
-```bash
-# 1. Apt dependencies
-sudo apt update && sudo apt install -y \
-    python3-gi python3-gst-1.0 \
-    gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-    gstreamer1.0-plugins-bad gstreamer1.0-rtsp \
-    gir1.2-gst-rtsp-server-1.0 gir1.2-gst-plugins-bad-1.0 \
-    rpicam-apps python3-venv python3-pip rsync curl
-# Note: gir1.2-gst-rtsp-server-1.0 and gir1.2-gst-plugins-bad-1.0 are required for
-# GstRtspServer and openh264dec Python bindings — not pulled by gstreamer1.0-plugins-bad alone.
-
-# 2. Venv — must use --system-site-packages so gi/GStreamer are visible
-python3 -m venv ~/prusa-cam/venv --system-site-packages
-~/prusa-cam/venv/bin/pip install aiohttp "python-socketio[client]"
-
-# 3. Copy source, configure
-cp pi-impersonator/* ~/prusa-cam/
-cp ~/prusa-cam/config.ini.example ~/prusa-cam/config.ini
-# edit config.ini: token
-
-# 4. Systemd units — shipped as User=prusa-cam from /opt/prusa-cam (the appliance
-#    layout); retarget them to your dev user + ~/prusa-cam for this path.
-sed "s|User=prusa-cam|User=$USER|; s|/opt/prusa-cam|$HOME/prusa-cam|g" \
-    pi-impersonator/systemd/rpicam-source.service \
-    | sudo tee /etc/systemd/system/rpicam-source.service
-# repeat for prusa-rtsp.service, prusa-ha-rtsp.service and prusa-cam.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now rpicam-source prusa-rtsp prusa-ha-rtsp prusa-cam
-
-# 5. /etc/prusa-cam for quality tier state
-sudo install -d -o $USER -g $USER /etc/prusa-cam
-printf "CAM_WIDTH=1920\nCAM_HEIGHT=1080\n" > /etc/prusa-cam/quality.env
-
-# 6. Sudoers for quality tier-switching (main.py restarts the source and active RTSP services)
-#    bootstrap.sh uses NOPASSWD: ALL; for a tighter rule use this instead:
-echo "$USER ALL=(ALL) NOPASSWD: /bin/systemctl restart rpicam-source.service prusa-ha-rtsp.service, /bin/systemctl try-restart prusa-rtsp.service, /bin/systemctl start prusa-rtsp.service, /bin/systemctl stop prusa-rtsp.service" \
-    | sudo tee /etc/sudoers.d/prusa-cam
-```
+`bootstrap.sh` is the authoritative legacy developer/migration installer. It mirrors the service
+identity and `/opt/prusa-cam` layout closely enough for protocol work, but it does not reproduce the
+appliance partitioning, onboarding, recovery, or signed-release lifecycle. Do not maintain a second
+set of ad-hoc install commands here: update `bootstrap.sh`, its tests, and this description together
+when that developer path changes.
 
 ## Verify
 
@@ -252,12 +246,13 @@ Measured end-to-end (from this setup):
 
 ## Recovery
 
-If the Pi won't boot after a power cut (rare before overlay is enabled; impossible after):
+If the Pi will not boot after a power cut:
 
 1. Reflash the SD card (Raspberry Pi OS Lite 64-bit, same settings as before).
 2. Run `PI=pi@<PI_IP> pi-impersonator/bootstrap.sh` to rebuild everything.
 3. Restore `config.ini` (token) and restart `prusa-cam`.
-4. Re-lock: `PI=pi@<PI_IP> pi-impersonator/deploy.sh --enable-overlay`.
+4. For the supported product path, rebuild/reflash the appliance image. The overlay command is only
+   for the legacy developer installation.
 
 ## WebRTC prerequisites
 
@@ -265,5 +260,5 @@ Live view uses GStreamer `webrtcbin`, which needs the ICE plugin
 `gstreamer1.0-nice` (`libgstnice.so`). Without it, `webrtcbin` fails to link the
 H264 RTP stream ("Your GStreamer installation is missing a plug-in").
 `bootstrap.sh` installs it; on an already-provisioned Pi where it is missing,
-install it (and persist it to the read-only lower root via `overlayroot-chroot`
-if you need it to survive a reboot).
+install it in the legacy developer environment. On the appliance this package is image-owned and
+must be added through the image build, not installed ad hoc on the running card.

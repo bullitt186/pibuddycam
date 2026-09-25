@@ -14,6 +14,7 @@ plus two working reimplementations. Full orientation is in
 | Errors / red herrings / corrected assumptions | `docs/dead-ends.md` — check before re-deriving anything |
 | Reproduce the RE (Ghidra, VMAs, techniques) | `docs/reverse-engineering.md` |
 | Pi camera impersonator (Python, primary impl) | `pi-impersonator/` |
+| Appliance image/build/update operations | `image/README.md`, `docs/hardware-bring-up-lessons.md` |
 | Rust cloud-stream proxy + control tool | `proxy/` |
 | Tools / sources | `docs/tools.md`, `docs/sources.md` |
 
@@ -99,21 +100,34 @@ Pi, Connect account, token, camera, or firmware. Do not deploy, mint/rotate toke
 backend endpoints, reboot devices, or flash firmware unless the user explicitly requests that live
 action. Read-only inspection is still subject to the redaction rules above.
 
-## Making changes to the Pi that survive reboot
+## Developing against the appliance
 
-The Pi power-cycles with the printer (no clean shutdown), so its **root filesystem is a
-read-only overlayfs**: at runtime all writes go to a RAM (tmpfs) upper layer and are
-**discarded on every reboot — by design**. This is the durability feature, not a bug.
+The current image does **not** run an overlay root. Hardware acceptance found that `overlayroot`
+never activated; `/` is the real ext4 ROOT mounted read-only. `/var` and `/etc/prusa-cam` are tmpfs,
+while `/data` is the durable PERSIST partition. Do not reuse the older overlay-development model:
 
-**Consequence:** any change that must persist — app code, `/etc` configs, `apt` packages,
-`config.ini`/token — MUST reach the *lower* (real) filesystem. A bare `ssh … rsync`, `nano`,
-or `apt install` on a running prod Pi **is silently lost on the next reboot.**
+- The active application is `/data/prusa-cam/releases/current`, selected by `launcher.sh`.
+  `/opt/prusa-cam` is only the factory fallback. Application changes should be committed, packaged
+  by `image/scripts/make-app-release.sh`, and installed through the signed updater.
+- A signed application bundle cannot update image-owned helpers, units, packages, udev/NM rules,
+  or boot configuration. Those changes belong in `image/`; an explicitly authorized live test may
+  remount ROOT rw and install the identical repo file, but ROOT must be remounted ro afterward.
+- Writes made while ROOT is remounted rw persist. This is not a disposable overlay, so a live-only
+  patch creates drift and is forbidden unless the identical change lands in the repo/image in the
+  same session.
+- Durable configuration is `/data/prusa-cam/config/{device,secrets}.toml`. Keep both owned by
+  `prusa-cam`; a root-owned secrets file makes the service read an empty token.
+- `pi-impersonator/deploy.sh` remains a legacy developer-install tool. Do not use it on the
+  appliance release layout.
+- After live work verify the active release, service health, ROOT ro state, updater configuration,
+  snapshots and RTSP, and remove temporary CAs/manifests. Exact private commands are in
+  `.agent/pi-ops.md`; public workflow and field evidence are in `AGENTS.md` and
+  `docs/hardware-bring-up-lessons.md`.
 
-- **Always deploy via `pi-impersonator/deploy.sh`** (`PI=user@host ./deploy.sh`). It detects the
-  overlay state and, in prod mode, automates disable-overlay → reboot → deploy → re-enable →
-  reboot so the change lands on disk. In dev mode (overlay off) it's a fast rsync + restart.
-- **Check a Pi's mode:** `findmnt -no FSTYPE /` → `overlay` means prod/read-only.
-- **Intentionally ephemeral — never try to persist these:** `/etc/prusa-cam/quality.env` (resets
-  to FHD on reboot; fine) and journald logs (RAM, `Storage=volatile`). To keep logs across a
-  reboot for debugging, flip journald to `persistent` through the maintenance flow, not ad-hoc.
-- Real host, maintenance-mode commands, and recovery notes are in `.agent/pi-ops.md`.
+Current cloud limitation: camera-side auth, snapshots, nested configuration, RTSP, and the WebRTC
+implementation work, but the currently registered camera is absent from Prusa's camera-service
+registry (`GET /v1/cameras/<token>` → 404). Connect lists it under “Other cameras” and hides the
+normal live/settings controls. Historical WebRTC viewer probes returned ACK 5, but a 2026-09-25
+control viewer received ACK 0 and delivered configuration, so do not describe all viewer signaling
+as rejected. Treat the successful 2026-09-19/20 WebRTC sessions as historical implementation
+evidence, not the current deployment state.

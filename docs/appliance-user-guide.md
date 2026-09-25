@@ -5,11 +5,10 @@ It describes the intended released image and the flows implemented in this repos
 protocol, partition, and design detail lives in the referenced documents; this guide links to
 them rather than duplicating them.
 
-> **Acceptance status.** The appliance image has been built and validated on the host (image
-> validation, host test suite), but it is **not yet hardware-accepted**: flashing, first-boot
-> onboarding, capture, Home Assistant coexistence, power-loss durability, and update/rollback
-> have not all been exercised on physical hardware and signed off. Treat this guide as the
-> documented design until the acceptance work packages complete — see
+> **Acceptance status (2026-09-25).** The core appliance has been exercised on a Pi Zero 2 W +
+> OV5647: boot/runtime, capture, snapshots, RTSP, Connect auth/configuration, and signed application
+> install/rollback are live-accepted. The complete release matrix (all card sizes, every onboarding
+> route, HA/Prusa soak, recovery and destructive power-loss cases) is still incomplete. See
 > [Acceptance status](#acceptance-status) at the end.
 
 ## What it is / scope
@@ -45,7 +44,7 @@ and the cloud wire protocol in [`docs/protocol.md`](protocol.md).
 | Network | 2.4 GHz Wi-Fi (the Zero 2 W has no 5 GHz radio); wired Ethernet via adapter is not part of v1. |
 
 The SD-size guidance comes from the distribution plan (§1.1). The image uses three partitions —
-a 512 MiB FAT `BOOT`, a 4 GiB ext4 `ROOT` mounted read-only through an overlay, and a 512 MiB
+a 512 MiB FAT `BOOT`, a 4 GiB ext4 `ROOT` mounted directly read-only, and a 512 MiB
 ext4 `PERSIST` that grows to fill the card on first boot. Because `PERSIST` (your durable data)
 lives after `ROOT`, a larger card gives you more room for timelapse media and releases; the
 extracted image must still fit an 8 GB card. See [`image/README.md`](../image/README.md) for the
@@ -53,8 +52,8 @@ exact disk layout.
 
 ## Install / flash
 
-> The image build is host-validated, but a **flash and first boot have not been validated on
-> physical hardware in this increment** (see [Acceptance status](#acceptance-status)).
+> A development image has booted on the target hardware. A release candidate still needs the full
+> clean-card/card-size matrix in [Acceptance status](#acceptance-status).
 
 Preferred method — Raspberry Pi Imager:
 
@@ -84,9 +83,8 @@ release-artifact assembly, signing, and validation steps.
 
 ## First-boot onboarding
 
-> **The live onboarding flow is pending on-device acceptance.** The steps below describe the
-> implemented wizard; the end-to-end flash → hotspot → claim → station-Wi-Fi transition has not
-> been signed off on hardware.
+> The setup/runtime path has been exercised during hardware bring-up, but every supported onboarding
+> entry (Imager prefill, hotspot, manual token, recovery) still needs the release acceptance matrix.
 
 While the device is **unclaimed**, it exposes a temporary setup access point and captive portal:
 
@@ -170,7 +168,8 @@ disturb Prusa signaling or local media services.
 
 ### Durable data (`/data`)
 
-`PERSIST` mounts at `/data` and is never part of the volatile overlay. The durable layout is:
+`PERSIST` mounts at `/data`; volatile operating state is explicitly placed on tmpfs. The durable
+layout is:
 
 ```text
 /data/prusa-cam/config/device.toml       non-secret appliance configuration
@@ -262,15 +261,17 @@ GStreamer/libcamera packages, or the signing public key — those require a new 
   `latest_version`, `release_summary`, `release_url`, `in_progress`, `update_percentage`). Only the
   literal, non-retained install payload declared by discovery is accepted.
 
-> **Live update and rollback acceptance is pending.** Install/rollback is host-verified only; it
-> has not been exercised end-to-end on hardware. See [Acceptance status](#acceptance-status).
+> **Live-accepted 2026-09-24/25.** Signed installs activated releases `1.0.1`, `1.0.3`, and `1.0.4`;
+> a deliberately unhealthy `1.0.2` rolled back to the previous release. The temporary test
+> manifest/CA were removed and ROOT was restored read-only after each acceptance run.
 
 The full algorithm is in the distribution plan §7.
 
 ## Backups and data
 
-- Durable state lives on `PERSIST` (`/data`) and survives normal reboot and abrupt power loss; the
-  root filesystem is an immutable read-only overlay whose runtime writes are discarded by design.
+- Durable state lives on `PERSIST` (`/data`). ROOT is the real ext4 filesystem mounted read-only;
+  `/var` and `/etc/prusa-cam` hold intended volatile state on tmpfs. `overlayroot` was configured
+  in the early design but did not activate on the accepted hardware.
 - Journald logging is volatile and size-limited. The web UI can expose a redacted, bounded
   diagnostic log assembled from the current boot.
 - `/etc/prusa-cam/quality.env` is intentionally ephemeral: the live video tier resets to the
@@ -328,10 +329,10 @@ effort. The appliance is not ONVIF certified.
 
 ## Acceptance status
 
-The appliance is **not yet hardware-accepted**. Host-side evidence (unit tests, image build,
-`validate-image.sh`, secret scan) exists, but the physical SD-card matrix, onboarding matrix,
-camera capture matrix, Home Assistant/Prusa coexistence soak, power-loss durability, and
-update/rollback/recovery matrices have not all been completed and recorded on hardware.
+The core runtime is hardware-accepted on one Pi Zero 2 W + OV5647 setup, including signed update
+and rollback. The appliance is **not yet release-matrix complete**: the physical SD-card matrix,
+all onboarding variants, broader camera capture matrix, Home Assistant/Prusa coexistence soak,
+power-loss durability, and recovery matrices have not all been completed and recorded.
 
 This guide describes the documented design and must not be read as a record of completed hardware
 testing. Acceptance is tracked by the acceptance work packages (WP-R6 acceptance matrices and the

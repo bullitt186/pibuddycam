@@ -145,8 +145,9 @@ The third partition must be last. On first boot, before NetworkManager and camer
 5. Re-running after interruption must be safe.
 
 Use PARTUUIDs in the boot command line and `fstab`; never assume `/dev/mmcblk0p3`. ROOT is mounted
-as the immutable overlay lower layer and uses a tmpfs upper layer. `PERSIST` mounts directly at
-`/data` and is never part of the volatile overlay.
+directly read-only. Hardware acceptance showed `overlayroot` does not activate, so writable runtime
+paths must be explicit tmpfs mounts (`/var`, `/etc/prusa-cam`) and durable data must be under
+`/data` on `PERSIST`.
 
 The build fails when the populated ROOT filesystem exceeds 75% of its 4 GiB capacity. Reduce the
 image rather than increasing ROOT unless actual package measurements prove 4 GiB impossible. The
@@ -747,7 +748,8 @@ report containing date, source commit, image version, hardware, commands/tests, 
 ### Boot, storage, and recovery
 
 - [ ] Fresh 8, 16, 32, and 64 GB cards boot and DATA expands to the available capacity.
-- [ ] ROOT is an immutable overlay lower filesystem and remains below the 75% build threshold.
+- [ ] ROOT mounts directly read-only, required volatile paths are tmpfs, and ROOT remains below the
+      75% build threshold.
 - [ ] Network, identity, settings, application release, and timelapse data survive normal reboot and
       abrupt power loss.
 - [ ] Missing/corrupt DATA starts recovery rather than a falsely successful volatile runtime.
@@ -817,7 +819,8 @@ unrecoverable image:
 
 1. **Foundations:** dedicated service user, durable path cleanup, configuration schemas, shared
    settings coordinator, and legacy migration tests.
-2. **Image build:** pinned `rpi-image-gen` config, three-partition image, first-boot growth, overlay,
+2. **Image build:** pinned `rpi-image-gen` config, three-partition image, first-boot growth,
+   direct read-only ROOT plus explicit tmpfs,
    service ordering, offline image validation, and initial manual flash tests.
 3. **Provisioning:** camera probe, state machine, hotspot, web wizard, admin authentication,
    NetworkManager persistence, manual token, and recovery.
