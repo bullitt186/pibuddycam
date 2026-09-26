@@ -8,6 +8,8 @@
  *   POST /api/login          -> { ok, mode, csrf }  (sets the HttpOnly cookie)
  *   POST /api/logout         -> { ok }              (requires the CSRF header)
  *   GET  /api/dashboard      -> authoritative status/metrics/settings (read)
+ *   GET  /api/live/frame     -> latest shared-monitor JPEG (WP-UI5, read)
+ *   GET  /api/live/status    -> bounded live-monitor metrics (WP-UI5, read)
  *   PATCH /api/settings      -> one coordinator mutation; returns authoritative
  *                               settings on success and rejection (WP-UI3)
  *   GET  /api/integrations   -> redacted Prusa/MQTT config + runtime state
@@ -78,6 +80,12 @@ function cacheElements() {
   els.overviewContent = document.getElementById('overview-content');
   els.overviewFreshness = document.getElementById('overview-freshness');
   els.overviewStatus = document.getElementById('overview-status');
+  els.liveState = document.getElementById('live-state');
+  els.liveFrame = document.getElementById('live-frame');
+  els.livePlaceholder = document.getElementById('live-placeholder');
+  els.liveToggle = document.getElementById('live-toggle');
+  els.liveDownload = document.getElementById('live-download');
+  els.liveDetail = document.getElementById('live-detail');
   els.metricResolution = document.getElementById('metric-resolution');
   els.metricQuality = document.getElementById('metric-quality');
   els.metricWifi = document.getElementById('metric-wifi');
@@ -120,6 +128,7 @@ function showBoot() {
 
 function showLogin(message) {
   stopDashboardPolling();
+  stopLiveMonitor();
   if (els.reauthDialog && els.reauthDialog.open) els.reauthDialog.close();
   reauthResolver = null;
   if (els.boot) els.boot.hidden = true;
@@ -236,6 +245,11 @@ function selectView(name) {
     syncCameraView();
   } else if (name === 'integrations') {
     loadIntegrations();
+  }
+  if (name === 'overview') {
+    startLiveMonitor();
+  } else {
+    stopLiveMonitor();
   }
 }
 
@@ -508,6 +522,265 @@ async function pollDashboard() {
     if (dashboard.controller === controller) dashboard.controller = null;
     dashboard.inflight = false;
     if (SESSION_STATE.csrf) scheduleDashboard();
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Local monitor (WP-UI5; AC-10/AC-11)                                 */
+/*                                                                     */
+/* A visibility-aware, authenticated poll of /api/live/frame. The      */
+/* server owns the single shared producer; the browser only reads the  */
+/* latest frame, so there is no per-viewer decoder and no runaway      */
+/* reconnection. Pausing stops polling and lets the viewer lease lapse. */
+/* ------------------------------------------------------------------ */
+
+const LIVE_INTERVAL_VISIBLE = 1000;
+const LIVE_INTERVAL_HIDDEN = 30000;
+const LIVE_MAX_BACKOFF = 30000;
+const LIVE_STATUS_INTERVAL = 5000;
+
+const liveMonitor = {
+  timer: null,
+  controller: null,
+  inflight: false,
+  paused: false,
+  active: false,
+  failures: 0,
+  objectUrl: null,
+  statusAt: 0,
+};
+
+function setLiveState(kind, text) {
+  if (!els.liveState) return;
+  const classes = {
+    live: 'chip chip--ok',
+    stale: 'chip chip--warn',
+    paused: 'chip chip--muted',
+    busy: 'chip chip--warn',
+    unavailable: 'chip chip--error',
+  };
+  els.liveState.className = classes[kind] || 'chip chip--muted';
+  els.liveState.textContent = text;
+}
+
+function showLiveMessage(message) {
+  if (els.liveFrame) els.liveFrame.hidden = true;
+  if (els.livePlaceholder) {
+    els.livePlaceholder.textContent = message;
+    els.livePlaceholder.hidden = false;
+  }
+}
+
+function showLiveFrame(blob, state, age) {
+  if (!els.liveFrame) return;
+  if (liveMonitor.objectUrl) URL.revokeObjectURL(liveMonitor.objectUrl);
+  liveMonitor.objectUrl = URL.createObjectURL(blob);
+  els.liveFrame.src = liveMonitor.objectUrl;
+  els.liveFrame.hidden = false;
+  if (els.livePlaceholder) els.livePlaceholder.hidden = true;
+  const ageText = age == null ? '' : ` · ${Number(age).toFixed(1)}s`;
+  if (state === 'stale') {
+    setLiveState('stale', `Stale snapshot${ageText}`);
+  } else {
+    setLiveState('live', `Live snapshot${ageText}`);
+  }
+}
+
+function liveDelay() {
+  if (document.visibilityState !== 'visible') return LIVE_INTERVAL_HIDDEN;
+  if (liveMonitor.failures <= 0) return LIVE_INTERVAL_VISIBLE;
+  const backoff = LIVE_INTERVAL_VISIBLE * Math.pow(2, liveMonitor.failures);
+  return Math.min(LIVE_MAX_BACKOFF, backoff);
+}
+
+async function refreshLiveStatus() {
+  if (!els.liveDetail || !SESSION_STATE.csrf) return;
+  const now = Date.now();
+  if (liveMonitor.statusAt && now - liveMonitor.statusAt < LIVE_STATUS_INTERVAL) return;
+  liveMonitor.statusAt = now;
+  try {
+    const response = await fetch('/api/live/status', {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (response.status === 401) {
+      handleExpired();
+      return;
+    }
+    if (!response.ok) return;
+    const data = await response.json();
+    if (!data || data.ok !== true) return;
+    if (data.available === false) {
+      els.liveDetail.textContent = 'Monitor metrics unavailable.';
+      return;
+    }
+    const producer = data.producer || {};
+    const viewers = data.viewers || {};
+    const frame = data.frame || {};
+    const age = producer.last_frame_age_seconds;
+    const ageText = age == null ? '' : ` · frame ${Number(age).toFixed(1)}s`;
+    els.liveDetail.textContent =
+      `Producer ${producer.running ? 'running' : 'stopped'} · `
+      + `${producer.frames_produced || 0} frames · `
+      + `${viewers.active || 0}/${viewers.cap || 0} viewers`
+      + `${ageText} (${frame.state || 'unknown'})`;
+  } catch (_error) {
+    /* metrics are best-effort; the frame view is authoritative */
+  }
+}
+
+function stopLiveMonitor() {
+  liveMonitor.active = false;
+  if (liveMonitor.timer !== null) {
+    clearTimeout(liveMonitor.timer);
+    liveMonitor.timer = null;
+  }
+  if (liveMonitor.controller) {
+    liveMonitor.controller.abort();
+    liveMonitor.controller = null;
+  }
+  liveMonitor.inflight = false;
+}
+
+function scheduleLive() {
+  if (liveMonitor.timer !== null) clearTimeout(liveMonitor.timer);
+  if (!liveMonitor.active || liveMonitor.paused) return;
+  liveMonitor.timer = setTimeout(pollLive, liveDelay());
+}
+
+function startLiveMonitor() {
+  liveMonitor.active = true;
+  liveMonitor.failures = 0;
+  if (liveMonitor.paused) return;
+  if (liveMonitor.timer !== null) clearTimeout(liveMonitor.timer);
+  pollLive();
+}
+
+function syncLiveMonitor() {
+  if (!SESSION_STATE.csrf || !liveMonitor.active) {
+    stopLiveMonitor();
+    return;
+  }
+  if (document.visibilityState === 'visible') {
+    if (liveMonitor.timer !== null) clearTimeout(liveMonitor.timer);
+    pollLive();
+  } else {
+    scheduleLive();
+  }
+}
+
+async function pollLive() {
+  if (!SESSION_STATE.csrf || !liveMonitor.active || liveMonitor.paused) return;
+  if (liveMonitor.inflight) {
+    scheduleLive();
+    return;
+  }
+  liveMonitor.inflight = true;
+  if (liveMonitor.controller) liveMonitor.controller.abort();
+  const controller = new AbortController();
+  liveMonitor.controller = controller;
+  try {
+    const response = await fetch('/api/live/frame', {
+      credentials: 'same-origin',
+      headers: { Accept: 'image/jpeg' },
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    if (response.status === 401) {
+      handleExpired();
+      return;
+    }
+    if (response.status === 200) {
+      const state = response.headers.get('X-Live-State') || 'live';
+      const age = response.headers.get('X-Live-Age');
+      const blob = await response.blob();
+      if (blob.size > 0) {
+        liveMonitor.failures = 0;
+        showLiveFrame(blob, state, age);
+      } else {
+        liveMonitor.failures += 1;
+        setLiveState('unavailable', 'No frame');
+        showLiveMessage('The local monitor has no frame yet.');
+      }
+      return;
+    }
+    if (response.status === 429) {
+      liveMonitor.failures += 1;
+      setLiveState('busy', 'Too many viewers');
+      showLiveMessage('The local monitor is at its viewer limit. Retrying…');
+      return;
+    }
+    const state = response.headers.get('X-Live-State') || 'unavailable';
+    liveMonitor.failures += 1;
+    if (state === 'stale') {
+      setLiveState('stale', 'Stale');
+      showLiveMessage('The local monitor frame is stale. Waiting for a fresh frame…');
+    } else {
+      setLiveState('unavailable', 'Unavailable');
+      showLiveMessage('The local monitor is unavailable.');
+    }
+  } catch (error) {
+    if (error && error.name === 'AbortError') return;
+    liveMonitor.failures += 1;
+    setLiveState('unavailable', 'Unavailable');
+    showLiveMessage('Could not reach the local monitor. Retrying…');
+  } finally {
+    if (liveMonitor.controller === controller) liveMonitor.controller = null;
+    liveMonitor.inflight = false;
+    refreshLiveStatus();
+    if (liveMonitor.active && !liveMonitor.paused) scheduleLive();
+  }
+}
+
+function toggleLivePause() {
+  liveMonitor.paused = !liveMonitor.paused;
+  if (els.liveToggle) {
+    els.liveToggle.textContent = liveMonitor.paused ? 'Resume' : 'Pause';
+  }
+  if (liveMonitor.paused) {
+    if (liveMonitor.timer !== null) {
+      clearTimeout(liveMonitor.timer);
+      liveMonitor.timer = null;
+    }
+    if (liveMonitor.controller) liveMonitor.controller.abort();
+    setLiveState('paused', 'Paused');
+    showLiveMessage('Local monitor is paused.');
+  } else {
+    liveMonitor.failures = 0;
+    pollLive();
+  }
+}
+
+async function downloadLiveSnapshot() {
+  if (els.liveDownload) els.liveDownload.disabled = true;
+  try {
+    const response = await fetch('/api/live/frame', {
+      credentials: 'same-origin',
+      headers: { Accept: 'image/jpeg' },
+      cache: 'no-store',
+    });
+    if (response.status === 401) {
+      handleExpired();
+      return;
+    }
+    if (!response.ok) {
+      showLiveMessage('No snapshot is available to download right now.');
+      return;
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'buddy3d-snapshot.jpg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (_error) {
+    showLiveMessage('Could not download the current snapshot.');
+  } finally {
+    if (els.liveDownload) els.liveDownload.disabled = false;
   }
 }
 
@@ -1152,6 +1425,8 @@ function wireForms() {
   }
   if (els.prusaForm) els.prusaForm.addEventListener('submit', submitPrusa);
   if (els.copyLocalAccess) els.copyLocalAccess.addEventListener('click', copyLocalAccess);
+  if (els.liveToggle) els.liveToggle.addEventListener('click', toggleLivePause);
+  if (els.liveDownload) els.liveDownload.addEventListener('click', downloadLiveSnapshot);
   if (els.reauthForm) els.reauthForm.addEventListener('submit', submitReauth);
   if (els.reauthCancel) {
     els.reauthCancel.addEventListener('click', () => resolveReauth(false));
@@ -1166,6 +1441,7 @@ function wireVisibility() {
     } else {
       scheduleDashboard();
     }
+    syncLiveMonitor();
   });
 }
 

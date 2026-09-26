@@ -82,6 +82,25 @@
           <div id="overview-state" class="overview-state" role="status" aria-live="polite" hidden></div>
 
           <div id="overview-content" class="overview" hidden>
+            <div class="card overview__card live-monitor" aria-labelledby="live-monitor-title">
+              <div class="overview__head">
+                <h3 id="live-monitor-title" class="card__title">Local monitor</h3>
+                <span id="live-state" class="chip chip--muted" role="status" aria-live="polite">Idle</span>
+              </div>
+              <div class="live-monitor__frame">
+                <img id="live-frame" class="live-monitor__image"
+                     alt="Local camera monitor, low-rate snapshot view" hidden>
+                <p id="live-placeholder" class="live-monitor__placeholder"
+                   role="status" aria-live="polite">Local monitor is paused.</p>
+              </div>
+              <p class="field__hint">Low-rate snapshot view taken from the shared camera stream. It never opens a second camera and is not full-rate video.</p>
+              <p id="live-detail" class="field__hint" role="status" aria-live="polite"></p>
+              <div class="form-actions">
+                <button id="live-toggle" class="btn btn--primary" type="button">Pause</button>
+                <button id="live-download" class="btn btn--ghost" type="button">Download current snapshot</button>
+              </div>
+            </div>
+
             <div class="card overview__card">
               <div class="overview__head">
                 <h3 class="card__title">Camera</h3>

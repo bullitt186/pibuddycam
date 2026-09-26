@@ -595,6 +595,31 @@ p {
   color: var(--ink);
 }
 
+.live-monitor__frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+  overflow: hidden;
+  background: #0f1115;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.live-monitor__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 60vh;
+  object-fit: contain;
+}
+
+.live-monitor__placeholder {
+  padding: 1.5rem 1rem;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));

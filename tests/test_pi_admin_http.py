@@ -20,6 +20,7 @@ import admin_auth  # noqa: E402
 import admin_http  # noqa: E402
 import config_schema  # noqa: E402
 import factory_reset  # noqa: E402
+import live_monitor  # noqa: E402
 import provisioning  # noqa: E402
 import setup_wizard  # noqa: E402
 
@@ -1058,6 +1059,165 @@ class FactoryResetTests(AdminHttpTestBase):
         ))
         self.assertEqual(after.status, 409)
         self.assertTrue(marker.exists())
+
+
+# --------------------------------------------------------------------------- #
+# Local live monitor (WP-UI5; AC-10/AC-11/AC-17)
+# --------------------------------------------------------------------------- #
+
+def _live_jpeg():
+    return b'\xff\xd8' + b'camera-frame' * 20 + b'\xff\xd9'
+
+
+class _FakeMonitor:
+    """Deterministic stand-in for :class:`live_monitor.LiveMonitor`."""
+
+    def __init__(self, frame=None, state='live', touch_ok=True, metrics=None):
+        self.frame = frame
+        self.state = state
+        self.touch_ok = touch_ok
+        self.metrics_value = metrics or {}
+        self.touched = []
+
+    def touch(self, viewer_id):
+        self.touched.append(viewer_id)
+        return self.touch_ok
+
+    def latest(self):
+        return {'state': self.state, 'jpeg': self.frame, 'age_seconds': 1.0}
+
+    def metrics(self):
+        return dict(self.metrics_value)
+
+
+class LiveMonitorRouteTests(AdminHttpTestBase):
+    def test_routes_require_authentication(self):
+        for path in ('/api/live/frame', '/api/live/status'):
+            with self.subTest(path=path):
+                self.assertEqual(self.app.handle(self.req('GET', path)).status, 401)
+
+    def test_frame_requires_a_live_session(self):
+        token = self.sessions.create(now=0.0, idle_ttl=1.0)
+        response = self.app.handle(self.req(
+            'GET', '/api/live/frame',
+            headers=self.auth_headers(token), now=10.0,
+        ))
+        self.assertEqual(response.status, 401)
+
+    def test_frame_is_served_with_no_store_and_state_headers(self):
+        monitor = _FakeMonitor(frame=_live_jpeg(), state='live')
+        app = self._build_app(live_monitor=monitor)
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/live/frame', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.body, _live_jpeg())
+        self.assertEqual(response.headers.get('Content-Type'), 'image/jpeg')
+        self.assertIn('no-store', response.headers.get('Cache-Control', ''))
+        self.assertEqual(response.headers.get('X-Content-Type-Options'), 'nosniff')
+        self.assertEqual(response.headers.get('X-Live-State'), 'live')
+        self.assertEqual(response.headers.get('X-Live-Age'), '1.0')
+        # A repeated poll by the same session reuses the same stable viewer ID,
+        # so it refreshes the lease instead of consuming another cap slot.
+        second = app.handle(self.req(
+            'GET', '/api/live/frame', headers=self.auth_headers(token)))
+        self.assertEqual(second.status, 200)
+        self.assertEqual(monitor.touched, [token, token])
+
+    def test_missing_monitor_reports_unavailable(self):
+        response = self.app.handle(self.req(
+            'GET', '/api/live/frame', headers=self.auth_headers(self.login())))
+        self.assertEqual(response.status, 503)
+        self.assertEqual(response.headers.get('X-Live-State'), 'unavailable')
+        self.assertIn('no-store', response.headers.get('Cache-Control', ''))
+        self.assertEqual(response.headers.get('X-Content-Type-Options'), 'nosniff')
+
+    def test_stale_frame_is_never_served(self):
+        monitor = _FakeMonitor(frame=None, state='stale')
+        app = self._build_app(live_monitor=monitor)
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/live/frame', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 503)
+        self.assertEqual(response.headers.get('X-Live-State'), 'stale')
+
+    def test_partial_frame_from_a_monitor_is_never_served(self):
+        monitor = _FakeMonitor(frame=b'\xff\xd8' + b'x' * 10, state='live')
+        app = self._build_app(live_monitor=monitor)
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/live/frame', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 503)
+        self.assertEqual(response.headers.get('X-Live-State'), 'live')
+        self.assertNotIn(b'\xff\xd8', response.body)
+
+    def test_viewer_cap_returns_429(self):
+        monitor = _FakeMonitor(frame=_live_jpeg(), touch_ok=False)
+        app = self._build_app(live_monitor=monitor)
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/live/frame', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 429)
+        self.assertEqual(response.headers.get('Retry-After'), '5')
+        self.assertEqual(response.headers.get('X-Live-State'), 'busy')
+
+    def test_status_reports_bounded_metrics(self):
+        metrics = {
+            'source': 'stream_mux:8888',
+            'interval_seconds': 1.0,
+            'producer': {'running': True, 'frames_produced': 3},
+            'viewers': {'active': 1, 'cap': 4},
+            'frame': {'state': 'live'},
+        }
+        monitor = _FakeMonitor(metrics=metrics)
+        app = self._build_app(live_monitor=monitor)
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/live/status', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['available'])
+        self.assertEqual(payload['source'], 'stream_mux:8888')
+        self.assertEqual(payload['producer']['frames_produced'], 3)
+
+    def test_status_without_monitor_is_available_false(self):
+        response = self.app.handle(self.req(
+            'GET', '/api/live/status', headers=self.auth_headers(self.login())))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertTrue(payload['ok'])
+        self.assertFalse(payload['available'])
+
+    def test_close_stops_the_shared_producer(self):
+        monitor = live_monitor.LiveMonitor(
+            producer=_live_jpeg, interval=0.05, idle_grace=5.0, viewer_ttl=5.0)
+        app = self._build_app(live_monitor=monitor)
+        token = self.login(app)
+        # The first frame may not be decoded yet, but the authenticated request
+        # must have leased a viewer and started the one shared producer.
+        response = app.handle(self.req(
+            'GET', '/api/live/frame', headers=self.auth_headers(token)))
+        self.assertIn(response.status, (200, 503))
+        self.assertTrue(monitor.running)
+        app.close()
+        self.assertFalse(monitor.running)
+        app.close()  # idempotent shutdown
+
+    def test_status_redacts_planted_secret_canary(self):
+        canary = 'CANARY-live-secret-3f9a'
+        (self.root / 'secrets.toml').write_text(config_schema.dumps_secrets({
+            'prusa': {'token': canary},
+            'admin': {'password_hash': ADMIN_HASH},
+        }))
+        monitor = _FakeMonitor(metrics={'leaked': canary, 'source': 'stream_mux:8888'})
+        app = self._build_app(live_monitor=monitor)
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/live/status', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        self.assertNotIn(canary.encode(), response.body)
+        self.assertNotIn(canary, response.headers.get('Set-Cookie', ''))
 
 
 if __name__ == '__main__':

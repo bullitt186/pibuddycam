@@ -154,6 +154,23 @@ class AdminTransportSourceTests(unittest.TestCase):
         ]
         self.assertTrue(add_route_calls, 'the transport must register aiohttp routes')
 
+    def test_create_app_registers_cleanup_that_stops_the_core(self):
+        """The shared live-monitor producer must stop on transport shutdown."""
+        create = next(
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == 'create_app'
+        )
+        create_src = ast.get_source_segment(self.source, create)
+        self.assertIn('on_cleanup', create_src)
+        self.assertIn('_cleanup', create_src)
+        cleanup = next(
+            node for node in self.tree.body
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == '_cleanup'
+        )
+        cleanup_src = ast.get_source_segment(self.source, cleanup)
+        self.assertIn('close', cleanup_src)
+        self.assertIn('run_in_executor', cleanup_src)
+
     def test_peer_ip_derives_from_transport(self):
         functions = [
             node for node in self.tree.body

@@ -764,6 +764,76 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
+# Local monitor (WP-UI5; AC-10/AC-11)                                          #
+# --------------------------------------------------------------------------- #
+
+class AdminLiveMonitorUiTests(unittest.TestCase):
+    """AC-10/AC-11: the Overview monitor is authenticated, bounded and honest."""
+
+    def setUp(self):
+        self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
+        self.js = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
+        self.code = _strip_js_comments(self.js)
+
+    def test_overview_has_monitor_hooks_and_label(self):
+        for marker in (
+            'id="live-state"', 'id="live-frame"', 'id="live-placeholder"',
+            'id="live-toggle"', 'id="live-download"', 'id="live-detail"',
+            'Local monitor',
+        ):
+            self.assertIn(marker, self.html, marker)
+        self.assertIn('not full-rate video', self.html)
+        self.assertIn('low-rate', self.html.lower())
+
+    def test_monitor_image_is_alt_labelled_and_placeholder_is_live(self):
+        self.assertIn('alt="Local camera monitor', self.html)
+        self.assertIn('aria-live="polite"', self.html)
+        # The state chip is announced, and the monitor card is labelled.
+        self.assertIn('aria-labelledby="live-monitor-title"', self.html)
+
+    def test_js_polls_the_authenticated_frame_and_status_endpoints(self):
+        self.assertIn("fetch('/api/live/frame'", self.code)
+        self.assertIn('/api/live/frame', self.code)
+        self.assertIn('/api/live/status', self.code)
+
+    def test_js_is_visibility_aware_and_bounded(self):
+        self.assertIn('LIVE_INTERVAL_VISIBLE', self.code)
+        self.assertIn('LIVE_INTERVAL_HIDDEN', self.code)
+        self.assertIn('LIVE_MAX_BACKOFF', self.code)
+        self.assertIn('document.visibilityState', self.code)
+
+    def test_js_handles_expiry_pause_resume_and_download(self):
+        self.assertIn('handleExpired()', self.code)
+        self.assertIn('toggleLivePause', self.code)
+        self.assertIn('downloadLiveSnapshot', self.code)
+        self.assertIn("'buddy3d-snapshot.jpg'", self.code)
+        self.assertIn('X-Live-State', self.code)
+        self.assertIn('X-Live-Age', self.code)
+        # No stale object URLs leak on repeated frames.
+        self.assertIn('revokeObjectURL', self.code)
+
+    def test_js_stops_the_monitor_when_leaving_overview_and_on_login(self):
+        select = _function_body(self.code, 'selectView')
+        self.assertIn('startLiveMonitor()', select)
+        self.assertIn('stopLiveMonitor()', select)
+        login = _function_body(self.code, 'showLogin')
+        self.assertIn('stopLiveMonitor', login)
+
+    def test_js_aborts_inflight_monitor_requests(self):
+        poll = _function_body(self.code, 'pollLive')
+        self.assertIn('AbortController', poll)
+        self.assertIn('AbortError', poll)
+
+    def test_css_defines_the_monitor_frame(self):
+        for marker in (
+            '.live-monitor__frame', '.live-monitor__image',
+            '.live-monitor__placeholder',
+        ):
+            self.assertIn(marker, self.css, marker)
+
+
+# --------------------------------------------------------------------------- #
 # Packaging (AC-2)                                                             #
 # --------------------------------------------------------------------------- #
 

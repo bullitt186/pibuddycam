@@ -91,6 +91,7 @@ import config_schema
 import dashboard
 import expert_config
 import factory_reset as factory_reset_module
+import live_monitor
 import mqtt_service
 import mqtt_topics
 import provisioning
@@ -159,6 +160,10 @@ ASSET_ALLOWLIST = {
 #: content-hash query, and each response carries a strong ``ETag``, so a stale
 #: asset after an application update is revalidated rather than reused blindly.
 ASSET_CACHE_CONTROL = 'public, max-age=3600'
+
+#: ``Cache-Control`` for authenticated live-monitor frames and errors. A frame
+#: is a live view, so it must never be cached by the browser or an intermediary.
+NO_STORE_CACHE_CONTROL = 'no-store, no-cache, must-revalidate, max-age=0'
 
 #: Baseline security headers applied to every response.
 SECURITY_HEADERS = {
@@ -390,6 +395,7 @@ class AdminApp:
         web_dir=None,
         dashboard_provider=None,
         settings_actions=None,
+        live_monitor=None,
     ):
         if mode not in ('setup', 'admin'):
             raise ValueError("mode must be 'setup' or 'admin'")
@@ -437,6 +443,12 @@ class AdminApp:
         # ``(field, value) -> {ok, error, changed, settings, degraded}`` backed by
         # the runtime IPC client; ``None`` reports the runtime as unavailable.
         self._settings_actions = settings_actions
+        # WP-UI5/AC-10: the one shared local live-monitor producer. The core only
+        # reads its one-slot latest-frame buffer and viewer leases; the producer
+        # thread is owned by :mod:`live_monitor` and never runs on the asyncio
+        # loop or the single admin-core worker. ``None`` reports the monitor as
+        # unavailable instead of fabricating a frame.
+        self._live_monitor = live_monitor
 
         # Lazily built wizard session and reset confirmation state.
         self._wizard = None
@@ -477,6 +489,14 @@ class AdminApp:
             Route(
                 'GET', re.compile(r'^/api/dashboard$'),
                 _AUTHENTICATED, self._handle_dashboard,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/live/frame$'),
+                _AUTHENTICATED, self._handle_live_frame,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/live/status$'),
+                _AUTHENTICATED, self._handle_live_status,
             ),
             Route(
                 'PATCH', re.compile(r'^/api/settings$'),
@@ -1050,6 +1070,94 @@ class AdminApp:
             max_items=runtime_ipc.MAX_RESPONSE_ITEMS,
         )
         return self._json(request, 200, payload)
+
+    def _handle_live_frame(self, request, match, body_data, now):
+        """Serve the latest shared-monitor JPEG (WP-UI5; AC-10/AC-17).
+
+        Authenticated session only (``_authorize`` ran first). The request
+        registers/refreshes a bounded viewer lease, which starts the one shared
+        producer and keeps it alive; the handler itself only reads the one-slot
+        buffer, so it never blocks the event loop or the core worker. A stale
+        frame older than the hard bound, a missing frame, or an absent monitor is
+        reported as a bounded ``503`` with an ``X-Live-State`` header rather than
+        serving an old or partial image. All responses are ``no-store``.
+        """
+        monitor = self._live_monitor
+        if monitor is None:
+            return self._live_unavailable(
+                request, 503, 'live monitor unavailable', live_monitor.STATE_UNAVAILABLE)
+
+        token = _session_token(request)
+        if not monitor.touch(token):
+            response = self._json(
+                request, 429, {'ok': False, 'error': 'too many viewers'})
+            response.headers['Retry-After'] = '5'
+            response.headers['X-Live-State'] = 'busy'
+            response.headers['Cache-Control'] = NO_STORE_CACHE_CONTROL
+            return response
+
+        frame = monitor.latest()
+        state = frame.get('state') or live_monitor.STATE_UNAVAILABLE
+        jpeg = frame.get('jpeg')
+        # Defence in depth at the API edge: even an injected/misbehaving monitor
+        # can never cause a partial or invalid JPEG to be served.
+        if not jpeg or not live_monitor.valid_jpeg(jpeg):
+            return self._live_unavailable(
+                request, 503, 'no frame available', state, frame.get('age_seconds'))
+
+        age = frame.get('age_seconds')
+        headers = {
+            'Content-Type': 'image/jpeg',
+            'Content-Disposition': 'inline; filename="live-frame.jpg"',
+            'Cache-Control': NO_STORE_CACHE_CONTROL,
+            'X-Live-State': state,
+        }
+        if isinstance(age, (int, float)):
+            headers['X-Live-Age'] = f'{float(age):.1f}'
+        return Response(200, headers, jpeg)
+
+    def _handle_live_status(self, request, match, body_data, now):
+        """Return bounded, secret-free live-monitor metrics (WP-UI5; AC-11).
+
+        The values are the counters a hardware acceptance run needs (producer
+        running, frames produced/failed, last-frame age/bytes, active viewers and
+        the cap). No path, hostname, token, or frame byte is exposed.
+        """
+        monitor = self._live_monitor
+        if monitor is None:
+            return self._json(request, 200, {
+                'ok': True,
+                'available': False,
+                'source': live_monitor.SOURCE_LABEL,
+            })
+        try:
+            metrics = monitor.metrics()
+        except Exception:  # noqa: BLE001 - metrics must never crash routing
+            log.warning('admin_http: live monitor metrics failed')
+            metrics = {}
+        payload = {'ok': True, 'available': True}
+        if isinstance(metrics, dict):
+            payload.update(metrics)
+        return self._json(request, 200, payload)
+
+    def _live_unavailable(self, request, status, message, state, age=None):
+        """Return a bounded, no-store live-frame error with its state header."""
+        response = self._json(request, status, {'ok': False, 'error': message})
+        response.headers['X-Live-State'] = state
+        response.headers['Cache-Control'] = NO_STORE_CACHE_CONTROL
+        if isinstance(age, (int, float)):
+            response.headers['X-Live-Age'] = f'{float(age):.1f}'
+        return response
+
+    def close(self):
+        """Stop the shared live-monitor producer (idempotent; never raises)."""
+        monitor = self._live_monitor
+        if monitor is None:
+            return
+        try:
+            monitor.stop()
+        except Exception:  # noqa: BLE001 - shutdown must never raise
+            log.warning('admin_http: live monitor stop failed')
 
     def _handle_settings_patch(self, request, match, body_data, now):
         """Apply one bounded settings mutation through the live coordinator.

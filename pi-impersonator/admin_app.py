@@ -48,6 +48,7 @@ from aiohttp import web
 import admin_http
 import camera_probe
 import dashboard
+import live_monitor
 import mqtt_probe
 import privileged
 import provisioning
@@ -89,6 +90,8 @@ ROUTES = (
     ('GET', '/api/status'),
     ('GET', '/api/session'),
     ('GET', '/api/dashboard'),
+    ('GET', '/api/live/frame'),
+    ('GET', '/api/live/status'),
     ('PATCH', '/api/settings'),
     ('GET', '/api/integrations'),
     ('PUT', '/api/integrations/mqtt'),
@@ -206,10 +209,27 @@ async def _handle(request):
 # Application factory
 # --------------------------------------------------------------------------- #
 
+async def _cleanup(app):
+    """Stop the shared live-monitor producer on transport shutdown.
+
+    ``AdminApp.close`` may join the producer thread, so it runs on the core
+    executor rather than the event loop. Never raises.
+    """
+    core = app.get('admin_app')
+    if core is None:
+        return
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(_CORE_EXECUTOR, core.close)
+    except Exception:  # noqa: BLE001 - shutdown must never raise
+        log.debug('admin_app: live monitor cleanup failed', exc_info=True)
+
+
 def create_app(admin_app: admin_http.AdminApp) -> web.Application:
     """Build the aiohttp application bound to an :class:`admin_http.AdminApp`."""
     app = web.Application()
     app['admin_app'] = admin_app
+    app.on_cleanup.append(_cleanup)
     for method, path in ROUTES:
         app.router.add_route(method, path, _handle)
     # Anything not registered above still goes through the core, so unknown
@@ -288,6 +308,17 @@ def _default_dashboard_provider():
     return dashboard.DashboardProvider(client)
 
 
+def _default_live_monitor():
+    """Return the one shared local live-monitor producer (WP-UI5; AC-10).
+
+    The producer is lazy: constructing it starts no thread. The first
+    authenticated viewer lease starts the single producer, and it tears itself
+    down after the last lease expires. It reads only the existing ``stream_mux``
+    H.264 fan-out through :func:`camera.capture_jpeg`; it never opens libcamera.
+    """
+    return live_monitor.LiveMonitor()
+
+
 def _settings_action(client):
     """Build the runtime-IPC settings mutation callable (WP-UI3; AC-5).
 
@@ -324,7 +355,8 @@ def _settings_action(client):
 def build_admin_app(mode, *, device_path=None, secrets_path=None,
                     provisioning_path=None, hotspot_controller=None, probe=None,
                     start_camera=None, activate_station=None, mqtt_probe=None,
-                    dashboard_provider=None, settings_actions=None):
+                    dashboard_provider=None, settings_actions=None,
+                    live_monitor=None):
     """Build the stdlib :class:`admin_http.AdminApp` with real dependencies.
 
     Paths default to the durable ``/data`` locations through the core's own
@@ -376,6 +408,10 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
         settings_actions=(
             settings_actions if settings_actions is not None
             else _settings_action(_default_runtime_client())
+        ),
+        live_monitor=(
+            live_monitor if live_monitor is not None
+            else _default_live_monitor()
         ),
         device_path=device_path,
         secrets_path=secrets_path,
