@@ -540,5 +540,73 @@ class CoreOffloadTests(unittest.TestCase):
         self.assertNotIn('app.handle(_to_request', text)
 
 
+class AdminMediaStreamingTests(unittest.TestCase):
+    """WP-UI6/AC-12: the transport streams core file responses, never buffers."""
+
+    def setUp(self):
+        self.tree = _tree()
+        self.chains = _attr_chains(self.tree)
+
+    def test_route_table_declares_the_media_routes(self):
+        routes_node = _module_assign(self.tree, 'ROUTES')
+        declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}
+        for entry in (
+            ('GET', '/api/media/timelapses'),
+            ('GET', '/api/media/timelapses/{name}'),
+            ('GET', '/api/media/frames'),
+            ('GET', '/api/media/frames/{name}'),
+            ('POST', '/api/media/timelapses/build'),
+            ('GET', '/api/media/jobs/{id}'),
+        ):
+            self.assertIn(entry, declared)
+
+    def test_handle_streams_a_core_file_response(self):
+        handle = next(
+            node for node in ast.walk(self.tree)
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == '_handle')
+        text = ast.unparse(handle)
+        self.assertIn('_stream_response', text)
+        self.assertIn('file', text)
+
+    def test_stream_response_is_bounded_and_closes(self):
+        stream = next(
+            node for node in self.tree.body
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == '_stream_response')
+        text = ast.unparse(stream)
+        self.assertIn('StreamResponse', text)
+        self.assertIn('run_in_executor', text)
+        self.assertIn('_STREAM_CHUNK', text)
+        self.assertIn('write_eof', text)
+        self.assertIn('handle.close', text)
+        self.assertIn('file_length', text)
+        self.assertIn('min(_STREAM_CHUNK, remaining)', text)
+        # The descriptor is captured before the try and closed in `finally`, so
+        # construction/prepare/write failures all still close it.
+        handle_assign = next(
+            node for node in stream.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == 'handle' for t in node.targets))
+        self.assertIn('core_response.file', ast.unparse(handle_assign))
+        guarded = next(node for node in stream.body if isinstance(node, ast.Try))
+        self.assertTrue(guarded.finalbody, 'the file close must be in finally')
+        self.assertIn('handle.close', ast.unparse(guarded.finalbody[0]))
+
+    def test_build_admin_app_injects_the_build_manager(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == 'build_admin_app'
+        ]
+        self.assertEqual(len(functions), 1)
+        admin_calls = [
+            call for call in _calls(functions[0])
+            if any(chain == ['admin_http', 'AdminApp'] for chain in _attr_chains(call))
+        ]
+        passed = {
+            keyword.arg for call in admin_calls for keyword in call.keywords}
+        self.assertIn('build_manager', passed)
+        self.assertIn('build_manager', [a.arg for a in functions[0].args.kwonlyargs])
+        self.assertIn(['media_build', 'BuildManager'], self.chains)
+
+
 if __name__ == '__main__':
     unittest.main()

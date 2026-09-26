@@ -1220,5 +1220,341 @@ class LiveMonitorRouteTests(AdminHttpTestBase):
         self.assertNotIn(canary, response.headers.get('Set-Cookie', ''))
 
 
+# --------------------------------------------------------------------------- #
+# Timelapse media library (WP-UI6; AC-12/AC-13/AC-17)
+# --------------------------------------------------------------------------- #
+
+def _media_jpeg(width=4, height=4):
+    import struct as _struct
+    sof = (
+        b'\xff\xc0' + _struct.pack('>H', 17) + b'\x08'
+        + _struct.pack('>HH', height, width)
+        + b'\x03' + b'\x01\x11\x00' * 3
+    )
+    return b'\xff\xd8' + sof + b'\xff\xd9'
+
+
+class _FakeBuildManager:
+    """Deterministic stand-in for :class:`media_build.BuildManager`."""
+
+    def __init__(self, result=None):
+        self.result = result if result is not None else {
+            'ok': True,
+            'job': {
+                'id': '0' * 32, 'state': 'pending', 'frames_total': 3,
+                'frames_written': 0, 'reason': '',
+                'started': '2026-01-01T00:00:00Z', 'finished': None,
+            },
+        }
+        self.starts = []
+        self.stopped = False
+
+    def start(self, fps=10, width=None, height=None):
+        self.starts.append(fps)
+        return self.result
+
+    def status(self, job_id):
+        job = self.result.get('job') if self.result.get('ok') else None
+        if isinstance(job, dict) and job.get('id') == job_id:
+            return job
+        return None
+
+    def stop(self):
+        self.stopped = True
+
+
+class MediaLibraryRouteTests(AdminHttpTestBase):
+    FRAME = 'timelapse_00-00-00-000.jpg'
+    FRAME2 = 'timelapse_00-00-01-000.jpg'
+    VIDEO = 'timelapse_00-00-00-000.avi'
+
+    def setUp(self):
+        super().setUp()
+        self.media = self.root / 'media'
+        self.media.mkdir()
+        (self.media / self.FRAME).write_bytes(_media_jpeg())
+        (self.media / self.FRAME2).write_bytes(_media_jpeg(8, 8))
+        (self.media / self.VIDEO).write_bytes(b'RIFF' + b'v' * 120 + b'AVI ')
+        (self.media / '.timelapse_videos.csv').write_text(
+            f'{self.VIDEO}:D\n', encoding='utf-8')
+        self.build = _FakeBuildManager()
+        self.app = self._build_app(
+            media_dir=str(self.media), build_manager=self.build)
+
+    def _req(self, method, path, query=None, body=None, headers=None):
+        request = self.req(method, path, body=body, headers=headers)
+        request.query = query or {}
+        return request
+
+    def _auth(self, token, csrf=None, extra=None):
+        return self.auth_headers(token, csrf=csrf, extra=extra)
+
+    def test_media_routes_require_authentication(self):
+        for method, path in (
+            ('GET', '/api/media/timelapses'),
+            ('GET', f'/api/media/timelapses/{self.VIDEO}'),
+            ('GET', '/api/media/frames'),
+            ('GET', f'/api/media/frames/{self.FRAME}'),
+            ('POST', '/api/media/timelapses/build'),
+            ('GET', '/api/media/jobs/' + '0' * 32),
+        ):
+            with self.subTest(method=method, path=path):
+                self.assertEqual(self.app.handle(self._req(method, path)).status, 401)
+
+    def test_video_list_paginates_and_maps_status(self):
+        token = self.login(self.app)
+        response = self.app.handle(self._req(
+            'GET', '/api/media/timelapses', query={'page': '1', 'page_size': '1'},
+            headers=self._auth(token)))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['kind'], 'videos')
+        self.assertEqual(payload['page'], 1)
+        self.assertEqual(payload['page_size'], 1)
+        self.assertEqual(payload['total'], 1)
+        item = payload['items'][0]
+        self.assertEqual(item['name'], self.VIDEO)
+        self.assertEqual(item['status'], 'D')
+        self.assertEqual(item['status_label'], 'completed')
+        self.assertEqual(item['download_url'], f'/api/media/timelapses/{self.VIDEO}')
+        self.assertNotIn('.timelapse_videos.csv', response.body.decode())
+        self.assertNotIn(str(self.media), response.body.decode())
+
+    def test_status_filter_accepts_label_and_char(self):
+        token = self.login(self.app)
+        for status in ('completed', 'D'):
+            response = self.app.handle(self._req(
+                'GET', '/api/media/timelapses', query={'status': status},
+                headers=self._auth(token)))
+            payload = json.loads(response.body)
+            self.assertEqual([i['name'] for i in payload['items']], [self.VIDEO])
+        response = self.app.handle(self._req(
+            'GET', '/api/media/timelapses', query={'status': 'error'},
+            headers=self._auth(token)))
+        self.assertEqual(json.loads(response.body)['items'], [])
+
+    def test_invalid_page_bounds_and_status(self):
+        token = self.login(self.app)
+        for query in ({'page': '0'}, {'page': 'x'}, {'page_size': '0'},
+                      {'page_size': '101'}, {'page_size': 'x'}, {'status': 'weird'}):
+            with self.subTest(query=query):
+                response = self.app.handle(self._req(
+                    'GET', '/api/media/timelapses', query=query,
+                    headers=self._auth(token)))
+                self.assertEqual(response.status, 400)
+                self.assertFalse(json.loads(response.body)['ok'])
+
+    def test_frame_list_bounded(self):
+        token = self.login(self.app)
+        response = self.app.handle(self._req(
+            'GET', '/api/media/frames', query={'page_size': '1'},
+            headers=self._auth(token)))
+        payload = json.loads(response.body)
+        self.assertEqual(payload['kind'], 'frames')
+        self.assertEqual(payload['total'], 2)
+        self.assertEqual(len(payload['items']), 1)
+        self.assertEqual(payload['items'][0]['preview_url'],
+                         f'/api/media/frames/{self.FRAME}')
+        # Frames have no firmware index status; the API must not invent one.
+        self.assertNotIn('status', payload['items'][0])
+        self.assertNotIn('status_label', payload['items'][0])
+
+    def test_video_download_whole(self):
+        token = self.login(self.app)
+        response = self.app.handle(self._req(
+            'GET', f'/api/media/timelapses/{self.VIDEO}',
+            headers=self._auth(token)))
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.headers['Content-Type'], 'video/x-msvideo')
+        self.assertEqual(
+            response.headers['Content-Disposition'],
+            f'attachment; filename="{self.VIDEO}"')
+        self.assertEqual(response.headers['Accept-Ranges'], 'bytes')
+        self.assertIn('no-store', response.headers['Cache-Control'])
+        self.assertEqual(response.file_length, os.path.getsize(self.media / self.VIDEO))
+        try:
+            self.assertEqual(response.file.read(), (self.media / self.VIDEO).read_bytes())
+        finally:
+            response.file.close()
+
+    def test_video_range_is_partial_and_bounded(self):
+        token = self.login(self.app)
+        response = self.app.handle(self._req(
+            'GET', f'/api/media/timelapses/{self.VIDEO}',
+            headers=self._auth(token, extra={'Range': 'bytes=0-9'})))
+        self.assertEqual(response.status, 206)
+        self.assertEqual(response.headers['Content-Range'], 'bytes 0-9/128')
+        self.assertEqual(response.headers['Content-Length'], '10')
+        self.assertEqual(response.file_length, 10)
+        try:
+            self.assertEqual(
+                response.file.read(response.file_length),
+                (self.media / self.VIDEO).read_bytes()[:10])
+        finally:
+            response.file.close()
+
+    def test_range_malformed_and_unsatisfiable_are_416(self):
+        token = self.login(self.app)
+        for value in ('bytes=9999-', 'bytes=1-2,3-4', 'bytes=abc', 'items=0-1'):
+            with self.subTest(value=value):
+                response = self.app.handle(self._req(
+                    'GET', f'/api/media/timelapses/{self.VIDEO}',
+                    headers=self._auth(token, extra={'Range': value})))
+                self.assertEqual(response.status, 416)
+                self.assertEqual(response.headers['Content-Range'], 'bytes */128')
+                self.assertEqual(response.headers['Accept-Ranges'], 'bytes')
+
+    def test_frame_download_is_bounded_and_validated(self):
+        token = self.login(self.app)
+        response = self.app.handle(self._req(
+            'GET', f'/api/media/frames/{self.FRAME}',
+            headers=self._auth(token)))
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.headers['Content-Type'], 'image/jpeg')
+        self.assertIn('inline;', response.headers['Content-Disposition'])
+        self.assertEqual(response.file_length, os.path.getsize(self.media / self.FRAME))
+        try:
+            self.assertTrue(response.file.read().startswith(b'\xff\xd8\xff'))
+        finally:
+            response.file.close()
+
+    def test_frame_without_jpeg_magic_is_404(self):
+        (self.media / self.FRAME2).write_bytes(b'not a jpeg')
+        token = self.login(self.app)
+        response = self.app.handle(self._req(
+            'GET', f'/api/media/frames/{self.FRAME2}',
+            headers=self._auth(token)))
+        self.assertEqual(response.status, 404)
+
+    def test_planted_paths_symlinks_and_case_are_404(self):
+        (self.media / 'a.AVI').write_bytes(b'RIFF')
+        os.symlink(str(self.media / self.FRAME), str(self.media / 'timelapse_00-00-09-000.jpg'))
+        token = self.login(self.app)
+        for path in (
+            '/api/media/timelapses/..%2Fsecrets.toml',
+            '/api/media/timelapses/a.AVI',
+            '/api/media/timelapses/.timelapse_videos.csv',
+            '/api/media/frames/timelapse_00-00-09-000.jpg',
+            '/api/media/frames/nope.jpg',
+        ):
+            with self.subTest(path=path):
+                response = self.app.handle(self._req('GET', path, headers=self._auth(token)))
+                self.assertEqual(response.status, 404)
+
+    def test_build_requires_csrf_and_valid_fps(self):
+        token = self.login(self.app)
+        no_csrf = self.app.handle(self._req(
+            'POST', '/api/media/timelapses/build', body={},
+            headers=self._auth(token)))
+        self.assertEqual(no_csrf.status, 403)
+        csrf = self.sessions.csrf_for(token)
+        bad_fps = self.app.handle(self._req(
+            'POST', '/api/media/timelapses/build', body={'fps': 99},
+            headers=self._auth(token, csrf=csrf)))
+        self.assertEqual(bad_fps.status, 400)
+        unknown = self.app.handle(self._req(
+            'POST', '/api/media/timelapses/build', body={'nope': 1},
+            headers=self._auth(token, csrf=csrf)))
+        self.assertEqual(unknown.status, 400)
+
+    def test_build_success_and_unavailable(self):
+        token = self.login(self.app)
+        csrf = self.sessions.csrf_for(token)
+        response = self.app.handle(self._req(
+            'POST', '/api/media/timelapses/build', body={'fps': 12},
+            headers=self._auth(token, csrf=csrf)))
+        self.assertEqual(response.status, 202)
+        payload = json.loads(response.body)
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['job']['state'], 'pending')
+        self.assertEqual(self.build.starts, [12])
+
+        no_manager = self._build_app(media_dir=str(self.media))
+        token2 = self.login(no_manager)
+        csrf2 = self.sessions.csrf_for(token2)
+        response = no_manager.handle(self._req(
+            'POST', '/api/media/timelapses/build', body={},
+            headers=self._auth(token2, csrf=csrf2)))
+        self.assertEqual(response.status, 503)
+
+    def test_build_busy_and_gate_status_codes(self):
+        token = self.login(self.app)
+        csrf = self.sessions.csrf_for(token)
+        cases = (
+            ({'ok': False, 'error': 'a build is already running', 'code': 'busy', 'job_id': '0' * 32}, 409),
+            ({'ok': False, 'error': 'insufficient free space for the build', 'code': 'low_space', 'job_id': ''}, 507),
+            ({'ok': False, 'error': 'too many frames for one build', 'code': 'too_many_frames', 'job_id': ''}, 422),
+        )
+        for result, expected in cases:
+            with self.subTest(code=result['code']):
+                app = self._build_app(
+                    media_dir=str(self.media), build_manager=_FakeBuildManager(result))
+                token = self.login(app)
+                csrf = self.sessions.csrf_for(token)
+                response = app.handle(self._req(
+                    'POST', '/api/media/timelapses/build', body={},
+                    headers=self._auth(token, csrf=csrf)))
+                self.assertEqual(response.status, expected)
+                self.assertFalse(json.loads(response.body)['ok'])
+
+    def test_job_status_known_unknown_and_unavailable(self):
+        token = self.login(self.app)
+        known = self.app.handle(self._req(
+            'GET', '/api/media/jobs/' + '0' * 32, headers=self._auth(token)))
+        self.assertEqual(known.status, 200)
+        self.assertTrue(json.loads(known.body)['job']['state'])
+        unknown = self.app.handle(self._req(
+            'GET', '/api/media/jobs/' + '1' * 32, headers=self._auth(token)))
+        self.assertEqual(unknown.status, 404)
+        invalid = self.app.handle(self._req(
+            'GET', '/api/media/jobs/not-a-job', headers=self._auth(token)))
+        self.assertEqual(invalid.status, 404)
+
+    def test_canary_and_path_never_returned(self):
+        canary = 'CANARY-media-secret-77aa'
+        (self.root / 'secrets.toml').write_text(config_schema.dumps_secrets({
+            'prusa': {'token': canary},
+            'admin': {'password_hash': ADMIN_HASH},
+        }))
+        token = self.login(self.app)
+        responses = [
+            self.app.handle(self._req('GET', '/api/media/timelapses', headers=self._auth(token))),
+            self.app.handle(self._req('GET', '/api/media/frames', headers=self._auth(token))),
+            self.app.handle(self._req(
+                'GET', f'/api/media/timelapses/{self.VIDEO}', headers=self._auth(token))),
+        ]
+        for response in responses:
+            self.assertNotIn(canary.encode(), response.body)
+            self.assertNotIn(str(self.media).encode(), response.body)
+        for response in responses:
+            if response.file is not None:
+                response.file.close()
+
+    def test_job_status_is_global_authenticated_but_bounded(self):
+        token_a = self.login(self.app)
+        csrf = self.sessions.csrf_for(token_a)
+        created = self.app.handle(self._req(
+            'POST', '/api/media/timelapses/build', body={},
+            headers=self._auth(token_a, csrf=csrf)))
+        job_id = json.loads(created.body)['job']['id']
+        # A second authenticated session can read the job (documented global
+        # visibility) but the view is bounded and carries no path/secret.
+        token_b = self.login(self.app)
+        self.assertNotEqual(token_a, token_b)
+        response = self.app.handle(self._req(
+            'GET', f'/api/media/jobs/{job_id}', headers=self._auth(token_b)))
+        self.assertEqual(response.status, 200)
+        view = json.loads(response.body)['job']
+        self.assertLessEqual(
+            set(view), {'id', 'state', 'frames_total', 'frames_written',
+                        'reason', 'started', 'finished'})
+        self.assertNotIn(str(self.media), response.body.decode())
+
+    def test_close_stops_the_build_manager(self):
+        self.app.close()
+        self.assertTrue(self.build.stopped)
+
+
 if __name__ == '__main__':
     unittest.main()

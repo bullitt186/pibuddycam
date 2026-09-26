@@ -283,10 +283,80 @@
 
         <section id="view-timelapses" class="view" data-view-panel="timelapses" aria-labelledby="view-timelapses-title" hidden>
           <h2 id="view-timelapses-title" class="view__title">Timelapses</h2>
-          <div class="card placeholder">
-            <p class="placeholder__title">No timelapse library yet</p>
-            <p class="placeholder__text">Frame browsing, video building, and downloads are added in a later update.</p>
-          </div>
+          <div id="timelapses-state" class="overview-state" role="status" aria-live="polite" hidden></div>
+
+          <section class="card" aria-labelledby="timelapse-stats-title">
+            <h3 id="timelapse-stats-title" class="card__title">Library</h3>
+            <dl class="metrics">
+              <div class="metric">
+                <dt class="metric__label">Videos</dt>
+                <dd id="timelapse-video-count" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt class="metric__label">Frames</dt>
+                <dd id="timelapse-frame-count" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt class="metric__label">Library size</dt>
+                <dd id="timelapse-library-size" class="metric__value">—</dd>
+              </div>
+            </dl>
+            <p class="field__hint">For bulk export, use the Samba (SMB) share on the emulated SD card. Deletion is not offered here.</p>
+          </section>
+
+          <section class="card" aria-labelledby="timelapse-build-title">
+            <h3 id="timelapse-build-title" class="card__title">Build video</h3>
+            <p class="field__hint">Assembles the stored JPEG frames into an MJPEG AVI. One build runs at a time; a duplicate request is refused.</p>
+            <div class="form-actions">
+              <button id="timelapse-build" class="btn btn--primary" type="button">Build video</button>
+              <button id="timelapse-refresh" class="btn" type="button">Refresh</button>
+            </div>
+            <p id="timelapse-build-status" class="field__hint" role="status" aria-live="polite"></p>
+          </section>
+
+          <section class="card" aria-labelledby="timelapse-videos-title">
+            <h3 id="timelapse-videos-title" class="card__title">Videos</h3>
+            <div id="timelapse-filters" class="filters" role="group" aria-label="Filter videos by status">
+              <button class="chip" type="button" data-timelapse-filter="all" aria-pressed="true">All</button>
+              <button class="chip" type="button" data-timelapse-filter="completed" aria-pressed="false">Completed</button>
+              <button class="chip" type="button" data-timelapse-filter="error" aria-pressed="false">Error</button>
+              <button class="chip" type="button" data-timelapse-filter="pending" aria-pressed="false">Pending</button>
+              <button class="chip" type="button" data-timelapse-filter="unknown" aria-pressed="false">Unknown</button>
+            </div>
+            <p id="timelapse-videos-empty" class="placeholder__text" hidden>No timelapse videos yet. Build one from the stored frames.</p>
+            <table id="timelapse-videos" class="media-table" hidden>
+              <caption class="visually-hidden">Assembled timelapse videos</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Name</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">Playback</th>
+                  <th scope="col">Download</th>
+                </tr>
+              </thead>
+              <tbody id="timelapse-videos-body"></tbody>
+            </table>
+            <nav id="timelapse-videos-pager" class="pager" aria-label="Video pages" hidden>
+              <button id="timelapse-videos-prev" class="btn" type="button">Previous</button>
+              <span id="timelapse-videos-page" class="pager__label"></span>
+              <button id="timelapse-videos-next" class="btn" type="button">Next</button>
+            </nav>
+            <p id="timelapse-playback-note" class="field__hint">Inline playback depends on the browser's MJPEG AVI support; direct download always works.</p>
+          </section>
+
+          <section class="card" aria-labelledby="timelapse-frames-title">
+            <h3 id="timelapse-frames-title" class="card__title">Frames</h3>
+            <p class="field__hint">JPEG frames currently stored on the SD card and waiting to be assembled.</p>
+            <p id="timelapse-frames-empty" class="placeholder__text" hidden>No frames stored yet.</p>
+            <div id="timelapse-frames-grid" class="media-grid"></div>
+            <nav id="timelapse-frames-pager" class="pager" aria-label="Frame pages" hidden>
+              <button id="timelapse-frames-prev" class="btn" type="button">Previous</button>
+              <span id="timelapse-frames-page" class="pager__label"></span>
+              <button id="timelapse-frames-next" class="btn" type="button">Next</button>
+            </nav>
+          </section>
         </section>
 
         <section id="view-integrations" class="view" data-view-panel="integrations" aria-labelledby="view-integrations-title" hidden>

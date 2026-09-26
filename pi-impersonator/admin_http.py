@@ -92,6 +92,8 @@ import dashboard
 import expert_config
 import factory_reset as factory_reset_module
 import live_monitor
+import media_build
+import media_library
 import mqtt_service
 import mqtt_topics
 import provisioning
@@ -100,6 +102,7 @@ import runtime_ipc
 import settings_coordinator
 import setup_wizard
 import ssh_control
+import timelapse
 
 log = logging.getLogger('prusa-cam.admin_http')
 
@@ -236,11 +239,23 @@ class Request:
 
 @dataclasses.dataclass
 class Response:
-    """One transport-neutral HTTP response; ``body`` is always bytes."""
+    """One transport-neutral HTTP response; ``body`` is always bytes.
+
+    A media response may instead carry an already-opened, already-revalidated
+    binary ``file`` plus ``file_offset``/``file_length``. The core performs
+    every authorization, allowlist, and ``fstat`` check and hands the transport
+    a positioned descriptor, so the transport can stream a bounded chunk at a
+    time without duplicating any auth or reading a whole file into memory. When
+    ``file`` is set, ``body`` is empty and the transport is responsible for
+    closing the file.
+    """
 
     status: int
     headers: dict = dataclasses.field(default_factory=dict)
     body: bytes = b''
+    file: object = None
+    file_offset: int = 0
+    file_length: int = 0
 
     def __post_init__(self):
         if isinstance(self.body, str):
@@ -296,6 +311,16 @@ INTEGRATION_RESTART_WARNING = (
     'Saved. The camera runtime must restart before this change is active; '
     'until then the previous configuration remains in use.'
 )
+
+#: Largest accepted ``POST /api/media/timelapses/build`` body. It carries at
+#: most one bounded FPS integer.
+MAX_MEDIA_BUILD_BODY_BYTES = 1024
+
+#: Fixed, path-free reason surfaced when a job id is unknown.
+MEDIA_JOB_UNKNOWN = 'no such build job'
+
+#: Default ``GET /api/media/*`` page size (clamped by media_library bounds).
+MEDIA_DEFAULT_PAGE_SIZE = 24
 
 #: Provisioning states in which the public setup wizard is available.
 PRE_CLAIM_STATES = frozenset({
@@ -396,6 +421,8 @@ class AdminApp:
         dashboard_provider=None,
         settings_actions=None,
         live_monitor=None,
+        media_dir=None,
+        build_manager=None,
     ):
         if mode not in ('setup', 'admin'):
             raise ValueError("mode must be 'setup' or 'admin'")
@@ -449,6 +476,14 @@ class AdminApp:
         # loop or the single admin-core worker. ``None`` reports the monitor as
         # unavailable instead of fabricating a frame.
         self._live_monitor = live_monitor
+        # WP-UI6/AC-12: the allowlisted media root. Catalog/delivery never
+        # accept a path from a request, only a validated basename under here.
+        self._media_dir = (
+            media_dir if media_dir is not None else media_library.DEFAULT_MEDIA_DIR
+        )
+        # WP-UI6/AC-13: the one serialized background build manager. ``None``
+        # reports builds as unavailable rather than fabricating a job.
+        self._build_manager = build_manager
 
         # Lazily built wizard session and reset confirmation state.
         self._wizard = None
@@ -497,6 +532,30 @@ class AdminApp:
             Route(
                 'GET', re.compile(r'^/api/live/status$'),
                 _AUTHENTICATED, self._handle_live_status,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/media/timelapses$'),
+                _AUTHENTICATED, self._handle_media_videos,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/media/timelapses/(?P<name>[^/]+)$'),
+                _AUTHENTICATED, self._handle_media_video_download,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/media/frames$'),
+                _AUTHENTICATED, self._handle_media_frames,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/media/frames/(?P<name>[^/]+)$'),
+                _AUTHENTICATED, self._handle_media_frame_download,
+            ),
+            Route(
+                'POST', re.compile(r'^/api/media/timelapses/build$'),
+                _AUTHENTICATED, self._handle_media_build,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/media/jobs/(?P<id>[^/]+)$'),
+                _AUTHENTICATED, self._handle_media_job,
             ),
             Route(
                 'PATCH', re.compile(r'^/api/settings$'),
@@ -1152,12 +1211,220 @@ class AdminApp:
     def close(self):
         """Stop the shared live-monitor producer (idempotent; never raises)."""
         monitor = self._live_monitor
-        if monitor is None:
-            return
+        if monitor is not None:
+            try:
+                monitor.stop()
+            except Exception:  # noqa: BLE001 - shutdown must never raise
+                log.warning('admin_http: live monitor stop failed')
+        manager = self._build_manager
+        if manager is not None:
+            try:
+                manager.stop()
+            except Exception:  # noqa: BLE001 - shutdown must never raise
+                log.warning('admin_http: timelapse build manager stop failed')
+
+    # ------------------------------------------------------------------ #
+    # Timelapse media library (WP-UI6; AC-12/AC-13/AC-17/AC-18)
+    # ------------------------------------------------------------------ #
+
+    def _media_page(self, request):
+        """Parse strict ``page``/``page_size`` bounds, or return an error string."""
+        query = request.query if isinstance(request.query, dict) else {}
+        page = _query_int(query.get('page'), 1, 1, media_library.MAX_PAGE)
+        if page is None:
+            return None, None, 'invalid page'
+        page_size = _query_int(
+            query.get('page_size'), MEDIA_DEFAULT_PAGE_SIZE, 1,
+            media_library.MAX_PAGE_SIZE,
+        )
+        if page_size is None:
+            return None, None, 'invalid page_size'
+        return page, page_size, None
+
+    def _media_status_filter(self, request):
+        """Return ``(raw_char_or_None, error)`` for the ``status`` query filter.
+
+        Accepts the UI label (``completed``/``error``/``pending``/``unknown``),
+        the raw firmware char (``D``/``E``/``P``/``U``), or ``all``/absent.
+        """
+        query = request.query if isinstance(request.query, dict) else {}
+        raw = query.get('status')
+        if raw is None or raw == '' or raw == 'all':
+            return None, None
+        if isinstance(raw, list):
+            raw = raw[0] if raw else None
+        if not isinstance(raw, str):
+            return None, 'invalid status'
+        if raw in media_library.STATUS_CHARS:
+            return media_library.STATUS_CHARS[raw], None
+        if raw in media_library.STATUS_LABELS:
+            return raw, None
+        return None, 'invalid status'
+
+    def _handle_media_videos(self, request, match, body_data, now):
+        """Paginated metadata for allowlisted ``.avi`` artifacts (AC-12).
+
+        Only stat metadata is returned: name, size, mtime, and the raw
+        ``D/E/P/U`` index char mapped to a label. No path, index contents, or
+        file bytes appear. Pagination is strict and the scan is capped.
+        """
+        page, page_size, error = self._media_page(request)
+        if error:
+            return self._error(request, 400, error)
+        status_filter, error = self._media_status_filter(request)
+        if error:
+            return self._error(request, 400, error)
+        entries, truncated = media_library.catalog_videos(self._media_dir)
+        payload = {'ok': True, 'kind': 'videos', 'truncated': truncated}
+        payload['bytes_total'] = sum(entry.size for entry in entries)
+        payload['status_counts'] = media_library.status_counts(entries)
+        if status_filter is not None:
+            entries = [entry for entry in entries if entry.status == status_filter]
+        payload.update(media_library.paginate(entries, page, page_size))
+        for item in payload['items']:
+            item['download_url'] = f"/api/media/timelapses/{item['name']}"
+        return self._json(request, 200, payload)
+
+    def _handle_media_frames(self, request, match, body_data, now):
+        """Paginated metadata for allowlisted stored ``.jpg`` frames (AC-12)."""
+        page, page_size, error = self._media_page(request)
+        if error:
+            return self._error(request, 400, error)
+        entries, truncated = media_library.catalog_frames(self._media_dir)
+        payload = {'ok': True, 'kind': 'frames', 'truncated': truncated}
+        payload['bytes_total'] = sum(entry.size for entry in entries)
+        payload.update(media_library.paginate(entries, page, page_size))
+        for item in payload['items']:
+            item['preview_url'] = f"/api/media/frames/{item['name']}"
+            item['download_url'] = item['preview_url']
+        return self._json(request, 200, payload)
+
+    def _handle_media_video_download(self, request, match, body_data, now):
+        """Serve one allowlisted AVI with a single byte range (AC-12).
+
+        The core opens the file with ``O_NOFOLLOW`` and revalidates it with
+        ``fstat`` before any header is produced. It parses exactly one
+        ``bytes=`` range, answers 206/200 with a bounded descriptor, and hands
+        the transport an already-positioned file so the AVI is streamed in
+        chunks, never read whole.
+        """
+        name = match.group('name')
         try:
-            monitor.stop()
-        except Exception:  # noqa: BLE001 - shutdown must never raise
-            log.warning('admin_http: live monitor stop failed')
+            handle, size, _kind = media_library.open_media(
+                self._media_dir, name, expect='video')
+        except media_library.MediaError as exc:
+            return self._error(request, exc.status, exc.message)
+        try:
+            span = media_library.parse_range(
+                _header(request.headers, 'Range'), size)
+        except media_library.RangeNotSatisfiable:
+            handle.close()
+            response = self._json(request, 416, {'ok': False, 'error': 'range not satisfiable'})
+            response.headers['Content-Range'] = f'bytes */{size}'
+            response.headers['Accept-Ranges'] = 'bytes'
+            response.headers['Cache-Control'] = 'private, no-store'
+            return response
+
+        if span is None:
+            status, start, end = 200, 0, (size - 1 if size else 0)
+        else:
+            status, (start, end) = 206, span
+        length = (end - start + 1) if size else 0
+        headers = {
+            'Content-Type': 'video/x-msvideo',
+            'Content-Disposition': f'attachment; filename="{name}"',
+            'Accept-Ranges': 'bytes',
+            'Cache-Control': 'private, no-store',
+            'Content-Length': str(length),
+        }
+        if status == 206:
+            headers['Content-Range'] = f'bytes {start}-{end}/{size}'
+        try:
+            handle.seek(start)
+        except OSError:
+            handle.close()
+            return self._error(request, 500, 'media unavailable')
+        return Response(
+            status, headers, b'', file=handle, file_offset=0, file_length=length)
+
+    def _handle_media_frame_download(self, request, match, body_data, now):
+        """Serve one allowlisted, bounded JPEG frame as a preview (AC-12).
+
+        The frame must be a regular, non-symlink file within the size bound and
+        carry a valid JPEG start-of-image prefix; it is streamed, so even a
+        planted near-limit JPEG is never decoded or buffered whole.
+        """
+        name = match.group('name')
+        try:
+            handle, size, _kind = media_library.open_media(
+                self._media_dir, name, expect='frame')
+        except media_library.MediaError as exc:
+            return self._error(request, exc.status, exc.message)
+        try:
+            head = handle.read(3)
+            handle.seek(0)
+        except OSError:
+            handle.close()
+            return self._error(request, 500, 'media unavailable')
+        if not media_library.valid_jpeg_head(head):
+            handle.close()
+            return self._error(request, 404, 'not found')
+        headers = {
+            'Content-Type': 'image/jpeg',
+            'Content-Disposition': f'inline; filename="{name}"',
+            'Cache-Control': 'private, max-age=300',
+            'Content-Length': str(size),
+        }
+        return Response(200, headers, b'', file=handle, file_offset=0, file_length=size)
+
+    def _handle_media_build(self, request, match, body_data, now):
+        """Queue one serialized, gated background AVI build (AC-13).
+
+        Authenticated + CSRF (POST policy). The injected manager owns the single
+        job and the preflight memory/frame/space gates; a duplicate request is a
+        bounded 409 and a gate failure a bounded 422/507. The handler never runs
+        the build itself.
+        """
+        if _body_size(request) > MAX_MEDIA_BUILD_BODY_BYTES:
+            return self._error(request, 413, 'request body too large')
+        body = body_data if isinstance(body_data, dict) else {}
+        unknown = [key for key in body if key not in ('fps',)]
+        if unknown:
+            return self._error(request, 400, 'unknown field')
+        fps = body.get('fps', timelapse.DEFAULT_FPS) if 'fps' in body else timelapse.DEFAULT_FPS
+        valid_fps = timelapse.valid_fps(fps)
+        if valid_fps is None:
+            return self._error(request, 400, 'invalid fps')
+        manager = self._build_manager
+        if manager is None:
+            return self._error(request, 503, 'build unavailable')
+        result = manager.start(valid_fps)
+        if not result.get('ok'):
+            code = result.get('code')
+            status = 409 if code == 'busy' else (507 if code == 'low_space' else 422)
+            return self._json(request, status, {
+                'ok': False,
+                'error': result.get('error') or 'build rejected',
+                'job_id': result.get('job_id') or '',
+            })
+        return self._json(request, 202, {'ok': True, 'job': result['job']})
+
+    def _handle_media_job(self, request, match, body_data, now):
+        """Return bounded status for one build job id (AC-13).
+
+        Job ids are 128-bit random values, so a client cannot enumerate them.
+        Visibility is intentionally global to any authenticated admin session;
+        the bounded view carries only state/progress/fixed reason/timestamps
+        (no path, name, or secret), so that is safe.
+        """
+        manager = self._build_manager
+        if manager is None:
+            return self._error(request, 503, 'build unavailable')
+        job_id = match.group('id')
+        view = manager.status(job_id)
+        if view is None:
+            return self._error(request, 404, MEDIA_JOB_UNKNOWN)
+        return self._json(request, 200, {'ok': True, 'job': view})
 
     def _handle_settings_patch(self, request, match, body_data, now):
         """Apply one bounded settings mutation through the live coordinator.
@@ -1899,6 +2166,27 @@ def _header(headers, name):
         if isinstance(key, str) and key.lower() == lowered:
             return value
     return None
+
+
+def _query_int(value, default, low, high):
+    """Parse a strict bounded integer query parameter, or ``None`` if invalid.
+
+    An absent/empty value uses ``default``; a repeated value uses its first
+    element. Anything non-integral or outside ``[low, high]`` is rejected.
+    """
+    if value is None or value == '':
+        return default
+    if isinstance(value, list):
+        value = value[0] if value else ''
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    if parsed < low or parsed > high:
+        return None
+    return parsed
 
 
 def _etag(data):

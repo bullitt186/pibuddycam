@@ -212,29 +212,14 @@ def _avi_chunk(fourcc, payload):
     return fourcc + struct.pack('<I', len(payload)) + payload + padding
 
 
-def _build_avi_bytes(payloads, fps, width, height):
-    """Serialize JPEG frames as an MJPEG-in-AVI stream (RIFF/AVI + ``idx1``).
+def _avi_header(fps, width, height, frame_count, max_frame, total_bytes):
+    """Build the ``hdrl`` list bytes shared by the byte and stream writers.
 
-    Layout: ``RIFF/AVI `` -> ``LIST hdrl`` (``avih``, ``LIST strl`` with
-    ``strh``/``strf``) -> ``LIST movi`` (one ``00dc`` chunk per JPEG) ->
-    ``idx1`` (one keyframe entry per frame). Every size field is exact.
+    Both writers must produce byte-identical output, so the header arithmetic
+    lives in exactly one place.
     """
-    frame_count = len(payloads)
-    max_frame = max(len(p) for p in payloads)
-    total_bytes = sum(len(p) for p in payloads)
     micro_per_frame = max(1, int(1_000_000 / fps))
     max_bytes_per_sec = int(total_bytes * fps / frame_count)
-
-    # The 'movi' bytearray begins with the 'movi' fourcc, so a chunk's offset
-    # from that start is exactly the idx1 offset (relative to the movi list).
-    movi = bytearray(b'movi')
-    idx = bytearray()
-    for jpeg in payloads:
-        offset = len(movi)
-        movi += _avi_chunk(b'00dc', jpeg)
-        # idx1 entry: chunk id, AVIIF_KEYFRAME, offset, size (16 bytes).
-        idx += b'00dc' + struct.pack('<III', 0x10, offset, len(jpeg))
-
     avih = struct.pack(
         '<IIIIIIIIII4I',
         micro_per_frame, max_bytes_per_sec, 0, 0x10,  # flags = AVIF_HASINDEX
@@ -250,16 +235,136 @@ def _build_avi_bytes(payloads, fps, width, height):
         '<IiiHH4sIiiII',
         40, width, height, 1, 24, b'MJPG', width * height * 3, 0, 0, 0, 0,
     )
-
     strl_body = b'strl' + _avi_chunk(b'strh', strh) + _avi_chunk(b'strf', strf)
     strl = b'LIST' + struct.pack('<I', len(strl_body)) + strl_body
     hdrl_body = b'hdrl' + _avi_chunk(b'avih', avih) + strl
-    hdrl = b'LIST' + struct.pack('<I', len(hdrl_body)) + hdrl_body
+    return b'LIST' + struct.pack('<I', len(hdrl_body)) + hdrl_body
+
+
+def _build_avi_bytes(payloads, fps, width, height):
+    """Serialize JPEG frames as an MJPEG-in-AVI stream (RIFF/AVI + ``idx1``).
+
+    Layout: ``RIFF/AVI `` -> ``LIST hdrl`` (``avih``, ``LIST strl`` with
+    ``strh``/``strf``) -> ``LIST movi`` (one ``00dc`` chunk per JPEG) ->
+    ``idx1`` (one keyframe entry per frame). Every size field is exact.
+
+    This in-memory form is retained for reference/golden tests; the Pi path
+    uses :func:`_build_avi_stream`, which produces byte-identical output
+    without holding every JPEG in memory.
+    """
+    frame_count = len(payloads)
+    max_frame = max(len(p) for p in payloads)
+    total_bytes = sum(len(p) for p in payloads)
+    hdrl = _avi_header(fps, width, height, frame_count, max_frame, total_bytes)
+
+    # The 'movi' bytearray begins with the 'movi' fourcc, so a chunk's offset
+    # from that start is exactly the idx1 offset (relative to the movi list).
+    movi = bytearray(b'movi')
+    idx = bytearray()
+    for jpeg in payloads:
+        offset = len(movi)
+        movi += _avi_chunk(b'00dc', jpeg)
+        # idx1 entry: chunk id, AVIIF_KEYFRAME, offset, size (16 bytes).
+        idx += b'00dc' + struct.pack('<III', 0x10, offset, len(jpeg))
+
     movi_list = b'LIST' + struct.pack('<I', len(movi)) + bytes(movi)
     idx1 = b'idx1' + struct.pack('<I', len(idx)) + bytes(idx)
-
     body = b'AVI ' + hdrl + movi_list + idx1
     return b'RIFF' + struct.pack('<I', len(body)) + body
+
+
+class BuildCancelled(Exception):
+    """Raised by a streaming build when its stop event is set."""
+
+
+#: Byte chunk size for streaming frame reads. Bounds the build's working set
+#: to a few tens of KiB regardless of how large a single JPEG or the backlog is.
+BUILD_READ_CHUNK = 64 * 1024
+
+#: Bytes read from the first frame to recover its JPEG SOF dimensions. Bounded
+#: so an oversized/corrupt first frame cannot be slurped whole.
+FRAME_HEAD_BYTES = 64 * 1024
+
+
+def _read_head(path, limit=FRAME_HEAD_BYTES):
+    """Read at most ``limit`` leading bytes of ``path`` (for SOF parsing)."""
+    try:
+        with open(path, 'rb') as f:
+            return f.read(limit)
+    except OSError:
+        return b''
+
+
+def _build_avi_stream(frames, fps, width, height, out, *,
+                      read_chunk=BUILD_READ_CHUNK, progress=None,
+                      stop_event=None):
+    """Stream MJPEG frames into an AVI without holding them all in memory.
+
+    ``frames`` is a sequence of ``(name, size, opener)`` where ``opener()``
+    returns a fresh binary file-like for that frame's payload. Output is
+    byte-for-byte identical to :func:`_build_avi_bytes` for the same payloads
+    (a golden test enforces this), but only ``read_chunk`` bytes of a single
+    frame are resident at a time, and the ``idx1`` table is written entry by
+    entry in a second pass rather than buffered, so index metadata is bounded
+    too. ``progress(written, total)`` is called after each frame and
+    ``stop_event`` is checked between chunks.
+    """
+    frame_count = len(frames)
+    if frame_count == 0:
+        raise ValueError('no frames to build')
+    # Two passes over the (already in-memory) name/size metadata: the first
+    # derives the header arithmetic, the second writes the idx1 table. Neither
+    # buffers payloads or a per-frame index blob, so working memory is O(1) in
+    # the total frame bytes and in the number of frames beyond the caller's own
+    # sequence.
+    max_frame = 0
+    total_bytes = 0
+    movi_payload_len = 4
+    for _name, size, _opener in frames:
+        size = int(size)
+        if size > max_frame:
+            max_frame = size
+        total_bytes += size
+        movi_payload_len += 8 + size + (size & 1)
+    hdrl = _avi_header(fps, width, height, frame_count, max_frame, total_bytes)
+    idx_len = 16 * frame_count
+    body_len = 4 + len(hdrl) + 8 + movi_payload_len + 8 + idx_len
+
+    out.write(b'RIFF' + struct.pack('<I', body_len) + b'AVI ')
+    out.write(hdrl)
+    out.write(b'LIST' + struct.pack('<I', movi_payload_len) + b'movi')
+
+    # Offsets in idx1 are relative to the movi list body (starting at 'movi').
+    offset = 4
+    written = 0
+    for _name, size, opener in frames:
+        size = int(size)
+        out.write(b'00dc' + struct.pack('<I', size))
+        remaining = size
+        with opener() as handle:
+            while remaining > 0:
+                if stop_event is not None and stop_event.is_set():
+                    raise BuildCancelled()
+                chunk = handle.read(min(read_chunk, remaining))
+                if not chunk:
+                    raise OSError('frame truncated')
+                out.write(chunk)
+                remaining -= len(chunk)
+        if size & 1:
+            out.write(b'\x00')
+        offset += 8 + size + (size & 1)
+        written += 1
+        if progress is not None:
+            progress(written, frame_count)
+
+    # Second pass: the idx1 table is streamed straight to the output so a large
+    # frame count cannot grow an in-memory index buffer.
+    out.write(b'idx1' + struct.pack('<I', idx_len))
+    offset = 4
+    for _name, size, _opener in frames:
+        size = int(size)
+        out.write(b'00dc' + struct.pack('<III', 0x10, offset, size))
+        offset += 8 + size + (size & 1)
 
 
 # Video status chars (FUN_000aee3c / FUN_000ac134): 0x44 'D' done, 0x45 'E'
@@ -319,35 +424,71 @@ def file_list_entries(dir=TIMELAPSE_DIR):
     )
 
 
-def build_avi(dir=TIMELAPSE_DIR, fps=DEFAULT_FPS, width=None, height=None):
-    """Assemble the sorted JPEG frames into an MJPEG-in-AVI file.
+def build_avi(dir=TIMELAPSE_DIR, fps=DEFAULT_FPS, width=None, height=None, *,
+              names=None, progress=None, stop_event=None):
+    """Assemble sorted JPEG frames into an MJPEG-in-AVI file, streaming frames.
 
     Returns the ``.avi`` path, or ``None`` when no frames are stored. Dimensions
     come from the first frame's SOF marker, falling back to the caller-provided
     values. The filename uses the firmware timestamp convention and one row is
-    appended to ``.timelapse_videos.csv``.
+    appended to ``.timelapse_videos.csv`` (``E`` on failure, ``D`` on success),
+    exactly as before.
+
+    ``names`` may restrict the build to an explicit, already-validated frame
+    basename list (the admin build manager passes the non-symlink regular files
+    it catalogued); the default is every stored frame. Frames are read one at a
+    time in bounded chunks, so a large backlog cannot exhaust Pi memory. A set
+    ``stop_event`` raises :class:`BuildCancelled` between chunks.
     """
-    frames = list_frames(dir)
+    if names is None:
+        frames = list_frames(dir)
+    else:
+        # Callers must pass validated frame basenames; re-check the frame
+        # convention and that no separator/dot path slipped in, so a
+        # programmatic mistake cannot escape the directory or build a non-frame.
+        frames = [
+            name for name in names
+            if isinstance(name, str) and name == os.path.basename(name)
+            and '/' not in name and '\\' not in name
+            and name.startswith(FRAME_PREFIX) and name.endswith(FRAME_SUFFIX)
+        ]
     if not frames:
         return None
-    payloads = []
-    for name in frames:
-        with open(os.path.join(dir, name), 'rb') as f:
-            payloads.append(f.read())
-    dims = _jpeg_dimensions(payloads[0])
+
+    paths = [os.path.join(dir, name) for name in frames]
+    try:
+        sizes = [os.path.getsize(path) for path in paths]
+    except OSError:
+        return None
+    dims = _jpeg_dimensions(_read_head(paths[0]))
     if dims is not None:
         width, height = dims
     width = width or 640
     height = height or 480
     fps = max(1, int(fps))
     output_path = _unique_name(dir, AVI_SUFFIX, time.time())
+    entries = [
+        (name, size, (lambda path=path: open(path, 'rb')))
+        for name, size, path in zip(frames, sizes, paths)
+    ]
     try:
-        data = _build_avi_bytes(payloads, fps, width, height)
-        with open(output_path, 'wb') as f:
-            f.write(data)
+        with open(output_path, 'wb') as out:
+            _build_avi_stream(
+                entries, fps, width, height, out,
+                progress=progress, stop_event=stop_event,
+            )
     except Exception:
-        # FUN_000aee3c records 'E' when a build fails.
-        _append_video_index(dir, os.path.basename(output_path), VIDEO_STATUS_ERROR)
+        # FUN_000aee3c records 'E' when a build fails. The partial artifact is
+        # removed so a truncated AVI is never listed, served, or mistaken for a
+        # completed build; the index keeps the historical E row.
+        try:
+            os.unlink(output_path)
+        except OSError:
+            pass
+        try:
+            _append_video_index(dir, os.path.basename(output_path), VIDEO_STATUS_ERROR)
+        except OSError:
+            pass  # never mask the original build failure with an index write error
         raise
     _append_video_index(dir, os.path.basename(output_path), VIDEO_STATUS_DONE)
     return output_path

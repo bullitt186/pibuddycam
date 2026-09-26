@@ -833,6 +833,106 @@ class AdminLiveMonitorUiTests(unittest.TestCase):
             self.assertIn(marker, self.css, marker)
 
 
+class AdminTimelapseUiTests(unittest.TestCase):
+    """WP-UI6 (AC-12/AC-13): the Timelapses view is bounded, honest, no-delete."""
+
+    def setUp(self):
+        self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
+        self.js = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
+        self.code = _strip_js_comments(self.js)
+
+    def test_view_has_stats_build_filters_and_browsers(self):
+        for marker in (
+            'id="view-timelapses"', 'id="timelapses-state"',
+            'id="timelapse-video-count"', 'id="timelapse-frame-count"',
+            'id="timelapse-library-size"', 'id="timelapse-build"',
+            'id="timelapse-refresh"', 'id="timelapse-build-status"',
+            'id="timelapse-filters"', 'id="timelapse-videos"',
+            'id="timelapse-videos-body"', 'id="timelapse-videos-empty"',
+            'id="timelapse-videos-pager"', 'id="timelapse-frames-grid"',
+            'id="timelapse-frames-empty"', 'id="timelapse-frames-pager"',
+        ):
+            self.assertIn(marker, self.html, marker)
+        for status in ('all', 'completed', 'error', 'pending', 'unknown'):
+            self.assertIn(f'data-timelapse-filter="{status}"', self.html)
+
+    def test_library_mentions_smb_and_offers_no_deletion(self):
+        self.assertIn('SMB', self.html)
+        self.assertIn('Deletion is not offered', self.html)
+        for forbidden in (
+            'timelapse-delete', 'media-delete', 'data-delete',
+            "method: 'DELETE'", 'Delete video', 'Delete frame',
+        ):
+            self.assertNotIn(forbidden, self.html, forbidden)
+            self.assertNotIn(forbidden, self.code, forbidden)
+        self.assertNotIn('/delete', self.code)
+
+    def test_js_lists_paginated_videos_and_frames(self):
+        self.assertIn('/api/media/timelapses?', self.code)
+        self.assertIn('/api/media/frames?', self.code)
+        self.assertIn('TIMELAPSE_PAGE_SIZE', self.code)
+        self.assertIn('TIMELAPSE_FRAME_PAGE_SIZE', self.code)
+        self.assertIn('new URLSearchParams', self.code)
+        self.assertIn('AbortController', self.code)
+
+    def test_js_has_loading_empty_and_error_states(self):
+        for marker in (
+            'Loading the timelapse library',
+            'Could not load the timelapse library',
+            'No timelapse videos yet',
+            'No frames stored yet',
+            "setTimelapseMessage('error'",
+        ):
+            self.assertIn(marker, self.html + self.code, marker)
+
+    def test_js_filters_and_pagination(self):
+        self.assertIn('selectTimelapseFilter', self.code)
+        self.assertIn("'aria-pressed'", self.code)
+        self.assertIn('setAttribute', self.code)
+        self.assertIn('changeTimelapsePage', self.code)
+        self.assertIn('changeTimelapseFramePage', self.code)
+        self.assertIn('renderPager', self.code)
+
+    def test_js_build_is_csrf_guarded_and_duplicate_prevented(self):
+        build = _function_body(self.code, 'buildTimelapse')
+        self.assertIn("'/api/media/timelapses/build'", build)
+        self.assertIn('csrf: true', build)
+        self.assertIn("status === 409", build)
+        self.assertIn('pollTimelapseBuild', build)
+        self.assertIn('disabled = true', build)
+        poll = _function_body(self.code, 'pollTimelapseBuild')
+        self.assertIn('/api/media/jobs/', poll)
+        self.assertIn('frames_written', poll)
+        self.assertIn('TIMELAPSE_JOB_POLL_MS', poll)
+        # Terminal states release the button.
+        self.assertIn('disabled = false', poll)
+
+    def test_js_build_progress_and_error_messages(self):
+        for marker in ('Queuing a build', 'Building —', 'Build complete',
+                       'Build failed'):
+            self.assertIn(marker, self.code, marker)
+
+    def test_js_playback_detection_and_download_fallback(self):
+        self.assertIn('canPlayType', self.code)
+        self.assertIn('video/x-msvideo', self.code)
+        self.assertIn('cannot play MJPEG AVI inline', self.code)
+        self.assertIn('setAttribute(\'download\'', self.code)
+
+    def test_js_loads_on_view_and_stops_on_login(self):
+        select = _function_body(self.code, 'selectView')
+        self.assertIn('loadTimelapses()', select)
+        login = _function_body(self.code, 'showLogin')
+        self.assertIn('stopTimelapsePolling', login)
+
+    def test_css_defines_timelapse_components(self):
+        for marker in (
+            '.filters', '.media-table', '.media-grid', '.media-grid__item',
+            '.pager', '.pager__label', '.overview-state--loading',
+        ):
+            self.assertIn(marker, self.css, marker)
+
+
 # --------------------------------------------------------------------------- #
 # Packaging (AC-2)                                                             #
 # --------------------------------------------------------------------------- #

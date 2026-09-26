@@ -49,6 +49,7 @@ import admin_http
 import camera_probe
 import dashboard
 import live_monitor
+import media_build
 import mqtt_probe
 import privileged
 import provisioning
@@ -92,6 +93,12 @@ ROUTES = (
     ('GET', '/api/dashboard'),
     ('GET', '/api/live/frame'),
     ('GET', '/api/live/status'),
+    ('GET', '/api/media/timelapses'),
+    ('GET', '/api/media/timelapses/{name}'),
+    ('GET', '/api/media/frames'),
+    ('GET', '/api/media/frames/{name}'),
+    ('POST', '/api/media/timelapses/build'),
+    ('GET', '/api/media/jobs/{id}'),
     ('PATCH', '/api/settings'),
     ('GET', '/api/integrations'),
     ('PUT', '/api/integrations/mqtt'),
@@ -188,13 +195,59 @@ def _to_response(response: admin_http.Response) -> web.Response:
 _CORE_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     max_workers=1, thread_name_prefix='admin-core')
 
+#: Bounded chunk size for streaming a core ``Response.file`` (WP-UI6/AC-12).
+#: The core has already authorized, allowlisted, ``fstat``-revalidated, and
+#: positioned the descriptor, so the transport only copies a bounded chunk at a
+#: time and never buffers a whole AVI.
+_STREAM_CHUNK = 64 * 1024
+
+#: Dedicated executor for file reads. Kept separate from the single admin-core
+#: worker so a long download cannot serialize unrelated API requests.
+_STREAM_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix='admin-stream')
+
+
+async def _stream_response(request, core_response):
+    """Stream one core file response in bounded chunks and always close it.
+
+    Authentication and allowlisting happen in the core before the descriptor is
+    handed over, so this adapter never duplicates auth. The copy is bounded by
+    the core-computed ``file_length`` (so it can never overread a grown file),
+    and the descriptor is closed in ``finally`` on success, disconnect, or any
+    error -- including a failure while constructing/preparing the response.
+    """
+    handle = core_response.file
+    try:
+        headers = dict(core_response.headers)
+        length = int(getattr(core_response, 'file_length', 0) or 0)
+        headers.setdefault('Content-Length', str(length))
+        stream = web.StreamResponse(status=core_response.status, headers=headers)
+        loop = asyncio.get_running_loop()
+        await stream.prepare(request)
+        remaining = length
+        while remaining > 0:
+            chunk = await loop.run_in_executor(
+                _STREAM_EXECUTOR, handle.read, min(_STREAM_CHUNK, remaining))
+            if not chunk:
+                break
+            await stream.write(chunk)
+            remaining -= len(chunk)
+        await stream.write_eof()
+        return stream
+    finally:
+        try:
+            handle.close()
+        except Exception:  # noqa: BLE001 - closing must never mask the response
+            pass
+
 
 async def _handle(request):
     """Dispatch one aiohttp request through the stdlib admin core.
 
     The core runs on the dedicated single worker thread, never inline on the
     event loop, so a blocking handler (the MQTT broker probe) cannot stall
-    other requests or the loop.
+    other requests or the loop. A media response carrying an open descriptor is
+    streamed by the transport.
     """
     app = request.app['admin_app']
     body = await request.read()
@@ -202,6 +255,8 @@ async def _handle(request):
     loop = asyncio.get_running_loop()
     core_response = await loop.run_in_executor(
         _CORE_EXECUTOR, app.handle, core_request)
+    if getattr(core_response, 'file', None) is not None:
+        return await _stream_response(request, core_response)
     return _to_response(core_response)
 
 
@@ -319,6 +374,15 @@ def _default_live_monitor():
     return live_monitor.LiveMonitor()
 
 
+def _default_build_manager():
+    """Return the one serialized timelapse build manager (WP-UI6; AC-13).
+
+    Construction starts no thread. The manager owns the single job, preflight
+    gates, the exclusive build lock, and the streaming writer.
+    """
+    return media_build.BuildManager()
+
+
 def _settings_action(client):
     """Build the runtime-IPC settings mutation callable (WP-UI3; AC-5).
 
@@ -356,7 +420,7 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
                     provisioning_path=None, hotspot_controller=None, probe=None,
                     start_camera=None, activate_station=None, mqtt_probe=None,
                     dashboard_provider=None, settings_actions=None,
-                    live_monitor=None):
+                    live_monitor=None, build_manager=None):
     """Build the stdlib :class:`admin_http.AdminApp` with real dependencies.
 
     Paths default to the durable ``/data`` locations through the core's own
@@ -412,6 +476,10 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
         live_monitor=(
             live_monitor if live_monitor is not None
             else _default_live_monitor()
+        ),
+        build_manager=(
+            build_manager if build_manager is not None
+            else _default_build_manager()
         ),
         device_path=device_path,
         secrets_path=secrets_path,
