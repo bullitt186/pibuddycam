@@ -84,6 +84,39 @@ Test state (temporary, removed after): `/etc/prusa-updater.conf` pointed at the
 test manifest URL with `SSL_CERT_FILE`, and `/data/prusa-cam/test-ca.pem` was
 present; both were reverted and ROOT remounted read-only.
 
+## Admin TLS provisioning (appliance image/security defect — repo fix, live verification pending)
+
+Live diagnosis found `prusa-admin` serving HTTP on `:443` because
+`/etc/prusa-cam/admin.env` did not exist. `admin_app.py` only *consumed*
+`ADMIN_TLS_CERT`/`ADMIN_TLS_KEY`; nothing generated them. This is an appliance
+image/security defect, not a firmware `GAP-*` item.
+
+**Repo implementation (this change):**
+
+- `pi-impersonator/admin_tls.py` generates a device self-signed keypair once,
+  durably, under `/data/prusa-cam/config/admin-tls/` (key `0600`, cert `0644`,
+  both `prusa-cam`-owned) and recreates the volatile `/etc/prusa-cam/admin.env`
+  (`0640`) on every boot. The SAN covers `buddy3d-<device-id>.local`; a LAN IP
+  change never regenerates the keypair.
+- `pi-persist.service` (root, `Before=data-ready.target prusa-admin.service`)
+  calls it via `persist_restore._provision_admin_tls`; a provisioning failure is
+  logged and isolated so the camera still starts.
+- `admin_app.py` now **fails closed** in `admin` mode: missing or invalid TLS
+  makes `run` raise `SystemExit` instead of serving plaintext. The setup portal
+  stays plain HTTP on `192.168.4.1`.
+- `openssl` is added explicitly to the image package manifest; it is invoked as
+  an argv list (never through a shell).
+- `validate-image.sh` asserts the module, the `openssl` binary, the admin unit's
+  `admin.env` wiring, the setup-portal HTTP behavior, and the fail-closed
+  `admin_app` wiring.
+
+**Pending live verification (not yet done):** boot a freshly flashed image and
+confirm `/data/prusa-cam/config/admin-tls/` is created once, `/etc/prusa-cam/
+admin.env` is recreated on reboot, the same certificate survives a reboot,
+`https://buddy3d-<device-id>.local/admin` serves TLS on `:443` only, removing
+`admin.env`/the keypair makes `prusa-admin.service` fail instead of serving HTTP,
+and the setup hotspot still serves `http://192.168.4.1`.
+
 ## Defects found only on hardware
 
 | # | Symptom on device | Root cause | Fix |
@@ -107,6 +140,7 @@ present; both were reverted and ROOT remounted read-only.
 | 17 | Install reports success but the device still runs the **factory** app | `default_restart_services` ran `systemctl restart prusa-camera.target`; the launcher units are `WantedBy=multi-user.target` with no `PartOf=`, so restarting the target restarts none of them and health passed against the stale app | restart the four units that exec `launcher.sh` by name (`5de54c9`) |
 | 18 | Same as 17 after fixing the restart: `ps` shows `/opt/prusa-cam/main.py` although `current` points at the release | `tempfile.mkdtemp` creates the staging dir `0700 root`; `switch_release` renamed it unchanged, and the launcher runs as the unprivileged `prusa-cam` user, which cannot traverse a `0700` root dir, so it silently fell back to the factory app | chmod the activated release dir to `0755` (root-owned, world-traversable) in `switch_release` (`22363b2`) |
 | 19 | Connect configuration reached the app, but video quality never changed; journal said `sudo: prusa-cam : command not allowed` | the quality path still called broad `sudo systemctl` commands, which the appliance's intentionally narrow sudoers policy rejects | add fixed `prusa-priv quality-restart` and route quality changes through it (`c1d3e76`; live-verified HD→FHD on `1.0.4`) |
+| 20 | claimed admin console served **plaintext HTTP on :443** (diagnosed live) | `/etc/prusa-cam/admin.env` was absent: `admin_app.py` consumed `ADMIN_TLS_CERT`/`ADMIN_TLS_KEY` but no boot-time generator existed, and `/etc/prusa-cam` is tmpfs while ROOT is read-only | boot-time `admin_tls.ensure()` from `pi-persist.service` generates a durable `/data` keypair and recreates `admin.env`; `admin_app` now fails closed without it. **Repo-implemented; live verification pending** (see below) |
 
 ## Operational lessons (not code bugs)
 

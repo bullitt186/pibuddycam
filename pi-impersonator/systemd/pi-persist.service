@@ -5,8 +5,10 @@ RequiresMountsFor=/data
 # would be "failed (dependency failed)" at every boot pre-partition.
 ConditionPathIsMountPoint=/data
 # Run before the readiness gate and every camera/app unit so the durable layout
-# exists before it is verified or used (AC-2, AC-7).
-Before=prusa-data-ready.service data-ready.target rpicam-source.service prusa-cam.service prusa-rtsp.service prusa-ha-rtsp.service
+# exists before it is verified or used (AC-2, AC-7). prusa-admin.service is
+# listed explicitly: this unit provisions the durable admin keypair and recreates
+# /etc/prusa-cam/admin.env, and the admin transport fails closed without it.
+Before=prusa-data-ready.service data-ready.target rpicam-source.service prusa-cam.service prusa-rtsp.service prusa-ha-rtsp.service prusa-admin.service
 [Service]
 Type=oneshot
 Environment=SERVICE_USER=prusa-cam

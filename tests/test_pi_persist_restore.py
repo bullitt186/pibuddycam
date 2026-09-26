@@ -157,6 +157,7 @@ class BindMountTests(unittest.TestCase):
         calls = []
         with patch.object(persist_restore.settings_store, 'available', return_value=True), \
                 patch.object(persist_restore, 'ensure_durable_layout'), \
+                patch.object(persist_restore, '_provision_admin_tls'), \
                 patch.object(
                     persist_restore, '_bind_mount',
                     side_effect=lambda src, dst: calls.append((src, dst)) or True,

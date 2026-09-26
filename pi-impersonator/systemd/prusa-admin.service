@@ -8,8 +8,10 @@
 # The pre-claim captive portal is served by prusa-provisioning.service instead,
 # bound to the setup hotspot at http://192.168.4.1.
 #
-# TLS is optional: ADMIN_TLS_CERT/ADMIN_TLS_KEY in /etc/prusa-cam/admin.env
-# enable it; without them the port serves plain HTTP.
+# TLS is mandatory: pi-persist.service (Before= this unit) provisions the durable
+# keypair and recreates /etc/prusa-cam/admin.env with ADMIN_TLS_CERT/ADMIN_TLS_KEY
+# on every boot. admin_app.py fails closed when they are missing or invalid, so
+# this unit never serves plaintext HTTP on :443.
 # data-ready.target gates this unit on a real, writable PERSIST /data mount (AC-7).
 [Unit]
 Description=Buddy3D camera admin / provisioning UI

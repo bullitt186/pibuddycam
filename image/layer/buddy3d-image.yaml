@@ -121,6 +121,11 @@ mmdebstrap:
     - iptables
     - ca-certificates
     - sudo
+    # Boot-time admin TLS provisioning (appliance image/security defect):
+    # pi-persist runs admin_tls.ensure(), which generates the durable self-signed
+    # keypair and recreates /etc/prusa-cam/admin.env. openssl is invoked as an
+    # argv list (never through a shell) and must be present explicitly.
+    - openssl
   customize-hooks:
     # Factory app + image layout. See image/assets/install-factory-app.sh.
     - >-

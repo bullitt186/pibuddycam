@@ -87,6 +87,7 @@ class DurableLayoutCreationTests(unittest.TestCase):
                 patch.object(persist_restore, '_chown',
                              side_effect=lambda p, u: calls['chown'].append((p, u))), \
                 patch.object(persist_restore, '_bind_mount'), \
+                patch.object(persist_restore, '_provision_admin_tls'), \
                 patch.object(persist_restore, '_restore_settings'), \
                 patch.object(persist_restore, '_prune_timelapse'):
             self.assertEqual(persist_restore.main(), 0)
@@ -127,6 +128,7 @@ class DurableLayoutCreationTests(unittest.TestCase):
                 patch.object(persist_restore, '_chown',
                              side_effect=lambda p, u: users.append((p, u))), \
                 patch.object(persist_restore, '_bind_mount'), \
+                patch.object(persist_restore, '_provision_admin_tls'), \
                 patch.object(persist_restore, '_restore_settings'), \
                 patch.object(persist_restore, '_prune_timelapse'), \
                 patch.dict(os.environ, {'SERVICE_USER': 'custom-svc'}):
@@ -189,6 +191,13 @@ class UnitLayoutTests(unittest.TestCase):
         for name in ('prusa-data-ready.service', 'data-ready.target') + APP_UNITS:
             with self.subTest(name=name):
                 self.assertIn(name, before)
+
+    def test_pi_persist_provisions_admin_tls_before_admin(self):
+        # Appliance image/security defect: pi-persist writes /etc/prusa-cam/
+        # admin.env, so it must be ordered before prusa-admin.service.
+        before = [ln for ln in unit('pi-persist.service').splitlines()
+                  if ln.startswith('Before=')][0]
+        self.assertIn('prusa-admin.service', before)
 
     def test_data_ready_gate_units(self):
         service = unit('prusa-data-ready.service')

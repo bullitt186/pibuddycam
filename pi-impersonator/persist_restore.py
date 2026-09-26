@@ -9,8 +9,11 @@ Runs as root from ``pi-persist.service`` before the camera/RTSP units. It:
    and ``/data/network/system-connections`` onto
    ``/etc/NetworkManager/system-connections`` so the station profile created at
    claim survives the read-only-root reboot (B4);
-3. restores ``quality.env`` and ``rtsp.mode`` from ``state.json``;
-4. prunes the oldest timelapse JPEG frames when ``/data`` free space is low
+3. provisions the durable admin self-signed keypair and recreates the volatile
+   ``/etc/prusa-cam/admin.env`` so ``prusa-admin.service`` can serve HTTPS
+   (appliance image/security defect; see :mod:`admin_tls`);
+4. restores ``quality.env`` and ``rtsp.mode`` from ``state.json``;
+5. prunes the oldest timelapse JPEG frames when ``/data`` free space is low
    (``.avi`` and the CSV index are never deleted).
 
 The top level is side-effect free: importing this module must not touch the
@@ -24,6 +27,7 @@ import stat
 import subprocess
 import sys
 
+import admin_tls
 import migrations
 import quality
 import rtsp_control
@@ -183,6 +187,22 @@ def ensure_durable_layout(service_user):
     return created
 
 
+def _provision_admin_tls(service_user=DEFAULT_SERVICE_USER):
+    """Provision the durable admin keypair + volatile ``admin.env`` (best-effort).
+
+    Failure is isolated: the camera/RTSP stack must still come up, and the admin
+    service fails closed on its own when ``admin.env`` is absent or broken. The
+    warning is the operator's only signal, so it names the module and reason.
+    """
+    try:
+        admin_tls.ensure(service_user)
+        log.info('persist: admin TLS keypair + admin.env provisioned')
+    except admin_tls.TlsError as e:
+        log.warning(f'persist: admin TLS provisioning failed: {e}')
+    except Exception as e:  # noqa: BLE001 - never block the settings restore
+        log.warning(f'persist: admin TLS provisioning failed unexpectedly: {e}')
+
+
 def _restore_settings(service_user=DEFAULT_SERVICE_USER):
     """Materialize quality.env and rtsp.mode from the persisted state.json.
 
@@ -284,6 +304,7 @@ def main():
 
     service_user = os.environ.get('SERVICE_USER', DEFAULT_SERVICE_USER)
     ensure_durable_layout(service_user)
+    _provision_admin_tls(service_user)
 
     _bind_mount(DATA_SDCARD, SD_MOUNT)
     _bind_mount(DATA_NETWORK_CONNECTIONS, NM_CONNECTIONS)

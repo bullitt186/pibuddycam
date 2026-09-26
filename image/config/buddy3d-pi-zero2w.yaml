@@ -91,6 +91,11 @@ packages:
   # sudo runs the fixed-verb root helper (prusa-priv) for the prusa-cam service
   # account; the image installs a narrow /etc/sudoers.d/prusa-cam rule (B3).
   - sudo
+  # Boot-time admin TLS provisioning (appliance image/security defect):
+  # admin_tls.ensure() generates the durable self-signed keypair and recreates
+  # /etc/prusa-cam/admin.env before prusa-admin.service starts. openssl is
+  # invoked with an argv list, never a shell, and must be installed explicitly.
+  - openssl
 
 env:
   # Overridden by image/scripts/build-image.sh. The defaults keep a bare

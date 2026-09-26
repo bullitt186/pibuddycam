@@ -23,8 +23,13 @@ The pre-claim captive portal binds TCP ``80`` in ``setup`` mode
 ``admin`` mode and is reached at ``https://buddy3d-<device-id>.local`` with a
 device-generated self-signed certificate (a browser warning is acceptable and
 documented in the source plan §4.5). The bind host/port and TLS context are all
-injectable. TLS is optional: when ``ADMIN_TLS_CERT``/``ADMIN_TLS_KEY`` are unset
-the server runs plain HTTP on the selected port.
+injectable.
+
+TLS is **mandatory in admin mode**: the boot-time provisioner
+(:mod:`admin_tls`, run by ``pi-persist.service``) generates the durable keypair
+and recreates ``/etc/prusa-cam/admin.env``. When that configuration is missing
+or invalid, ``run`` raises and the service fails instead of serving the console
+as plaintext. Setup mode stays plain HTTP on the captive portal.
 
 Secret hygiene
 --------------
@@ -41,11 +46,11 @@ import asyncio
 import concurrent.futures
 import logging
 import os
-import ssl
 
 from aiohttp import web
 
 import admin_http
+import admin_tls
 import app_version
 import camera_probe
 import dashboard
@@ -533,22 +538,6 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
     )
 
 
-def _ssl_context_from_env(env=None):
-    """Return a server SSL context from ``ADMIN_TLS_CERT``/``ADMIN_TLS_KEY``.
-
-    Returns ``None`` (plain HTTP) when either path is unset. A certificate and
-    key are never logged.
-    """
-    env = os.environ if env is None else env
-    cert = env.get('ADMIN_TLS_CERT')
-    key = env.get('ADMIN_TLS_KEY')
-    if not cert or not key:
-        return None
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(cert, key)
-    return context
-
-
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
@@ -561,6 +550,10 @@ def run(mode=None, *, host=None, port=None, ssl_context=None, admin_app=None):
     provisioning state, host from ``ADMIN_HOST`` (default :data:`DEFAULT_BIND_HOST`),
     port from ``ADMIN_PORT`` (default :func:`default_port`), and TLS from
     ``ADMIN_TLS_CERT``/``ADMIN_TLS_KEY``.
+
+    Admin mode **fails closed**: a missing or invalid TLS configuration raises
+    ``SystemExit`` so the unit fails rather than serving credentials over
+    plaintext HTTP on :443. Setup mode stays plain HTTP on the captive portal.
     """
     resolved = resolve_mode(mode)
     if admin_app is None:
@@ -569,13 +562,12 @@ def run(mode=None, *, host=None, port=None, ssl_context=None, admin_app=None):
         host = os.environ.get('ADMIN_HOST') or DEFAULT_BIND_HOST
     if port is None:
         port = _port_from_env(resolved)
-    if ssl_context is None:
-        ssl_context = _ssl_context_from_env()
+    try:
+        ssl_context = admin_tls.resolve_server_tls(resolved, ssl_context)
+    except admin_tls.TlsConfigurationError as e:
+        log.critical('admin_app: refusing to start: %s', e)
+        raise SystemExit(1)
     scheme = 'https' if ssl_context is not None else 'http'
-    if resolved == 'admin' and ssl_context is None:
-        log.warning(
-            'admin_app: admin mode serving WITHOUT TLS; the Secure session cookie '
-            'will not work over http — configure ADMIN_TLS_CERT/ADMIN_TLS_KEY')
     log.info('admin_app: %s UI listening on %s://%s:%s', resolved, scheme, host, port)
     # No aiohttp access log: the core already logs a redacted request line, and
     # the default access log would print query strings.
