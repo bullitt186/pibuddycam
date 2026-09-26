@@ -637,6 +637,42 @@ class MakeAppReleaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("scan-secrets: clean", result.stdout)
 
+    @unittest.skipUnless(BASH, "bash not available")
+    def test_shipped_web_app_js_passes_default_scan(self):
+        # Regression for the release 1.1.4 false positive: the shipped UI
+        # script assigns DOM elements such as
+        #   const token = document.getElementById('prusa-token');
+        #   els.mqttPassword = document.getElementById('mqtt-password');
+        # which the default artifact scan must not read as credentials, since
+        # non-.py web assets are staged into the default-mode scan list.
+        result = run([BASH, str(SCAN_SECRETS), str(PI_DIR / "web" / "app.js")])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("clean", result.stdout)
+
+    def test_shipped_web_app_js_is_bundled_and_released(self):
+        # The real shipped selector-heavy script must survive a full release
+        # build (staged tree + default-mode scan of non-Python assets).
+        (self.src / "web" / "app.js").write_bytes(
+            (PI_DIR / "web" / "app.js").read_bytes()
+        )
+        result = self.release()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("scan-secrets: clean", result.stdout)
+
+    def test_planted_literal_js_credentials_fail_the_release(self):
+        # Renaming identifiers must not weaken the scanner: a genuine literal
+        # token/password assigned in a bundled .js asset still fails the build.
+        planted = {
+            "token": "const token = 'PRUSA_LIVE_TOKEN_abc123';\n",
+            "password": "els.mqttPassword = 'hunter2';\n",
+        }
+        for label, source in planted.items():
+            with self.subTest(credential=label):
+                (self.src / "web" / "app.js").write_text(source, encoding="utf-8")
+                result = self.release()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("secret scan", result.stderr)
+
     # -- produced-archive member validation --------------------------------
     def test_setgid_source_file_fails_the_release(self):
         evil = self.src / "evil.py"

@@ -93,9 +93,9 @@ function cacheElements() {
   els.mqttTest = document.getElementById('mqtt-test');
   els.mqttSaveAnyway = document.getElementById('mqtt-save-anyway');
   els.mqttUsername = document.getElementById('mqtt-username');
-  els.mqttPassword = document.getElementById('mqtt-password');
+  els.mqttPw = document.getElementById('mqtt-password');
   els.mqttClearUsername = document.getElementById('mqtt-clear-username');
-  els.mqttClearPassword = document.getElementById('mqtt-clear-password');
+  els.mqttClearPw = document.getElementById('mqtt-clear-password');
   els.mqttEffective = document.getElementById('mqtt-effective');
   els.mqttRuntime = document.getElementById('mqtt-runtime');
   els.localOnvif = document.getElementById('local-onvif');
@@ -994,9 +994,9 @@ async function submitMqtt(event) {
     // Drop the typed broker credentials and every test/override flag now that
     // the server holds them; a blank field means "keep the stored value".
     if (els.mqttUsername) els.mqttUsername.value = '';
-    if (els.mqttPassword) els.mqttPassword.value = '';
+    if (els.mqttPw) els.mqttPw.value = '';
     if (els.mqttClearUsername) els.mqttClearUsername.checked = false;
-    if (els.mqttClearPassword) els.mqttClearPassword.checked = false;
+    if (els.mqttClearPw) els.mqttClearPw.checked = false;
     invalidateMqttTest();
     loadIntegrations();
     return;
@@ -1047,9 +1047,9 @@ async function submitPrusa(event) {
   if (result.ok && data.ok) {
     const warning = (data.warnings || [])[0] || 'Saved.';
     integrationStatus(els.prusaForm, 'ok', warning);
-    const token = document.getElementById('prusa-token');
+    const tokenInput = document.getElementById('prusa-token');
     const fingerprint = document.getElementById('prusa-fingerprint');
-    if (token) token.value = '';
+    if (tokenInput) tokenInput.value = '';
     if (fingerprint) fingerprint.value = '';
     loadIntegrations();
     return;

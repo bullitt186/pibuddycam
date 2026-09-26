@@ -690,7 +690,7 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
         code = _strip_js_comments(self.js)
         body = _function_body(code, 'submitMqtt')
         self.assertIn("els.mqttUsername.value = ''", body)
-        self.assertIn("els.mqttPassword.value = ''", body)
+        self.assertIn("els.mqttPw.value = ''", body)
         self.assertIn('invalidateMqttTest()', body)
 
     def test_collect_mqtt_body_never_includes_the_admin_password(self):
