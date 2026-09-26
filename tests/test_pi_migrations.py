@@ -155,6 +155,70 @@ class PrusaPrivNoBlockTests(unittest.TestCase):
             self.assertEqual(content.count('--no-block'), 1)
 
 
+class RuntimeDirectoryMigrationTests(unittest.TestCase):
+    ORIGINAL = textwrap.dedent("""\
+        [Service]
+        Type=simple
+        User=prusa-cam
+        WorkingDirectory=/opt/prusa-cam
+        ExecStart=/opt/prusa-cam/launcher.sh main.py
+    """)
+
+    def _write_unit(self, root, text):
+        systemd = os.path.join(root, 'etc', 'systemd', 'system')
+        os.makedirs(systemd, exist_ok=True)
+        unit = os.path.join(systemd, 'prusa-cam.service')
+        Path(unit).write_text(text)
+        return unit
+
+    def test_adds_the_runtime_directory(self):
+        with tempfile.TemporaryDirectory() as root:
+            unit = self._write_unit(root, self.ORIGINAL)
+            orig = migrations.subprocess.run
+            migrations.subprocess.run = lambda *a, **k: None
+            try:
+                self.assertTrue(migrations._006_runtime_directory(root))
+            finally:
+                migrations.subprocess.run = orig
+            content = Path(unit).read_text()
+            self.assertIn('RuntimeDirectory=prusa-cam', content)
+            self.assertIn('RuntimeDirectoryMode=0750', content)
+            # Unrelated unit content is preserved.
+            self.assertIn('ExecStart=/opt/prusa-cam/launcher.sh main.py', content)
+
+    def test_idempotent(self):
+        with tempfile.TemporaryDirectory() as root:
+            unit = self._write_unit(root, self.ORIGINAL)
+            orig = migrations.subprocess.run
+            migrations.subprocess.run = lambda *a, **k: None
+            try:
+                migrations._006_runtime_directory(root)
+                self.assertTrue(migrations._006_runtime_directory(root))
+            finally:
+                migrations.subprocess.run = orig
+            content = Path(unit).read_text()
+            self.assertEqual(content.count('RuntimeDirectory=prusa-cam'), 1)
+
+    def test_missing_unit_returns_false(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertFalse(migrations._006_runtime_directory(root))
+
+    def test_missing_user_line_returns_false_without_writing(self):
+        with tempfile.TemporaryDirectory() as root:
+            unit = self._write_unit(root, '[Service]\nExecStart=x\n')
+            orig = migrations.subprocess.run
+            migrations.subprocess.run = lambda *a, **k: None
+            try:
+                self.assertFalse(migrations._006_runtime_directory(root))
+            finally:
+                migrations.subprocess.run = orig
+            self.assertEqual(Path(unit).read_text(), '[Service]\nExecStart=x\n')
+
+    def test_registered_in_the_registry(self):
+        names = [name for name, _fn in migrations.MIGRATIONS]
+        self.assertIn('006_runtime_directory', names)
+
+
 class StateTests(unittest.TestCase):
     def test_empty_state_returns_empty_set(self):
         self.assertEqual(migrations._load_state('/nonexistent'), set())
@@ -185,6 +249,11 @@ class RunPendingTests(unittest.TestCase):
             Path(os.path.join(systemd_dir, 'pi-persist.service')).write_text(
                 '[Service]\n'
                 'ExecStart=/opt/prusa-cam/venv/bin/python /opt/prusa-cam/persist_restore.py\n'
+            )
+            Path(os.path.join(systemd_dir, 'prusa-cam.service')).write_text(
+                '[Service]\n'
+                'User=prusa-cam\n'
+                'ExecStart=/opt/prusa-cam/launcher.sh main.py\n'
             )
 
             # Patch out remount and daemon-reload (test runs unprivileged)

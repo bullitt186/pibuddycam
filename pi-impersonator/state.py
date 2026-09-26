@@ -84,6 +84,15 @@ class CameraState:
         # GAP-DEVICE-01: monotonic time of the last accepted reboot request,
         # kept on the shared state so the rate-limit guard survives triggers.
         self.last_reboot_monotonic = None
+        # WP-UI2/AC-14: transient observation timestamps for the dashboard. They
+        # are never persisted (see persistable_state) and are set by the snapshot
+        # paths so freshness reflects a real observation, not configuration.
+        # Capture (a camera read) is tracked separately from upload so the
+        # dashboard can distinguish "camera source" from "snapshot delivery".
+        self.last_capture_at = None       # epoch seconds of the last capture
+        self.last_capture_ok = None       # True/False, or None before any capture
+        self.last_snapshot_at = None      # epoch seconds of the last upload
+        self.last_snapshot_ok = None      # True/False, or None before any upload
         # Woken by set_snapshot_interval so snapshot_loop can re-read the cadence
         # without a process restart (GAP-SNAPSHOT-01).
         self.snapshot_interval_changed = asyncio.Event()

@@ -168,6 +168,13 @@ class UnitLayoutTests(unittest.TestCase):
     def test_ha_unit_still_requires_rpicam_source(self):
         self.assertIn('Requires=rpicam-source.service', unit('prusa-ha-rtsp.service'))
 
+    def test_cam_unit_creates_the_service_owned_runtime_directory(self):
+        # WP-UI2/AC-4: the local control socket lives under /run/prusa-cam; /run
+        # is root-owned, so systemd must create the directory for the service.
+        text = unit('prusa-cam.service')
+        self.assertIn('RuntimeDirectory=prusa-cam', text)
+        self.assertIn('RuntimeDirectoryMode=0750', text)
+
     def test_bootlog_and_persist_use_app_root(self):
         self.assertIn('ExecStart=/opt/prusa-cam/bootlog.sh', unit('bootlog.service'))
         persist = unit('pi-persist.service')

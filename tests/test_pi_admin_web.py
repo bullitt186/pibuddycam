@@ -470,6 +470,95 @@ class AdminDesignSystemTests(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
+# Overview dashboard UI (WP-UI2; AC-14/AC-17)                                 #
+# --------------------------------------------------------------------------- #
+
+class AdminOverviewDashboardTests(unittest.TestCase):
+    """AC-14: the Overview view polls the authenticated dashboard."""
+
+    def setUp(self):
+        self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
+        self.js = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
+        self.app = _build_app()
+
+    def test_overview_has_state_and_content_hooks(self):
+        for marker in (
+            'id="overview-state"', 'id="overview-content"',
+            'id="overview-freshness"', 'id="overview-status"',
+            'id="metric-resolution"', 'id="metric-quality"',
+            'id="metric-wifi"', 'id="metric-temp"', 'id="metric-uptime"',
+            'id="metric-storage"', 'id="metric-version"',
+        ):
+            self.assertIn(marker, self.html, marker)
+
+    def test_overview_placeholder_is_replaced(self):
+        html = self.app.handle(_make_request('GET', '/admin')).body.decode('utf-8')
+        self.assertNotIn('Nothing to show yet', html)
+        self.assertIn('id="overview-status"', html)
+
+    def test_overview_carries_the_trusted_lan_notice(self):
+        html = self.app.handle(_make_request('GET', '/admin')).body.decode('utf-8')
+        self.assertIn('Trusted LAN only', html)
+        self.assertIn('port-forward', html)
+
+    def test_js_polls_the_dashboard(self):
+        self.assertIn("fetch('/api/dashboard'", self.js)
+        self.assertIn('/api/dashboard', self.js)
+
+    def test_js_is_visibility_aware(self):
+        self.assertIn('visibilitychange', self.js)
+        self.assertIn('DASHBOARD_INTERVAL_VISIBLE', self.js)
+        self.assertIn('DASHBOARD_INTERVAL_HIDDEN', self.js)
+        self.assertIn('document.visibilityState', self.js)
+
+    def test_js_aborts_stale_requests(self):
+        self.assertIn('AbortController', self.js)
+        self.assertIn('abort()', self.js)
+        self.assertIn('AbortError', self.js)
+
+    def test_js_handles_session_expiry_on_the_dashboard(self):
+        code = _strip_js_comments(self.js)
+        self.assertIn("response.status === 401", code)
+        self.assertIn('handleExpired()', code)
+
+    def test_js_stops_polling_on_login(self):
+        code = _strip_js_comments(self.js)
+        show_login = code.split('function showLogin', 1)[1].split('function ', 1)[0]
+        self.assertIn('stopDashboardPolling', show_login)
+
+    def test_js_has_loading_degraded_and_error_states(self):
+        for marker in (
+            'renderDashboardLoading', 'renderDashboardError',
+            'renderDashboard', 'setOverviewMessage', 'clearOverviewMessage',
+        ):
+            self.assertIn(marker, self.js, marker)
+        self.assertIn("source === 'unavailable'", self.js)
+        self.assertIn("source === 'stale'", self.js)
+
+    def test_js_renders_chips_metrics_and_freshness(self):
+        for marker in (
+            'renderStatusChips', 'renderMetrics', 'renderFreshness',
+            'formatBytes', 'formatDuration', 'formatAge',
+        ):
+            self.assertIn(marker, self.js, marker)
+
+    def test_css_defines_overview_and_chip_styles(self):
+        for marker in (
+            '.overview', '.metrics', '.metric__value', '.status-chips',
+            '.overview-state', '.chip--warn', '.chip--error', '.chip--muted',
+        ):
+            self.assertIn(marker, self.css, marker)
+
+    def test_dashboard_is_read_only(self):
+        # WP-UI2 exposes no settings mutations: no PATCH/PUT/POST to settings.
+        code = _strip_js_comments(self.js)
+        self.assertNotIn("method: 'PATCH'", code)
+        self.assertNotIn("method: 'PUT'", code)
+        self.assertNotIn('/api/settings', code)
+
+
+# --------------------------------------------------------------------------- #
 # Packaging (AC-2)                                                             #
 # --------------------------------------------------------------------------- #
 

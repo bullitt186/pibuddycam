@@ -47,9 +47,11 @@ from aiohttp import web
 
 import admin_http
 import camera_probe
+import dashboard
 import mqtt_probe
 import privileged
 import provisioning
+import runtime_ipc
 
 log = logging.getLogger('prusa-cam.admin_app')
 
@@ -86,6 +88,7 @@ ROUTES = (
     ('POST', '/setup/finish'),
     ('GET', '/api/status'),
     ('GET', '/api/session'),
+    ('GET', '/api/dashboard'),
     ('POST', '/api/login'),
     ('POST', '/api/mqtt/test'),
     ('POST', '/api/logout'),
@@ -253,9 +256,26 @@ def _configured_device_id(device_path=None):
     return provisioning.resolve_device_id(device_path)
 
 
+def _default_dashboard_provider():
+    """Return the bounded runtime-IPC dashboard provider (WP-UI2; AC-4).
+
+    The admin process never constructs a ``CameraState``: it reads the live
+    runtime through :mod:`runtime_ipc`. :class:`dashboard.DashboardProvider`
+    caches the payload on a daemon thread, so the single admin-core worker
+    never blocks on a slow or absent runtime. The socket path is overridable
+    through ``RUNTIME_SOCKET_PATH`` for a non-standard install or a test.
+    """
+    socket_path = (
+        os.environ.get('RUNTIME_SOCKET_PATH') or runtime_ipc.DEFAULT_SOCKET_PATH
+    )
+    client = runtime_ipc.RuntimeClient(socket_path)
+    return dashboard.DashboardProvider(client)
+
+
 def build_admin_app(mode, *, device_path=None, secrets_path=None,
                     provisioning_path=None, hotspot_controller=None, probe=None,
-                    start_camera=None, activate_station=None, mqtt_probe=None):
+                    start_camera=None, activate_station=None, mqtt_probe=None,
+                    dashboard_provider=None):
     """Build the stdlib :class:`admin_http.AdminApp` with real dependencies.
 
     Paths default to the durable ``/data`` locations through the core's own
@@ -299,6 +319,10 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
         ),
         mqtt_probe=(
             mqtt_probe if mqtt_probe is not None else _DEFAULT_MQTT_PROBE
+        ),
+        dashboard_provider=(
+            dashboard_provider if dashboard_provider is not None
+            else _default_dashboard_provider()
         ),
         device_path=device_path,
         secrets_path=secrets_path,

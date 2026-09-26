@@ -33,6 +33,16 @@ class PrusaSignaling:
         self.sio = self._new_client()
         self._setup_handlers()
 
+    @property
+    def authenticated(self):
+        """True while the camera_authentication ACK marked the session good."""
+        return self._authenticated
+
+    @property
+    def connected(self):
+        """Socket.IO transport state, or ``None`` when it cannot be read."""
+        return getattr(self.sio, 'connected', None)
+
     def _new_client(self):
         """A fresh Socket.IO client (no stale engineio session state).
 

@@ -585,6 +585,16 @@ class MqttService:
     def last_command_error(self):
         return self._last_command_error
 
+    @property
+    def started(self):
+        """True after a successful connect; ``False`` before/failed/disconnected.
+
+        Read-only liveness view for the local dashboard (WP-UI2/AC-14). It is
+        not a substitute for a broker ping; an enabled-but-not-started service
+        is reported by the dashboard as ``unknown``, never ``connected``.
+        """
+        return self._started
+
     def command_topic(self, name):
         """Return the exact ``command/<name>`` topic for this device."""
         return mqtt_topics.command(self.device_id, name, self._config.topic_prefix)

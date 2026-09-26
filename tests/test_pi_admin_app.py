@@ -22,6 +22,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 PI_DIR = REPO / 'pi-impersonator'
 ADMIN_APP = PI_DIR / 'admin_app.py'
+ADMIN_HTTP = PI_DIR / 'admin_http.py'
 UNIT = PI_DIR / 'systemd' / 'prusa-admin.service'
 INSTALLER = REPO / 'image' / 'assets' / 'install-factory-app.sh'
 
@@ -294,6 +295,63 @@ class AdminTransportSourceTests(unittest.TestCase):
         routes_node = _module_assign(self.tree, 'ROUTES')
         declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}
         self.assertIn(('POST', '/api/mqtt/test'), declared)
+
+
+class AdminDashboardWiringTests(unittest.TestCase):
+    """WP-UI2/AC-4/AC-18: the transport injects the bounded runtime client."""
+
+    def setUp(self):
+        self.tree = _tree()
+        self.chains = _attr_chains(self.tree)
+
+    def test_route_table_declares_the_dashboard(self):
+        routes_node = _module_assign(self.tree, 'ROUTES')
+        declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}
+        self.assertIn(('GET', '/api/dashboard'), declared)
+
+    def test_build_admin_app_injects_the_dashboard_provider(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == 'build_admin_app'
+        ]
+        self.assertEqual(len(functions), 1)
+        admin_calls = [
+            call for call in _calls(functions[0])
+            if any(chain == ['admin_http', 'AdminApp'] for chain in _attr_chains(call))
+        ]
+        passed = {
+            keyword.arg for call in admin_calls for keyword in call.keywords}
+        self.assertIn('dashboard_provider', passed)
+
+    def test_default_provider_uses_the_runtime_client(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == '_default_dashboard_provider'
+        ]
+        self.assertEqual(len(functions), 1)
+        chains = _attr_chains(functions[0])
+        self.assertIn(['runtime_ipc', 'RuntimeClient'], chains)
+        self.assertIn(['dashboard', 'DashboardProvider'], chains)
+        self.assertIn(
+            'RUNTIME_SOCKET_PATH', _string_constants(functions[0]))
+
+    def test_admin_core_has_no_aiohttp_import(self):
+        core_tree = ast.parse(ADMIN_HTTP.read_text(encoding='utf-8'))
+        imported = set()
+        for node in ast.walk(core_tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported.add(node.module or '')
+        for heavy in ('aiohttp', 'socketio', 'gi'):
+            self.assertNotIn(heavy, imported, heavy)
+
+    def test_admin_core_uses_the_bounded_dashboard_provider(self):
+        source = ADMIN_HTTP.read_text(encoding='utf-8')
+        self.assertIn('dashboard_provider', source)
+        self.assertIn('/api/dashboard', source)
+        self.assertIn('runtime_ipc.bound_value', source)
 
 
 class AdminUnitTests(unittest.TestCase):

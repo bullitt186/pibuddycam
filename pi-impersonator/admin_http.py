@@ -81,11 +81,13 @@ import urllib.parse
 
 import admin_auth
 import config_schema
+import dashboard
 import expert_config
 import factory_reset as factory_reset_module
 import mqtt_service
 import provisioning
 import recovery
+import runtime_ipc
 import setup_wizard
 import ssh_control
 
@@ -349,6 +351,7 @@ class AdminApp:
         activate_station=None,
         mqtt_probe=None,
         web_dir=None,
+        dashboard_provider=None,
     ):
         if mode not in ('setup', 'admin'):
             raise ValueError("mode must be 'setup' or 'admin'")
@@ -389,6 +392,9 @@ class AdminApp:
         # WP-UI1: packaged static asset root (injectable for tests).
         self._web_dir = web_dir if web_dir is not None else WEB_DIR
         self._asset_version_cache = None
+        # WP-UI2/AC-4: the only runtime read path. ``None`` reports a degraded
+        # dashboard; the admin never constructs a CameraState or reads state.json.
+        self._dashboard_provider = dashboard_provider
 
         # Lazily built wizard session and reset confirmation state.
         self._wizard = None
@@ -425,6 +431,10 @@ class AdminApp:
             Route(
                 'GET', re.compile(r'^/api/session$'),
                 _AUTHENTICATED, self._handle_session,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/dashboard$'),
+                _AUTHENTICATED, self._handle_dashboard,
             ),
             Route('POST', re.compile(r'^/api/login$'), _PUBLIC, self._handle_login),
             Route(
@@ -914,6 +924,43 @@ class AdminApp:
             'mode': self.mode,
             'csrf': self._sessions.csrf_for(token),
         })
+
+    def _handle_dashboard(self, request, match, body_data, now):
+        """Authenticated dashboard aggregation (WP-UI2; AC-4/AC-14/AC-17).
+
+        The payload comes from the injected provider, which is the bounded
+        runtime IPC client (the camera process owns the live
+        ``SettingsCoordinator``). A missing, slow, or erroring provider yields
+        the honest degraded document instead of fabricated data, and the
+        trusted-LAN notice is attached here so it stays authoritative in the
+        core. ``_json`` runs the same secret redaction as every other route.
+        """
+        provider = self._dashboard_provider
+        payload = None
+        if provider is not None:
+            try:
+                payload = provider()
+            except Exception:  # noqa: BLE001 - a provider must never crash routing
+                log.warning('admin_http: dashboard provider failed')
+                payload = None
+        if not isinstance(payload, dict):
+            payload = dashboard.unavailable_dashboard(now)
+        else:
+            # Copy before enrichment: the provider's cached document (or an
+            # injected test provider's dict) must never be mutated by routing.
+            payload = dict(payload)
+        payload['trusted_lan'] = {
+            'notice': lan_warning(),
+            'interfaces': TRUSTED_LAN_INTERFACES,
+        }
+        # Defence in depth: bound the whole document at the API edge even if an
+        # injected provider returned an unexpectedly large value.
+        payload = runtime_ipc.bound_value(
+            payload,
+            depth=runtime_ipc.MAX_RESPONSE_DEPTH,
+            max_items=runtime_ipc.MAX_RESPONSE_ITEMS,
+        )
+        return self._json(request, 200, payload)
 
     def _handle_login(self, request, match, body_data, now):
         """Rate-limited password login; sets the hardened session cookie."""

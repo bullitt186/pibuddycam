@@ -58,7 +58,9 @@ import settings_store
 import app_metrics
 import app_version
 import config_schema
+import dashboard
 import mqtt_service
+import runtime_ipc
 import updater_install
 from settings_coordinator import SettingsCoordinator, persist_state
 
@@ -307,15 +309,30 @@ async def snapshot_loop(token, fingerprint, server, session):
             width, height = state.resolution()
             try:
                 jpeg = await asyncio.to_thread(capture_jpeg, width, height)
+            except Exception as e:
+                state.last_capture_at = time.time()
+                state.last_capture_ok = False
+                log.error(
+                    f'Snapshot capture error: {redact_secrets(str(e), token, fingerprint)}')
+            else:
+                state.last_capture_at = time.time()
+                state.last_capture_ok = True
                 local_http.last_jpeg = jpeg
                 t0 = time.monotonic()
-                status, result_class = await upload_snapshot(
-                    session, jpeg, token, fingerprint, server
-                )
-                elapsed_ms = int((time.monotonic() - t0) * 1000)
-                log.info(f'Snapshot: {status} ({result_class}, {len(jpeg)} bytes, {elapsed_ms}ms)')
-            except Exception as e:
-                log.error(f'Snapshot error: {redact_secrets(str(e), token, fingerprint)}')
+                try:
+                    status, result_class = await upload_snapshot(
+                        session, jpeg, token, fingerprint, server
+                    )
+                except Exception as e:
+                    state.last_snapshot_at = time.time()
+                    state.last_snapshot_ok = False
+                    log.error(f'Snapshot error: {redact_secrets(str(e), token, fingerprint)}')
+                else:
+                    elapsed_ms = int((time.monotonic() - t0) * 1000)
+                    state.last_snapshot_at = time.time()
+                    state.last_snapshot_ok = (result_class == SUCCESS)
+                    log.info(
+                        f'Snapshot: {status} ({result_class}, {len(jpeg)} bytes, {elapsed_ms}ms)')
         elif not state.snapshot_upload_enabled:
             log.debug('snapshot loop paused (upload disabled)')
         else:
@@ -677,11 +694,18 @@ async def main():
     # RTSP, or WebRTC.
     mqtt_service_instance = None
     mqtt_start_task = None
+    # WP-UI2/AC-17: broker credentials are redaction literals for the dashboard
+    # payload, so a credential can never be echoed even by an unexpected field.
+    mqtt_secrets = ()
     try:
         device_doc = config_schema.load_device()
         secrets_doc = config_schema.load_secrets()
         mqtt_config = mqtt_service.MqttConfig.from_documents(
             device_doc, secrets_doc, device_seed=fingerprint
+        )
+        mqtt_secrets = tuple(
+            value for value in (mqtt_config.username, mqtt_config.password)
+            if isinstance(value, str) and value
         )
         if mqtt_config.enabled:
             mqtt_service_instance = mqtt_service.MqttService(
@@ -781,11 +805,27 @@ async def main():
             # mux independently (GAP-SNAPSHOT-02/04).
             try:
                 jpeg = await asyncio.to_thread(capture_jpeg, *state.resolution())
-                await upload_snapshot(session, jpeg, token, fingerprint, server)
             except Exception as e:
+                state.last_capture_at = time.time()
+                state.last_capture_ok = False
                 log.error(
-                    f'Trigger snapshot error: {redact_secrets(str(e), token, fingerprint)}'
+                    f'Trigger snapshot capture error: {redact_secrets(str(e), token, fingerprint)}'
                 )
+            else:
+                state.last_capture_at = time.time()
+                state.last_capture_ok = True
+                try:
+                    _status, result_class = await upload_snapshot(
+                        session, jpeg, token, fingerprint, server)
+                except Exception as e:
+                    state.last_snapshot_at = time.time()
+                    state.last_snapshot_ok = False
+                    log.error(
+                        f'Trigger snapshot error: {redact_secrets(str(e), token, fingerprint)}'
+                    )
+                else:
+                    state.last_snapshot_at = time.time()
+                    state.last_snapshot_ok = (result_class == SUCCESS)
         elif action in (trigger.SNAPSHOT_ENABLE, trigger.SNAPSHOT_DISABLE):
             result = coordinator.set_snapshot_upload(action == trigger.SNAPSHOT_ENABLE)
             if result.ok:
@@ -1104,6 +1144,52 @@ async def main():
             await _send_timelapse_file_list(sig, _request_id_from_event(data))
 
     sig.on_trigger(handle_event)
+
+    # WP-UI2/AC-4: the bounded local runtime-control boundary. The admin process
+    # reads this socket; it never constructs its own CameraState/coordinator.
+    # The server runs on its own threads, so the blocking metric probes and file
+    # reads below never touch the asyncio event loop and a malformed/slow client
+    # cannot starve Prusa signaling.
+    def dashboard_payload():
+        """Build the authoritative dashboard document off the event loop."""
+        try:
+            metrics = app_metrics.metrics_provider()
+        except Exception:  # noqa: BLE001 - a metric must never fail the request
+            metrics = {}
+        try:
+            updates = updater_install.read_update_state()
+        except Exception:  # noqa: BLE001
+            updates = None
+        return dashboard.build_dashboard(
+            now=time.time(),
+            settings=coordinator.authoritative(),
+            state=state,
+            metrics=metrics,
+            application_version=app_version.application_version(),
+            build_identity=app_version.build_identity(),
+            signaling=sig,
+            mqtt=mqtt_service_instance,
+            updates=updates,
+            snapshot={
+                'last_at': state.last_snapshot_at,
+                'ok': state.last_snapshot_ok,
+                'capture_at': state.last_capture_at,
+                'capture_ok': state.last_capture_ok,
+            },
+            secrets=(token, fingerprint) + mqtt_secrets,
+        )
+
+    runtime_server = runtime_ipc.RuntimeServer(
+        handlers={'dashboard': lambda params: dashboard_payload()},
+    )
+    try:
+        runtime_server.start()
+    except OSError as e:
+        # The local dashboard is optional; a bind failure must not take the
+        # camera offline. The admin then reports a degraded dashboard.
+        log.warning(f'Runtime control socket unavailable: {e}')
+        runtime_server = None
+
     asyncio.create_task(snapshot_loop(token, fingerprint, server, session))
     asyncio.create_task(info_service_loop(token, fingerprint, server, session, mac, ip, ssid))
     asyncio.create_task(ota_loop(token, fingerprint, session))
@@ -1142,6 +1228,8 @@ async def main():
                 log.warning(f'MQTT stop failed: {type(e).__name__}')
         if discovery_transport is not None:
             discovery_transport.close()
+        if runtime_server is not None:
+            runtime_server.stop()
         if http_runner is not None:
             await http_runner.cleanup()
         # GAP-HTTP-03: release the single long-lived session on shutdown.

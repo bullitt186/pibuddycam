@@ -77,13 +77,54 @@
       <div class="content">
         <section id="view-overview" class="view" data-view-panel="overview" aria-labelledby="view-overview-title">
           <h2 id="view-overview-title" class="view__title">Overview</h2>
-          <div class="card placeholder">
-            <svg class="placeholder__icon" viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"></rect>
-              <path d="M8 21h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
-            </svg>
-            <p class="placeholder__title">Nothing to show yet</p>
-            <p class="placeholder__text">Live status and quick controls arrive with a later update. This release provides the sign-in shell and the design foundation only.</p>
+
+          <!-- Loading / degraded / error / empty state for the dashboard. -->
+          <div id="overview-state" class="overview-state" role="status" aria-live="polite" hidden></div>
+
+          <div id="overview-content" class="overview" hidden>
+            <div class="card overview__card">
+              <div class="overview__head">
+                <h3 class="card__title">Camera</h3>
+                <span id="overview-freshness" class="chip chip--muted" role="status">Waiting for data</span>
+              </div>
+              <dl class="metrics">
+                <div class="metric">
+                  <dt>Resolution</dt>
+                  <dd id="metric-resolution" class="metric__value">—</dd>
+                </div>
+                <div class="metric">
+                  <dt>Quality</dt>
+                  <dd id="metric-quality" class="metric__value">—</dd>
+                </div>
+                <div class="metric">
+                  <dt>Wi-Fi</dt>
+                  <dd id="metric-wifi" class="metric__value">—</dd>
+                </div>
+                <div class="metric">
+                  <dt>CPU temp</dt>
+                  <dd id="metric-temp" class="metric__value">—</dd>
+                </div>
+                <div class="metric">
+                  <dt>Uptime</dt>
+                  <dd id="metric-uptime" class="metric__value">—</dd>
+                </div>
+                <div class="metric">
+                  <dt>Free storage</dt>
+                  <dd id="metric-storage" class="metric__value">—</dd>
+                </div>
+                <div class="metric">
+                  <dt>Version</dt>
+                  <dd id="metric-version" class="metric__value">—</dd>
+                </div>
+              </dl>
+            </div>
+
+            <div class="card overview__card">
+              <h3 class="card__title">Status</h3>
+              <ul id="overview-status" class="status-chips" aria-label="Subsystem status"></ul>
+            </div>
+
+            <p class="notice notice--trusted">__TRUSTED_LAN_NOTICE__</p>
           </div>
         </section>
 

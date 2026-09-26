@@ -92,5 +92,55 @@ class ApplicationVersionTests(unittest.TestCase):
         self.assertTrue(value)
 
 
+class BuildIdentityTests(unittest.TestCase):
+    """WP-UI2/AC-14: bounded, non-secret build identity for the dashboard."""
+
+    def _write(self, directory, doc):
+        path = os.path.join(directory, 'build-info.json')
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(doc, f)
+        return path
+
+    def test_projects_only_allowlisted_fields(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, {
+                'version': '1.1.2',
+                'source_commit': 'abc123',
+                'os_suite': 'trixie',
+                'kernel_package': 'linux-image-rpi',
+                'python_lock_sha256': 'f' * 64,
+                'package_manifest': '/home/secretuser/manifest.json',
+                'unexpected': 'ignored',
+            })
+            identity = app_version.build_identity(path)
+        self.assertEqual(
+            set(identity), set(app_version.BUILD_IDENTITY_FIELDS))
+        self.assertEqual(identity['version'], '1.1.2')
+        self.assertEqual(identity['source_commit'], 'abc123')
+        self.assertNotIn('package_manifest', identity)
+        self.assertNotIn('unexpected', identity)
+
+    def test_missing_file_yields_empty_fields(self):
+        identity = app_version.build_identity('/nonexistent/build-info.json')
+        self.assertEqual(set(identity), set(app_version.BUILD_IDENTITY_FIELDS))
+        for value in identity.values():
+            self.assertEqual(value, '')
+
+    def test_values_are_sanitized_and_bounded(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, {'version': '1.0.0\n\x00evil'})
+            identity = app_version.build_identity(path)
+        self.assertEqual(identity['version'], '1.0.0evil')
+        self.assertLessEqual(
+            len(identity['version']), app_version.MAX_IDENTITY_LENGTH)
+
+    def test_non_string_value_is_dropped(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, {'version': 123, 'source_commit': 'ok'})
+            identity = app_version.build_identity(path)
+        self.assertEqual(identity['version'], '')
+        self.assertEqual(identity['source_commit'], 'ok')
+
+
 if __name__ == '__main__':
     unittest.main()

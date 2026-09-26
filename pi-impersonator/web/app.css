@@ -174,6 +174,20 @@ p {
   border-color: color-mix(in srgb, var(--success) 35%, var(--line));
 }
 
+.chip--warn {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--line));
+}
+
+.chip--error {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+}
+
+.chip--muted {
+  color: var(--ink-muted);
+}
+
 .notice {
   margin-top: 1rem;
   padding: 0.75rem 0.9rem;
@@ -402,6 +416,99 @@ p {
   font-weight: 700;
   color: var(--ink);
   margin-bottom: 0.35rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Overview dashboard                                                  */
+/* ------------------------------------------------------------------ */
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.overview__card {
+  margin: 0;
+}
+
+.overview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.card__title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 0;
+}
+
+.metric {
+  min-width: 0;
+}
+
+.metric dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+
+.metric__value {
+  margin: 0.15rem 0 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.status-chips__item {
+  min-width: 0;
+}
+
+.overview-state {
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+.overview-state--info {
+  border-left: 4px solid var(--accent);
+}
+
+.overview-state--warn {
+  border-left: 4px solid var(--warning);
+  color: var(--warning);
+}
+
+.overview-state--error {
+  border-left: 4px solid var(--danger);
+  color: var(--danger);
 }
 
 .site-footer {

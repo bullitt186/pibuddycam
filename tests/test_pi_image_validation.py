@@ -1449,6 +1449,48 @@ class AdminWebAssetValidationTests(unittest.TestCase):
         self.assertIn("local admin web assets missing", result.stdout)
 
 
+class RuntimeDirectoryValidationTests(unittest.TestCase):
+    """WP-UI2/AC-4: the factory unit creates the service-owned runtime dir."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.image = make_image(Path(cls.tmp) / "image.img")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _root(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        return make_rootfs(tmp)
+
+    def _systemd(self, root):
+        return Path(root) / "etc" / "systemd" / "system"
+
+    def test_good_rootfs_reports_the_runtime_directory(self):
+        root = self._root()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(
+            "prusa-cam.service creates the service-owned runtime directory",
+            result.stdout,
+        )
+
+    def test_missing_runtime_directory_fails(self):
+        root = self._root()
+        unit = self._systemd(root) / "prusa-cam.service"
+        unit.write_text(
+            unit.read_text(encoding="utf-8").replace(
+                "RuntimeDirectory=prusa-cam\n", ""),
+            encoding="utf-8",
+        )
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("RuntimeDirectory=prusa-cam", result.stdout)
+
+
 class PrivateKeyScanTests(unittest.TestCase):
     """The key scan must ignore library fixtures and public certs."""
 

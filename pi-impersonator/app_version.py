@@ -43,22 +43,55 @@ def _sanitize(value):
     return cleaned.strip()[:MAX_VERSION_LENGTH]
 
 
-def _build_info_version(path):
-    """Read the optional ``version`` field from ``path``; ``''`` on any failure."""
+def _build_info_document(path):
+    """Read ``path`` as a JSON object; ``{}`` on any failure."""
     if not isinstance(path, str) or not path:
-        return ''
+        return {}
     try:
         with open(path, encoding='utf-8') as f:
             text = f.read(MAX_BUILD_INFO_BYTES)
     except OSError:
-        return ''
+        return {}
     try:
         doc = json.loads(text)
     except ValueError:
-        return ''
-    if not isinstance(doc, dict):
-        return ''
-    return _sanitize(doc.get('version'))
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def _build_info_version(path):
+    """Read the optional ``version`` field from ``path``; ``''`` on any failure."""
+    return _sanitize(_build_info_document(path).get('version'))
+
+
+#: Build-identity fields exposed to the dashboard. Only non-secret, non-path
+#: metadata is projected; ``package_manifest`` (a filesystem path) is excluded.
+BUILD_IDENTITY_FIELDS = (
+    'version',
+    'source_commit',
+    'os_suite',
+    'kernel_package',
+    'python_lock_sha256',
+)
+
+#: Bound for the projected build-identity string values.
+MAX_IDENTITY_LENGTH = 128
+
+
+def build_identity(build_info_path=BUILD_INFO_PATH):
+    """Return the bounded, non-secret build identity for the dashboard.
+
+    Projects the optional image ``build-info.json`` onto
+    :data:`BUILD_IDENTITY_FIELDS`. Every value is sanitized (printable, bounded)
+    and unknown/absent fields become ``''``. The document path itself and any
+    unlisted key are never returned. Never raises.
+    """
+    doc = _build_info_document(build_info_path)
+    identity = {}
+    for field in BUILD_IDENTITY_FIELDS:
+        value = doc.get(field)
+        identity[field] = _sanitize(value)[:MAX_IDENTITY_LENGTH]
+    return identity
 
 
 def application_version(build_info_path=BUILD_INFO_PATH, env=None):
@@ -84,10 +117,13 @@ def application_version(build_info_path=BUILD_INFO_PATH, env=None):
 
 
 __all__ = [
+    'BUILD_IDENTITY_FIELDS',
     'DEFAULT_VERSION',
     'ENV_VAR',
     'BUILD_INFO_PATH',
     'MAX_BUILD_INFO_BYTES',
+    'MAX_IDENTITY_LENGTH',
     'MAX_VERSION_LENGTH',
     'application_version',
+    'build_identity',
 ]

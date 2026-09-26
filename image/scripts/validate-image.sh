@@ -1217,6 +1217,16 @@ PY
       fi
    fi
 
+   # WP-UI2/AC-4: the camera unit owns the runtime directory that holds the
+   # bounded local control socket the admin process reads. Both units run as the
+   # service account, so systemd must create /run/prusa-cam for it.
+   cam_unit="$SYSTEMD_DIR/prusa-cam.service"
+   if [ -f "$cam_unit" ] && unit_has "$cam_unit" RuntimeDirectory prusa-cam; then
+      report ok "prusa-cam.service creates the service-owned runtime directory"
+   else
+      report fail "prusa-cam.service must set RuntimeDirectory=prusa-cam"
+   fi
+
    # --- build-info.json ---------------------------------------------------
    build_info="$MOUNT_ROOT/usr/share/prusa-buddy3d-camera/build-info.json"
    if [ -f "$build_info" ]; then

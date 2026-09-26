@@ -134,6 +134,40 @@ def _005_prusa_priv_no_block(root):
     return True
 
 
+def _006_runtime_directory(root):
+    """Give prusa-cam.service the service-owned runtime dir (WP-UI2/AC-4).
+
+    The bounded local control socket lives under ``/run/prusa-cam``. ``/run`` is
+    root-owned, so systemd must create that directory; ``RuntimeDirectory=``
+    does it with the service account as owner. This is the OTA catch-up path for
+    devices whose image predates the unit change; the factory unit in
+    ``pi-impersonator/systemd/prusa-cam.service`` already carries it.
+    """
+    unit = os.path.join(root, 'etc', 'systemd', 'system', 'prusa-cam.service')
+    if not os.path.isfile(unit):
+        log.warning('migrations: prusa-cam.service not found at %s', unit)
+        return False
+    with open(unit) as f:
+        content = f.read()
+    if 'RuntimeDirectory=prusa-cam' in content:
+        return True
+    marker = 'User=prusa-cam\n'
+    if marker not in content:
+        log.warning('migrations: prusa-cam.service User= line not found')
+        return False
+    addition = (
+        'User=prusa-cam\n'
+        '# WP-UI2/AC-4: service-owned runtime dir for the local control socket.\n'
+        'RuntimeDirectory=prusa-cam\n'
+        'RuntimeDirectoryMode=0750\n'
+    )
+    content = content.replace(marker, addition, 1)
+    with open(unit, 'w') as f:
+        f.write(content)
+    subprocess.run(['systemctl', 'daemon-reload'], capture_output=True, timeout=10)
+    return True
+
+
 # -- registry (append only; never reorder or rename shipped entries) -------- #
 
 MIGRATIONS = [
@@ -142,6 +176,7 @@ MIGRATIONS = [
     ('003_mask_console_setup', _003_mask_console_setup),
     ('004_pi_persist_use_launcher', _004_pi_persist_use_launcher),
     ('005_prusa_priv_no_block', _005_prusa_priv_no_block),
+    ('006_runtime_directory', _006_runtime_directory),
 ]
 
 
