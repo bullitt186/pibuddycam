@@ -477,10 +477,125 @@
 
         <section id="view-system" class="view" data-view-panel="system" aria-labelledby="view-system-title" hidden>
           <h2 id="view-system-title" class="view__title">System</h2>
-          <div class="card placeholder">
-            <p class="placeholder__title">System information is not available in this release</p>
-            <p class="placeholder__text">Health, updates, diagnostics, and destructive actions are added in a later update.</p>
-          </div>
+          <div id="system-state" class="overview-state" role="status" aria-live="polite" hidden></div>
+
+          <section class="card" aria-labelledby="system-health-title">
+            <h3 id="system-health-title" class="card__title">Health &amp; version</h3>
+            <dl class="metrics">
+              <div class="metric">
+                <dt>Application version</dt>
+                <dd id="system-app-version" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Active release</dt>
+                <dd id="system-release" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Source commit</dt>
+                <dd id="system-commit" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Provisioning</dt>
+                <dd id="system-provisioning" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Runtime</dt>
+                <dd id="system-runtime" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Free storage</dt>
+                <dd id="system-storage" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>CPU temp</dt>
+                <dd id="system-temp" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Uptime</dt>
+                <dd id="system-uptime" class="metric__value">—</dd>
+              </div>
+            </dl>
+            <p id="system-freshness" class="field__hint" role="status">Waiting for system data…</p>
+          </section>
+
+          <section class="card" aria-labelledby="system-update-title">
+            <div class="overview__head">
+              <h3 id="system-update-title" class="card__title">Signed update</h3>
+              <span id="system-update-chip" class="chip chip--muted" role="status">Unknown</span>
+            </div>
+            <dl class="metrics">
+              <div class="metric">
+                <dt>Installed</dt>
+                <dd id="system-update-installed" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Available</dt>
+                <dd id="system-update-latest" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Last check</dt>
+                <dd id="system-update-checked" class="metric__value">—</dd>
+              </div>
+            </dl>
+            <p id="system-update-summary" class="field__hint"></p>
+            <p id="system-update-status" class="field__hint" role="status" aria-live="polite"></p>
+            <p class="notice notice--warn">Installing a signed update restarts the camera and admin services. This console may disconnect; reconnect and re-check the update state. A manual check is report-only and never installs.</p>
+            <div class="form-actions">
+              <button id="system-update-check" class="btn" type="button">Check for updates</button>
+              <button id="system-update-install" class="btn btn--danger" type="button">Install update</button>
+            </div>
+          </section>
+
+          <section class="card" aria-labelledby="system-diagnostics-title">
+            <h3 id="system-diagnostics-title" class="card__title">Diagnostics</h3>
+            <p class="field__hint">Bounded, redacted current-boot journal for the fixed appliance units. No command, unit, or path can be supplied from the browser.</p>
+            <p id="system-diagnostics-status" class="field__hint" role="status" aria-live="polite"></p>
+            <pre id="system-diagnostics-output" class="diagnostics" hidden></pre>
+            <div class="form-actions">
+              <button id="system-diagnostics-load" class="btn" type="button">Load diagnostics</button>
+              <button id="system-diagnostics-download" class="btn btn--ghost" type="button" disabled>Download diagnostics</button>
+            </div>
+          </section>
+
+          <section class="card" aria-labelledby="system-access-title">
+            <h3 id="system-access-title" class="card__title">Access &amp; recovery</h3>
+            <label class="check"><input id="system-ssh-enabled" type="checkbox"> Enable SSH</label>
+            <p id="system-ssh-state" class="field__hint">SSH state unknown</p>
+            <div class="form-actions">
+              <button id="system-ssh-save" class="btn" type="button">Save SSH</button>
+              <button id="system-recovery" class="btn btn--danger" type="button">Enter setup / recovery mode</button>
+            </div>
+            <p class="notice notice--warn">Entering recovery writes a boot sentinel and restarts into the setup hotspot. The console disconnects and the device must be re-onboarded.</p>
+          </section>
+
+          <section class="card card--danger" aria-labelledby="system-danger-title">
+            <h3 id="system-danger-title" class="card__title">Danger zone</h3>
+            <p class="field__hint">These actions are destructive or disruptive. Each requires a fresh password confirmation and an explicit acknowledgement.</p>
+
+            <div class="danger-action">
+              <h4 class="card__subtitle">Reboot</h4>
+              <p class="field__hint">Reboots the camera now. The console disconnects until the device returns.</p>
+              <label class="check"><input id="system-reboot-confirm" type="checkbox"> I understand the camera will reboot and disconnect</label>
+              <div class="form-actions">
+                <button id="system-reboot" class="btn btn--danger" type="button">Reboot camera</button>
+              </div>
+              <p id="system-reboot-status" class="field__hint" role="status" aria-live="polite"></p>
+            </div>
+
+            <div class="danger-action">
+              <h4 class="card__subtitle">Factory reset</h4>
+              <p class="field__hint">Deletes the durable configuration, provisioning state, and (optionally) the timelapse store. A dated backup is retained until the device successfully re-onboards. Type <strong>RESET</strong> to enable the action.</p>
+              <div class="field">
+                <label for="system-reset-phrase">Type RESET to confirm</label>
+                <input id="system-reset-phrase" type="text" autocomplete="off" spellcheck="false" placeholder="RESET">
+              </div>
+              <label class="check"><input id="system-reset-media" type="checkbox" checked> Also delete stored timelapse media (uncheck to keep it)</label>
+              <div class="form-actions">
+                <button id="system-reset" class="btn btn--danger" type="button" disabled>Factory reset</button>
+              </div>
+              <p id="system-reset-status" class="field__hint" role="status" aria-live="polite"></p>
+            </div>
+          </section>
         </section>
       </div>
     </div>

@@ -777,6 +777,19 @@ def _write_last_check(path, now, outcome):
         log.debug('updater_install: could not persist the last-check timestamp')
 
 
+def read_last_check(path=DEFAULT_LAST_CHECK_PATH):
+    """Return the persisted last-check epoch, or ``None`` when unavailable.
+
+    Public, bounded wrapper over the internal reader so callers (the WP-UI7
+    admin update view) do not depend on a private symbol. A missing, unreadable,
+    or malformed file yields ``None``; never raises.
+    """
+    try:
+        return _read_last_check(path)
+    except Exception:  # noqa: BLE001 - a corrupt file must never raise
+        return None
+
+
 def check_for_update(*, current_version, current_image_version,
                      fetch_manifest, verify=None, clock=None, rng=None,
                      last_check_path=DEFAULT_LAST_CHECK_PATH, force=False,
@@ -2042,6 +2055,7 @@ __all__ = [
     'install_update',
     'main',
     'read_bad_versions',
+    'read_last_check',
     'read_update_state',
     'record_bad_release',
     'recover_interrupted',

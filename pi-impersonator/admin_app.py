@@ -46,14 +46,17 @@ import ssl
 from aiohttp import web
 
 import admin_http
+import app_version
 import camera_probe
 import dashboard
+import diagnostics
 import live_monitor
 import media_build
 import mqtt_probe
 import privileged
 import provisioning
 import runtime_ipc
+import update_control
 
 log = logging.getLogger('prusa-cam.admin_app')
 
@@ -99,6 +102,12 @@ ROUTES = (
     ('GET', '/api/media/frames/{name}'),
     ('POST', '/api/media/timelapses/build'),
     ('GET', '/api/media/jobs/{id}'),
+    ('GET', '/api/system'),
+    ('GET', '/api/update'),
+    ('POST', '/api/update/check'),
+    ('POST', '/api/update/install'),
+    ('GET', '/api/diagnostics'),
+    ('POST', '/api/reboot'),
     ('PATCH', '/api/settings'),
     ('GET', '/api/integrations'),
     ('PUT', '/api/integrations/mqtt'),
@@ -383,6 +392,31 @@ def _default_build_manager():
     return media_build.BuildManager()
 
 
+def _default_update_manager():
+    """Return the update read/check/install control (WP-UI7; AC-15).
+
+    Construction starts no thread. Both actions route through the fixed-verb
+    privileged helper: ``check-update`` starts the report-only root updater unit,
+    ``install-update`` starts the signed install unit. The manifest URL, signing
+    key, channel, and command are fixed root-side and never reach this process.
+    """
+    return update_control.UpdateManager(
+        check_fn=privileged.check_update,
+        install_fn=privileged.install_update,
+        identity_fn=app_version.build_identity,
+    )
+
+
+def _default_diagnostics_provider():
+    """Return the bounded, redacted diagnostics provider (WP-UI7; AC-17).
+
+    Construction starts no thread; the first authenticated request starts one
+    daemon refresh, so the blocking ``journalctl`` never runs on the aiohttp
+    event loop or the single admin-core worker.
+    """
+    return diagnostics.DiagnosticsProvider()
+
+
 def _settings_action(client):
     """Build the runtime-IPC settings mutation callable (WP-UI3; AC-5).
 
@@ -420,7 +454,8 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
                     provisioning_path=None, hotspot_controller=None, probe=None,
                     start_camera=None, activate_station=None, mqtt_probe=None,
                     dashboard_provider=None, settings_actions=None,
-                    live_monitor=None, build_manager=None):
+                    live_monitor=None, build_manager=None, update_manager=None,
+                    diagnostics_provider=None, reboot_fn=None):
     """Build the stdlib :class:`admin_http.AdminApp` with real dependencies.
 
     Paths default to the durable ``/data`` locations through the core's own
@@ -480,6 +515,17 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
         build_manager=(
             build_manager if build_manager is not None
             else _default_build_manager()
+        ),
+        update_manager=(
+            update_manager if update_manager is not None
+            else _default_update_manager()
+        ),
+        diagnostics_provider=(
+            diagnostics_provider if diagnostics_provider is not None
+            else _default_diagnostics_provider()
+        ),
+        reboot_fn=(
+            reboot_fn if reboot_fn is not None else privileged.reboot
         ),
         device_path=device_path,
         secrets_path=secrets_path,

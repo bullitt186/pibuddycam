@@ -46,6 +46,8 @@ VERBS = frozenset({
     'hotspot-stop',
     'wifi-station-apply',
     'install-update',
+    'check-update',
+    'reboot',
     'rtsp-start',
     'rtsp-stop',
     'quality-restart',
@@ -53,6 +55,11 @@ VERBS = frozenset({
 
 #: Bounded wall-clock timeout for a privileged invocation.
 COMMAND_TIMEOUT_SECONDS = 60.0
+
+#: The report-only update check downloads a signed manifest and verifies it, so
+#: it needs a longer budget than a plain systemctl toggle. The manual check runs
+#: on a background thread (WP-UI7), so this bounds the thread, not a request.
+CHECK_TIMEOUT_SECONDS = 360.0
 
 #: Longer budget for station activation: ``wifi_station.apply`` may run several
 #: ``nmcli`` commands (add/modify/reload/up) that each carry their own bounded
@@ -193,6 +200,28 @@ def install_update(runner=None):
     itself and never handles the signing key. Returns a :class:`PrivilegedResult`.
     """
     return _invoke('install-update', runner=runner)
+
+
+def check_update(runner=None):
+    """Trigger the report-only signed-update check as root (WP-UI7; AC-15).
+
+    Starts the existing ``prusa-updater.service`` oneshot through the fixed-verb
+    helper. That unit runs ``updater_install.py check`` against the root-owned
+    manifest URL and never installs anything. The caller (the admin
+    :class:`update_control.UpdateManager`) runs this on a background thread and
+    polls the root-written update-state document for the result.
+    """
+    return _invoke('check-update', runner=runner, timeout=CHECK_TIMEOUT_SECONDS)
+
+
+def reboot(runner=None):
+    """Reboot the appliance through the fixed-verb helper (WP-UI7; AC-16).
+
+    The only privileged command issued is ``systemctl reboot``; the caller
+    (:mod:`device_control` through the admin reboot route) owns the rate limit
+    and confirmation. Returns a :class:`PrivilegedResult`.
+    """
+    return _invoke('reboot', runner=runner)
 
 
 def rtsp_start(runner=None):

@@ -83,12 +83,16 @@ import logging
 import math
 import os
 import re
+import socket
 import time
 import urllib.parse
 
 import admin_auth
+import app_version
 import config_schema
 import dashboard
+import device_control
+import diagnostics
 import expert_config
 import factory_reset as factory_reset_module
 import live_monitor
@@ -103,6 +107,7 @@ import settings_coordinator
 import setup_wizard
 import ssh_control
 import timelapse
+import update_control
 
 log = logging.getLogger('prusa-cam.admin_http')
 
@@ -322,6 +327,38 @@ MEDIA_JOB_UNKNOWN = 'no such build job'
 #: Default ``GET /api/media/*`` page size (clamped by media_library bounds).
 MEDIA_DEFAULT_PAGE_SIZE = 24
 
+# --------------------------------------------------------------------------- #
+# System / update / diagnostics / destructive actions (WP-UI7; AC-15..AC-17)
+# --------------------------------------------------------------------------- #
+
+#: Largest accepted body for the update/reboot actions. They carry at most a
+#: confirmation flag; anything larger is rejected before any action.
+MAX_SYSTEM_ACTION_BODY_BYTES = 1024
+
+#: Documented warning shown/returned when an install is accepted. The install
+#: restarts the camera and admin services, so the current admin request may be
+#: terminated; the UI must report that honestly rather than claim completion.
+UPDATE_INSTALL_WARNING = (
+    'The signed update is installing in the background. The camera and admin '
+    'services will restart, so this console may disconnect. Reconnect and '
+    're-check the update state; do not start a second install.'
+)
+
+#: Warning for a reboot/recovery/reset action that disconnects the console.
+DISRUPTIVE_ACTION_WARNING = (
+    'This action disconnects the console and may reboot or restart services. '
+    'The device may be unreachable until it comes back.'
+)
+
+#: Fixed, path-free reason when the update control is not wired.
+UPDATE_UNAVAILABLE = 'update control unavailable'
+
+#: Fixed, path-free reason when the reboot action is not wired.
+REBOOT_UNAVAILABLE = 'reboot control unavailable'
+
+#: The factory-reset media-inclusion default, preserved from the controller.
+DEFAULT_INCLUDE_TIMELAPSE = True
+
 #: Provisioning states in which the public setup wizard is available.
 PRE_CLAIM_STATES = frozenset({
     'factory',
@@ -357,6 +394,18 @@ _REAUTH_WINDOW_ONLY = 'reauth_window_only'
 #: The MQTT broker test is available to the unclaimed wizard (public while setup
 #: is available) and, after claim, only to an authenticated admin session.
 _SETUP_OR_AUTHENTICATED = 'setup_or_authenticated'
+
+
+class _RebootState:
+    """Shared rate-limit state for :func:`device_control.request_reboot`.
+
+    The admin process owns its own reboot window (the camera runtime's trigger
+    path has a separate process-local one). ``last_reboot_monotonic`` is the
+    attribute ``device_control`` reads and writes.
+    """
+
+    def __init__(self):
+        self.last_reboot_monotonic = None
 
 
 @dataclasses.dataclass
@@ -423,6 +472,12 @@ class AdminApp:
         live_monitor=None,
         media_dir=None,
         build_manager=None,
+        update_manager=None,
+        diagnostics_provider=None,
+        reboot_fn=None,
+        release_identity_fn=None,
+        application_version_fn=None,
+        hostname_fn=None,
     ):
         if mode not in ('setup', 'admin'):
             raise ValueError("mode must be 'setup' or 'admin'")
@@ -484,6 +539,28 @@ class AdminApp:
         # WP-UI6/AC-13: the one serialized background build manager. ``None``
         # reports builds as unavailable rather than fabricating a job.
         self._build_manager = build_manager
+        # WP-UI7/AC-15: the update read/check/install policy over fixed-action
+        # callables. ``None`` reports updates as unavailable instead of
+        # fabricating state or accepting a browser-supplied source.
+        self._update_manager = update_manager
+        # WP-UI7/AC-17: bounded, redacted current-boot diagnostics. The provider
+        # collects off the core worker; ``None`` reports diagnostics unavailable.
+        self._diagnostics_provider = diagnostics_provider
+        # WP-UI7/AC-16: the fixed-privileged reboot callable. ``None`` reports
+        # the reboot action unavailable; the 60 s rate limit is shared here.
+        self._reboot_fn = reboot_fn
+        self._reboot_state = _RebootState()
+        # WP-UI7/AC-14: bounded active-release identity and hostname sources.
+        # Defaults are the existing app_version readers; injectable for tests.
+        self._release_identity_fn = (
+            release_identity_fn if release_identity_fn is not None
+            else app_version.build_identity
+        )
+        self._application_version_fn = (
+            application_version_fn if application_version_fn is not None
+            else app_version.application_version
+        )
+        self._hostname_fn = hostname_fn if hostname_fn is not None else socket.gethostname
 
         # Lazily built wizard session and reset confirmation state.
         self._wizard = None
@@ -558,6 +635,33 @@ class AdminApp:
                 _AUTHENTICATED, self._handle_media_job,
             ),
             Route(
+                'GET', re.compile(r'^/api/system$'),
+                _AUTHENTICATED, self._handle_system,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/update$'),
+                _AUTHENTICATED, self._handle_update,
+            ),
+            Route(
+                'POST', re.compile(r'^/api/update/check$'),
+                _AUTHENTICATED, self._handle_update_check,
+            ),
+            Route(
+                'POST', re.compile(r'^/api/update/install$'),
+                _REAUTH_REQUIRED, self._handle_update_install,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/diagnostics$'),
+                _AUTHENTICATED, self._handle_diagnostics,
+            ),
+            # Reboot is fresh-window-only: its body carries only the explicit
+            # confirmation flag, so the admin password is never read from (or
+            # charged against) the action body.
+            Route(
+                'POST', re.compile(r'^/api/reboot$'),
+                _REAUTH_WINDOW_ONLY, self._handle_reboot,
+            ),
+            Route(
                 'PATCH', re.compile(r'^/api/settings$'),
                 _AUTHENTICATED, self._handle_settings_patch,
             ),
@@ -602,17 +706,21 @@ class AdminApp:
                 'POST', re.compile(r'^/api/recovery/enter-setup$'),
                 _REAUTH_REQUIRED, self._handle_recovery,
             ),
+            # WP-UI7/AC-16: factory reset is fresh-window-only. Its payload
+            # carries reset options (and, in some clients, secret-like fields
+            # such as a typed confirmation), so the body's ``password`` must
+            # never be read as the admin password or charged to the limiter.
             Route(
                 'POST', re.compile(r'^/api/reset/begin$'),
-                _REAUTH_REQUIRED, self._handle_reset_begin,
+                _REAUTH_WINDOW_ONLY, self._handle_reset_begin,
             ),
             Route(
                 'POST', re.compile(r'^/api/reset/confirm$'),
-                _REAUTH_REQUIRED, self._handle_reset_confirm,
+                _REAUTH_WINDOW_ONLY, self._handle_reset_confirm,
             ),
             Route(
                 'POST', re.compile(r'^/api/reset/execute$'),
-                _REAUTH_REQUIRED, self._handle_reset_execute,
+                _REAUTH_WINDOW_ONLY, self._handle_reset_execute,
             ),
         )
 
@@ -1222,6 +1330,18 @@ class AdminApp:
                 manager.stop()
             except Exception:  # noqa: BLE001 - shutdown must never raise
                 log.warning('admin_http: timelapse build manager stop failed')
+        diagnostics_provider = self._diagnostics_provider
+        if diagnostics_provider is not None:
+            try:
+                diagnostics_provider.stop()
+            except Exception:  # noqa: BLE001 - shutdown must never raise
+                log.warning('admin_http: diagnostics provider stop failed')
+        update_manager = self._update_manager
+        if update_manager is not None:
+            try:
+                update_manager.close()
+            except Exception:  # noqa: BLE001 - shutdown must never raise
+                log.warning('admin_http: update manager close failed')
 
     # ------------------------------------------------------------------ #
     # Timelapse media library (WP-UI6; AC-12/AC-13/AC-17/AC-18)
@@ -1425,6 +1545,228 @@ class AdminApp:
         if view is None:
             return self._error(request, 404, MEDIA_JOB_UNKNOWN)
         return self._json(request, 200, {'ok': True, 'job': view})
+
+    # ------------------------------------------------------------------ #
+    # System, updates, diagnostics, and destructive actions (WP-UI7)
+    # ------------------------------------------------------------------ #
+
+    def _handle_system(self, request, match, body_data, now):
+        """Authenticated system facts (WP-UI7; AC-14/AC-17).
+
+        Reports the active release identity, provisioning state, SSH state, and
+        the local hostname from bounded sources. It exposes no secret, personal
+        path, stored credential, or browser-supplied value. Health, storage,
+        temperature, and uptime come from the already-authenticated
+        ``GET /api/dashboard`` so there is one authoritative runtime source.
+        """
+        view = self._provisioning_view()
+        payload = {
+            'ok': True,
+            'generated_at': now,
+            'version': self._version_identity_view(),
+            'provisioning': {
+                'state': view.state,
+                'source': view.source,
+                'setup_available': view.setup_available,
+            },
+            'ssh': self._ssh_status_view(now),
+            'network': {'hostname': _bounded_hostname(self._hostname_fn)},
+        }
+        if view.error:
+            payload['provisioning']['error'] = view.error
+        return self._json(request, 200, payload)
+
+    def _version_identity_view(self):
+        """Return the bounded active release/source identity (never a path)."""
+        try:
+            identity = self._release_identity_fn()
+        except Exception:  # noqa: BLE001 - identity must never crash a request
+            identity = {}
+        if not isinstance(identity, dict):
+            identity = {}
+        try:
+            application = self._application_version_fn()
+        except Exception:  # noqa: BLE001
+            application = ''
+        return {
+            'application': runtime_ipc.bounded_text(application, 128),
+            'release': runtime_ipc.bounded_text(identity.get('version'), 128),
+            'source_commit': runtime_ipc.bounded_text(identity.get('source_commit'), 64),
+            'os_suite': runtime_ipc.bounded_text(identity.get('os_suite'), 64),
+            'kernel': runtime_ipc.bounded_text(identity.get('kernel_package'), 64),
+        }
+
+    def _ssh_status_view(self, now):
+        """Return SSH enabled state with freshness (never raises)."""
+        if self._ssh_runner is None:
+            return {'ok': False, 'enabled': None, 'observed_at': None, 'fresh': False}
+        try:
+            result = ssh_control.ssh_enabled(self._ssh_runner)
+        except Exception:  # noqa: BLE001 - SSH state must never crash a request
+            return {'ok': False, 'enabled': None, 'observed_at': None, 'fresh': False}
+        return {
+            'ok': bool(result.ok),
+            'enabled': bool(result.enabled),
+            'observed_at': now if result.ok else None,
+            'fresh': bool(result.ok),
+        }
+
+    def _handle_update(self, request, match, body_data, now):
+        """Return the bounded signed-update state (WP-UI7; AC-15).
+
+        The projection never includes the manifest/bundle URL, signing key,
+        channel, or command, and no browser input is read.
+        """
+        manager = self._update_manager
+        if manager is None:
+            return self._json(request, 200, {
+                'ok': True, 'available': False, 'state': 'unknown',
+                'reason': UPDATE_UNAVAILABLE,
+            })
+        try:
+            view = manager.state()
+        except Exception:  # noqa: BLE001 - the view must never crash a request
+            view = None
+        if not isinstance(view, dict):
+            return self._json(request, 200, {
+                'ok': True, 'available': False, 'state': 'unknown',
+                'reason': UPDATE_UNAVAILABLE,
+            })
+        payload = dict(view)
+        payload['ok'] = True
+        payload['available'] = True
+        return self._json(request, 200, payload)
+
+    def _handle_update_check(self, request, match, body_data, now):
+        """Start one report-only update check (WP-UI7; AC-15).
+
+        Authenticated + CSRF. The body must be empty: the manifest URL, signing
+        key, channel, version, service name, and command are all fixed in the
+        root updater path and can never be supplied by the browser. This never
+        installs anything.
+        """
+        body_error = _system_action_body_error(request, body_data)
+        if body_error is not None:
+            return body_error
+        manager = self._update_manager
+        if manager is None:
+            return self._json(request, 503, {'ok': False, 'error': UPDATE_UNAVAILABLE})
+        try:
+            result = manager.check()
+        except Exception:  # noqa: BLE001 - an action must never crash routing
+            result = None
+        if not isinstance(result, dict):
+            return self._json(request, 503, {'ok': False, 'error': UPDATE_UNAVAILABLE})
+        if result.get('busy'):
+            return self._json(request, 409, {
+                'ok': False,
+                'error': _bounded_reason(result.get('reason')) or 'update check already in progress',
+            })
+        return self._json(request, 202, {
+            'ok': True, 'started': True, 'checking': True,
+            'warning': 'Update check started. This is report-only and never installs.',
+        })
+
+    def _handle_update_install(self, request, match, body_data, now):
+        """Start one fixed-privileged signed update install (WP-UI7; AC-15).
+
+        Re-auth + CSRF (route policy). The body may carry the inline re-auth
+        password (which the policy already consumed) but nothing else: no URL,
+        CA, key, channel, bundle, manifest, version, service name, or command is
+        accepted. The install runs through the fixed privileged helper and may
+        restart the admin service, terminating this request; the response says so
+        and the UI must reconnect rather than claim completion.
+        """
+        body_error = _system_action_body_error(request, body_data, allow_password=True)
+        if body_error is not None:
+            return body_error
+        manager = self._update_manager
+        if manager is None:
+            return self._json(request, 503, {'ok': False, 'error': UPDATE_UNAVAILABLE})
+        try:
+            result = manager.install()
+        except Exception:  # noqa: BLE001
+            result = None
+        if not isinstance(result, dict):
+            return self._json(request, 503, {'ok': False, 'error': UPDATE_UNAVAILABLE})
+        if result.get('busy'):
+            return self._json(request, 409, {
+                'ok': False,
+                'error': _bounded_reason(result.get('reason')) or 'update install already in progress',
+            })
+        return self._json(request, 202, {
+            'ok': True, 'started': True, 'installing': True,
+            'warning': UPDATE_INSTALL_WARNING,
+        })
+
+    def _handle_diagnostics(self, request, match, body_data, now):
+        """Return bounded, redacted current-boot diagnostics (WP-UI7; AC-17).
+
+        The provider owns the fixed command set and the byte/line/time bounds;
+        the request cannot supply a unit, path, line count, or command. The
+        provider collects on a background thread, so this handler never blocks
+        the core worker on ``journalctl``.
+        """
+        provider = self._diagnostics_provider
+        if provider is None:
+            return self._json(request, 200, {
+                'ok': True, 'available': False, 'state': 'unavailable',
+                'reason': 'diagnostics unavailable',
+            })
+        try:
+            document = provider(secrets=self._known_secrets())
+        except Exception:  # noqa: BLE001 - diagnostics must never crash a request
+            document = None
+        if not isinstance(document, dict):
+            return self._json(request, 200, {
+                'ok': True, 'available': False, 'state': 'unavailable',
+                'reason': 'diagnostics unavailable',
+            })
+        payload = dict(document)
+        payload['ok'] = True
+        return self._json(request, 200, payload)
+
+    def _handle_reboot(self, request, match, body_data, now):
+        """Reboot through the fixed-privileged verb, rate-limited (AC-16).
+
+        Fresh-window-only re-auth + CSRF (route policy) and an explicit
+        ``confirm: true`` flag. The existing 60 s :mod:`device_control` rate
+        limit is preserved; a second request inside the window is a bounded
+        ``429`` with ``Retry-After``. The only command issued is the fixed
+        privileged ``reboot`` verb.
+        """
+        if _body_size(request) > MAX_SYSTEM_ACTION_BODY_BYTES:
+            return self._error(request, 413, 'request body too large')
+        if not isinstance(body_data, dict):
+            return self._error(request, 400, 'invalid request body')
+        unknown = [key for key in body_data if key not in ('confirm',)]
+        if unknown:
+            return self._error(request, 400, 'unknown field')
+        if body_data.get('confirm') is not True:
+            return self._json(request, 400, {
+                'ok': False, 'error': 'explicit confirmation is required',
+            })
+        if self._reboot_fn is None:
+            return self._json(request, 503, {'ok': False, 'error': REBOOT_UNAVAILABLE})
+        last = self._reboot_state.last_reboot_monotonic
+        interval = device_control.DEFAULT_REBOOT_MIN_INTERVAL_SECONDS
+        if not device_control.can_reboot(last, now, interval):
+            elapsed = now - last if last is not None else 0.0
+            remaining = max(0.0, interval - elapsed)
+            response = self._json(request, 429, {
+                'ok': False, 'error': 'reboot rate limit is active',
+            })
+            response.headers['Retry-After'] = str(max(1, int(math.ceil(remaining))))
+            return response
+        accepted = device_control.request_reboot(
+            self._reboot_state, self._reboot_fn, now=now)
+        if not accepted:
+            return self._json(request, 500, {
+                'ok': False, 'error': 'reboot command failed',
+            })
+        return self._json(request, 200, {
+            'ok': True, 'accepted': True, 'warning': DISRUPTIVE_ACTION_WARNING,
+        })
 
     def _handle_settings_patch(self, request, match, body_data, now):
         """Apply one bounded settings mutation through the live coordinator.
@@ -1884,7 +2226,15 @@ class AdminApp:
         return self._factory_reset
 
     def _handle_reset_begin(self, request, match, body_data, now):
-        """First confirmation; the token is kept server-side and never emitted."""
+        """First confirmation; the token is kept server-side and never emitted.
+
+        Fresh-window-only (route policy) and strict fields: a reset payload's
+        ``password``/options can never be read as the admin password. Only the
+        non-secret operator ``reason`` is accepted.
+        """
+        error = _reset_body_error(request, body_data, ('reason',))
+        if error is not None:
+            return error
         controller = self._reset_controller()
         reason = body_data.get('reason')
         if not isinstance(reason, str):
@@ -1896,6 +2246,9 @@ class AdminApp:
 
     def _handle_reset_confirm(self, request, match, body_data, now):
         """Second, explicit confirmation for the token minted by ``begin``."""
+        error = _reset_body_error(request, body_data, ('token',))
+        if error is not None:
+            return error
         if not self._reset_begun or not self._reset_token:
             return self._error(request, 409, 'factory reset requires begin() first')
         controller = self._reset_controller()
@@ -1913,6 +2266,9 @@ class AdminApp:
 
     def _handle_reset_execute(self, request, match, body_data, now):
         """Destructive reset; refuses unless begin and confirm both completed."""
+        error = _reset_body_error(request, body_data, ('include_timelapse',))
+        if error is not None:
+            return error
         if not self._reset_begun:
             return self._error(
                 request, 409, 'factory reset requires two-step confirmation: begin() first'
@@ -1922,9 +2278,9 @@ class AdminApp:
                 request, 409,
                 'factory reset requires the second confirmation: confirm() first',
             )
-        include_timelapse = body_data.get('include_timelapse', True)
+        include_timelapse = body_data.get('include_timelapse', DEFAULT_INCLUDE_TIMELAPSE)
         if not isinstance(include_timelapse, bool):
-            include_timelapse = True
+            return self._error(request, 400, 'include_timelapse must be a boolean')
         controller = self._reset_controller()
         report = controller.execute(
             token=self._reset_token, include_timelapse=include_timelapse
@@ -2298,6 +2654,73 @@ def _bounded_reason(value):
     if isinstance(value, BaseException):
         value = str(value)
     return runtime_ipc.bounded_text(value, MAX_MQTT_TEST_REASON).strip()
+
+
+def _system_action_body_error(request, body_data, allow_password=False):
+    """Validate an update/reboot action body; return an error Response or None.
+
+    These actions are fixed-command only, so their body must be empty apart from
+    an optional inline re-auth ``password`` (which the route policy has already
+    consumed). No submitted value is echoed. Anything larger than the bound is
+    rejected before an action can run.
+    """
+    if _body_size(request) > MAX_SYSTEM_ACTION_BODY_BYTES:
+        return Response(
+            413,
+            {'Content-Type': 'application/json; charset=utf-8'},
+            b'{"error": "request body too large", "ok": false}',
+        )
+    if not isinstance(body_data, dict):
+        return Response(
+            400,
+            {'Content-Type': 'application/json; charset=utf-8'},
+            b'{"error": "invalid request body", "ok": false}',
+        )
+    allowed = {'password'} if allow_password else set()
+    if any(key not in allowed for key in body_data):
+        return Response(
+            400,
+            {'Content-Type': 'application/json; charset=utf-8'},
+            b'{"error": "unknown field", "ok": false}',
+        )
+    return None
+
+
+def _reset_body_error(request, body_data, allowed):
+    """Validate a factory-reset body against an exact field allowlist.
+
+    Fresh-window-only reset routes must never interpret a body field as the
+    admin password, so any field outside ``allowed`` (including ``password``) is
+    a bounded ``400``. No submitted value is echoed.
+    """
+    if _body_size(request) > MAX_INTEGRATION_BODY_BYTES:
+        return Response(
+            413,
+            {'Content-Type': 'application/json; charset=utf-8'},
+            b'{"error": "request body too large", "ok": false}',
+        )
+    if not isinstance(body_data, dict):
+        return Response(
+            400,
+            {'Content-Type': 'application/json; charset=utf-8'},
+            b'{"error": "invalid request body", "ok": false}',
+        )
+    if any(key not in allowed for key in body_data):
+        return Response(
+            400,
+            {'Content-Type': 'application/json; charset=utf-8'},
+            b'{"error": "unknown field", "ok": false}',
+        )
+    return None
+
+
+def _bounded_hostname(hostname_fn):
+    """Return the bounded local hostname from an injected source (never raises)."""
+    try:
+        value = hostname_fn()
+    except Exception:  # noqa: BLE001 - a hostname must never crash a request
+        return ''
+    return runtime_ipc.bounded_text(value, 64)
 
 
 def _integration_size_error(request):

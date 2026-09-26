@@ -790,6 +790,49 @@ p {
 }
 
 /* ------------------------------------------------------------------ */
+/* WP-UI7: System view (health, update, diagnostics, danger zone)      */
+/* ------------------------------------------------------------------ */
+
+.btn--danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+
+.btn--danger:hover {
+  filter: brightness(0.94);
+}
+
+.card--danger {
+  border-color: var(--danger);
+}
+
+.card--danger .card__title {
+  color: var(--danger);
+}
+
+.danger-action {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.diagnostics {
+  max-height: 22rem;
+  overflow: auto;
+  margin: 0.75rem 0 0;
+  padding: 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ------------------------------------------------------------------ */
 /* Responsive: 360px phone through desktop                             */
 /* ------------------------------------------------------------------ */
 

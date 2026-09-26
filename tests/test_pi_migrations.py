@@ -219,6 +219,73 @@ class RuntimeDirectoryMigrationTests(unittest.TestCase):
         self.assertIn('006_runtime_directory', names)
 
 
+class PrusaPrivSystemVerbsTests(unittest.TestCase):
+    ORIGINAL = textwrap.dedent("""\
+        #!/bin/bash
+        case "$verb" in
+           start-camera)
+              exec "$SYSTEMCTL" --no-block start prusa-camera.target
+              ;;
+           *)
+              exit 2
+              ;;
+        esac
+    """)
+
+    def _write(self, root, text):
+        helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
+        os.makedirs(os.path.dirname(helper), exist_ok=True)
+        Path(helper).write_text(text)
+        return helper
+
+    def test_adds_the_system_verbs_before_the_fallback(self):
+        with tempfile.TemporaryDirectory() as root:
+            helper = self._write(root, self.ORIGINAL)
+            self.assertTrue(migrations._007_prusa_priv_system_verbs(root))
+            content = Path(helper).read_text()
+            self.assertIn('check-update)', content)
+            self.assertIn('exec "$SYSTEMCTL" start prusa-updater.service', content)
+            self.assertIn('reboot)', content)
+            self.assertIn('exec "$SYSTEMCTL" reboot', content)
+            # The verbs precede the catch-all so dispatch order is preserved.
+            self.assertLess(content.index('reboot)'), content.index('*)'))
+
+    def test_already_patched_is_a_noop_success(self):
+        with tempfile.TemporaryDirectory() as root:
+            patched = self.ORIGINAL.replace(
+                '   *)\n',
+                '   check-update)\n      exec "$SYSTEMCTL" start prusa-updater.service\n      ;;\n'
+                '   reboot)\n      exec "$SYSTEMCTL" reboot\n      ;;\n'
+                '   *)\n',
+            )
+            helper = self._write(root, patched)
+            self.assertTrue(migrations._007_prusa_priv_system_verbs(root))
+            self.assertEqual(Path(helper).read_text(), patched)
+
+    def test_missing_helper_returns_false(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertFalse(migrations._007_prusa_priv_system_verbs(root))
+
+    def test_missing_marker_returns_false_without_writing(self):
+        with tempfile.TemporaryDirectory() as root:
+            helper = self._write(root, '#!/bin/bash\nexit 0\n')
+            self.assertFalse(migrations._007_prusa_priv_system_verbs(root))
+            self.assertEqual(Path(helper).read_text(), '#!/bin/bash\nexit 0\n')
+
+    def test_idempotent(self):
+        with tempfile.TemporaryDirectory() as root:
+            helper = self._write(root, self.ORIGINAL)
+            migrations._007_prusa_priv_system_verbs(root)
+            migrations._007_prusa_priv_system_verbs(root)
+            content = Path(helper).read_text()
+            self.assertEqual(content.count('reboot)'), 1)
+            self.assertEqual(content.count('check-update)'), 1)
+
+    def test_registered_in_the_registry(self):
+        names = [name for name, _fn in migrations.MIGRATIONS]
+        self.assertIn('007_prusa_priv_system_verbs', names)
+
+
 class StateTests(unittest.TestCase):
     def test_empty_state_returns_empty_set(self):
         self.assertEqual(migrations._load_state('/nonexistent'), set())
@@ -239,7 +306,15 @@ class RunPendingTests(unittest.TestCase):
             helper_dir = os.path.join(root, 'usr', 'libexec', 'prusa-cam')
             os.makedirs(helper_dir)
             Path(os.path.join(helper_dir, 'prusa-priv')).write_text(
-                '#!/bin/bash\nexec "$SYSTEMCTL" start prusa-camera.target\n'
+                '#!/bin/bash\n'
+                'case "$verb" in\n'
+                '   start-camera)\n'
+                '      exec "$SYSTEMCTL" start prusa-camera.target\n'
+                '      ;;\n'
+                '   *)\n'
+                '      exit 2\n'
+                '      ;;\n'
+                'esac\n'
             )
             samba_dir = os.path.join(root, 'etc', 'samba')
             os.makedirs(samba_dir)

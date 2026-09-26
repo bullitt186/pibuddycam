@@ -608,5 +608,70 @@ class AdminMediaStreamingTests(unittest.TestCase):
         self.assertIn(['media_build', 'BuildManager'], self.chains)
 
 
+class AdminSystemUpdateWiringTests(unittest.TestCase):
+    """WP-UI7/AC-15..AC-17: the transport wires the fixed update/diag/reboot paths."""
+
+    def setUp(self):
+        self.tree = _tree()
+        self.chains = _attr_chains(self.tree)
+
+    def test_route_table_declares_the_system_routes(self):
+        routes_node = _module_assign(self.tree, 'ROUTES')
+        declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}
+        for entry in (
+            ('GET', '/api/system'),
+            ('GET', '/api/update'),
+            ('POST', '/api/update/check'),
+            ('POST', '/api/update/install'),
+            ('GET', '/api/diagnostics'),
+            ('POST', '/api/reboot'),
+        ):
+            self.assertIn(entry, declared)
+
+    def test_build_admin_app_injects_the_update_and_diag_defaults(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == 'build_admin_app'
+        ]
+        self.assertEqual(len(functions), 1)
+        admin_calls = [
+            call for call in _calls(functions[0])
+            if any(chain == ['admin_http', 'AdminApp'] for chain in _attr_chains(call))
+        ]
+        passed = {
+            keyword.arg for call in admin_calls for keyword in call.keywords}
+        for keyword in ('update_manager', 'diagnostics_provider', 'reboot_fn'):
+            self.assertIn(keyword, passed)
+            self.assertIn(keyword, [a.arg for a in functions[0].args.kwonlyargs])
+        self.assertIn(['privileged', 'reboot'], self.chains)
+
+    def test_default_update_manager_uses_only_fixed_privileged_paths(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == '_default_update_manager'
+        ]
+        self.assertEqual(len(functions), 1)
+        chains = _attr_chains(functions[0])
+        self.assertIn(['update_control', 'UpdateManager'], chains)
+        self.assertIn(['privileged', 'check_update'], chains)
+        self.assertIn(['privileged', 'install_update'], chains)
+        # No URL/key/channel literal can be embedded in the default factory.
+        literals = [
+            node.value for node in ast.walk(functions[0])
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        ]
+        self.assertFalse(any('http' in value.lower() for value in literals))
+
+    def test_default_diagnostics_provider_is_bounded(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == '_default_diagnostics_provider'
+        ]
+        self.assertEqual(len(functions), 1)
+        self.assertIn(
+            ['diagnostics', 'DiagnosticsProvider'], _attr_chains(functions[0]))
+
+
 if __name__ == '__main__':
     unittest.main()

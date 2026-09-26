@@ -508,6 +508,8 @@ class ImageScaffoldingTests(unittest.TestCase):
             "hotspot-stop",
             "wifi-station-apply",
             "install-update",
+            "check-update",
+            "reboot",
         ):
             self.assertIn(verb, text)
         # Unknown verbs must exit 2 before any privileged command.

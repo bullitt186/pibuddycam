@@ -958,5 +958,122 @@ class AdminAssetPackagingTests(unittest.TestCase):
         self.assertNotIn('exclude="web', tar_block)
 
 
+# --------------------------------------------------------------------------- #
+# System view (WP-UI7; AC-14..AC-17)                                           #
+# --------------------------------------------------------------------------- #
+
+class AdminSystemUiTests(unittest.TestCase):
+    """The System view is read-only on load and gates every destructive action."""
+
+    def setUp(self):
+        self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
+        self.js = _strip_js_comments((WEB_DIR / 'app.js').read_text(encoding='utf-8'))
+        self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
+
+    def test_system_placeholder_is_replaced_with_real_sections(self):
+        self.assertNotIn('System information is not available in this release', self.html)
+        for marker in (
+            'system-health-title', 'system-update-title', 'system-diagnostics-title',
+            'system-access-title', 'system-danger-title',
+            'system-app-version', 'system-release', 'system-commit',
+            'system-provisioning', 'system-ssh-enabled', 'system-ssh-save',
+            'system-recovery', 'system-reboot', 'system-reset',
+        ):
+            self.assertIn(marker, self.html, marker)
+
+    def test_update_controls_and_warning(self):
+        for marker in (
+            'system-update-check', 'system-update-install',
+            'system-update-installed', 'system-update-latest',
+            'system-update-checked', 'system-update-chip',
+        ):
+            self.assertIn(marker, self.html, marker)
+        self.assertIn('report-only', self.html)
+        self.assertIn('may disconnect', self.html)
+
+    def test_diagnostics_controls(self):
+        for marker in (
+            'system-diagnostics-load', 'system-diagnostics-download',
+            'system-diagnostics-output',
+        ):
+            self.assertIn(marker, self.html, marker)
+        self.assertIn('No command, unit, or path can be supplied', self.html)
+
+    def test_danger_zone_has_typed_reset_and_include_media(self):
+        self.assertIn('system-reset-phrase', self.html)
+        self.assertIn('Type <strong>RESET</strong>', self.html)
+        self.assertIn('system-reset-media', self.html)
+        self.assertIn('system-reboot-confirm', self.html)
+
+    def test_load_only_runs_read_only_gets(self):
+        body = _function_body(self.js, 'loadSystem')
+        self.assertIn('/api/system', body)
+        self.assertIn('/api/update', body)
+        for forbidden in ('/api/reboot', '/api/reset/', '/api/update/install',
+                          '/api/update/check', '/api/ssh', '/api/recovery'):
+            self.assertNotIn(forbidden, body)
+
+    def test_selecting_system_loads_it(self):
+        body = _function_body(self.js, 'selectView')
+        self.assertIn("name === 'system'", body)
+        self.assertIn('loadSystem()', body)
+
+    def test_sensitive_actions_reauthenticate_first(self):
+        for name in ('installUpdate', 'saveSsh', 'enterRecovery',
+                     'rebootDevice', 'factoryReset'):
+            body = _function_body(self.js, name)
+            self.assertIn('requestReauth', body, name)
+            reauth_at = body.index('requestReauth')
+            self.assertLess(
+                reauth_at, body.find('request('),
+                f'{name} must re-authenticate before its request',
+            )
+
+    def test_exact_endpoint_schemas(self):
+        ssh = _function_body(self.js, 'saveSsh')
+        self.assertIn("'/api/ssh'", ssh)
+        self.assertIn('{ enabled }', ssh)
+        reboot = _function_body(self.js, 'rebootDevice')
+        self.assertIn("'/api/reboot'", reboot)
+        self.assertIn('{ confirm: true }', reboot)
+        reset = _function_body(self.js, 'factoryReset')
+        self.assertIn("'/api/reset/begin'", reset)
+        self.assertIn("'/api/reset/confirm'", reset)
+        self.assertIn("'/api/reset/execute'", reset)
+        self.assertIn('{ include_timelapse: includeMedia }', reset)
+        recovery = _function_body(self.js, 'enterRecovery')
+        self.assertIn("'/api/recovery/enter-setup'", recovery)
+        check = _function_body(self.js, 'checkForUpdate')
+        self.assertIn("'/api/update/check'", check)
+        install = _function_body(self.js, 'installUpdate')
+        self.assertIn("'/api/update/install'", install)
+
+    def test_reset_requires_the_typed_phrase(self):
+        body = _function_body(self.js, 'factoryReset')
+        self.assertIn("'RESET'", body)
+        ready = _function_body(self.js, 'resetPhraseReady')
+        self.assertIn('RESET', ready)
+        self.assertIn('disabled', ready)
+
+    def test_reconnect_uncertainty_is_reported(self):
+        install = _function_body(self.js, 'installUpdate')
+        self.assertIn('lost connection', install)
+        self.assertIn('status === 0', install)
+        reboot = _function_body(self.js, 'rebootDevice')
+        self.assertIn('status === 0', reboot)
+
+    def test_no_destructive_action_is_wired_to_a_form_submit(self):
+        # The System actions are button click handlers, never form submits.
+        wire = _function_body(self.js, 'wireForms')
+        for marker in ('systemReboot', 'systemReset', 'systemUpdateInstall',
+                       'systemSshSave'):
+            self.assertIn(f'els.{marker}', wire)
+
+    def test_css_defines_danger_and_diagnostics_styles(self):
+        for marker in ('.btn--danger', '.card--danger', '.danger-action',
+                       '.diagnostics'):
+            self.assertIn(marker, self.css, marker)
+
+
 if __name__ == '__main__':
     unittest.main()

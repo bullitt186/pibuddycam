@@ -19,7 +19,9 @@ sys.path.insert(0, str(PI_DIR))
 import admin_auth  # noqa: E402
 import admin_http  # noqa: E402
 import config_schema  # noqa: E402
+import device_control  # noqa: E402
 import factory_reset  # noqa: E402
+import privileged  # noqa: E402
 import live_monitor  # noqa: E402
 import provisioning  # noqa: E402
 import setup_wizard  # noqa: E402
@@ -1001,6 +1003,14 @@ class FactoryResetTests(AdminHttpTestBase):
         marker.write_text('keep-me')
         return self._build_app(factory_reset=controller), marker
 
+    def _prime(self, app, token, csrf):
+        """Prime the fresh re-auth window (the reset routes are window-only)."""
+        response = app.handle(self.req(
+            'POST', '/api/reauth', body={'password': ADMIN_PASSWORD},
+            headers=self.auth_headers(token, csrf=csrf),
+        ))
+        self.assertEqual(response.status, 200, response.body)
+
     def test_execute_without_reauth_403(self):
         app, marker = self._reset_app()
         token = self.login(app)
@@ -1012,24 +1022,58 @@ class FactoryResetTests(AdminHttpTestBase):
         self.assertEqual(response.status, 403)
         self.assertTrue(marker.exists())
 
+    def test_inline_password_is_not_read_by_a_window_only_reset_route(self):
+        # A reset body's ``password`` must never be interpreted as the admin
+        # password (or charged to the login limiter): the route is window-only.
+        app, marker = self._reset_app()
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        response = app.handle(self.req(
+            'POST', '/api/reset/begin',
+            body={'password': ADMIN_PASSWORD, 'reason': 'operator'},
+            headers=self.auth_headers(token, csrf=csrf),
+        ))
+        self.assertEqual(response.status, 403)
+        # The limiter was not charged: a correct reauth still succeeds.
+        self._prime(app, token, csrf)
+        allowed = app.handle(self.req(
+            'POST', '/api/reset/begin', body={'reason': 'operator'},
+            headers=self.auth_headers(token, csrf=csrf),
+        ))
+        self.assertEqual(allowed.status, 200)
+
+    def test_unknown_reset_field_is_rejected_after_the_window(self):
+        app, marker = self._reset_app()
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        self._prime(app, token, csrf)
+        response = app.handle(self.req(
+            'POST', '/api/reset/begin',
+            body={'password': 'not-an-admin-password', 'reason': 'operator'},
+            headers=self.auth_headers(token, csrf=csrf),
+        ))
+        self.assertEqual(response.status, 400)
+        self.assertTrue(marker.exists())
+
     def test_execute_before_begin_or_confirm_deletes_nothing(self):
         app, marker = self._reset_app()
         token = self.login(app)
         csrf = self.sessions.csrf_for(token)
+        self._prime(app, token, csrf)
 
         before_begin = app.handle(self.req(
-            'POST', '/api/reset/execute', body={'password': ADMIN_PASSWORD},
+            'POST', '/api/reset/execute', body={},
             headers=self.auth_headers(token, csrf=csrf),
         ))
         self.assertEqual(before_begin.status, 409)
         self.assertTrue(marker.exists())
 
         app.handle(self.req(
-            'POST', '/api/reset/begin', body={'password': ADMIN_PASSWORD},
+            'POST', '/api/reset/begin', body={},
             headers=self.auth_headers(token, csrf=csrf),
         ))
         before_confirm = app.handle(self.req(
-            'POST', '/api/reset/execute', body={'password': ADMIN_PASSWORD},
+            'POST', '/api/reset/execute', body={},
             headers=self.auth_headers(token, csrf=csrf),
         ))
         self.assertEqual(before_confirm.status, 409)
@@ -1039,25 +1083,46 @@ class FactoryResetTests(AdminHttpTestBase):
         app, marker = self._reset_app()
         token = self.login(app)
         csrf = self.sessions.csrf_for(token)
+        self._prime(app, token, csrf)
         begin = app.handle(self.req(
-            'POST', '/api/reset/begin', body={'password': ADMIN_PASSWORD},
+            'POST', '/api/reset/begin', body={},
             headers=self.auth_headers(token, csrf=csrf),
         ))
         self.assertEqual(begin.status, 200)
 
         rejected = app.handle(self.req(
             'POST', '/api/reset/confirm',
-            body={'password': ADMIN_PASSWORD, 'token': 'not-the-server-token'},
+            body={'token': 'not-the-server-token'},
             headers=self.auth_headers(token, csrf=csrf),
         ))
         self.assertEqual(rejected.status, 409)
 
         # The wrong token must not have armed the reset.
         after = app.handle(self.req(
-            'POST', '/api/reset/execute', body={'password': ADMIN_PASSWORD},
+            'POST', '/api/reset/execute', body={},
             headers=self.auth_headers(token, csrf=csrf),
         ))
         self.assertEqual(after.status, 409)
+        self.assertTrue(marker.exists())
+
+    def test_include_timelapse_must_be_a_boolean(self):
+        app, marker = self._reset_app()
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        self._prime(app, token, csrf)
+        app.handle(self.req(
+            'POST', '/api/reset/begin', body={},
+            headers=self.auth_headers(token, csrf=csrf),
+        ))
+        app.handle(self.req(
+            'POST', '/api/reset/confirm', body={},
+            headers=self.auth_headers(token, csrf=csrf),
+        ))
+        response = app.handle(self.req(
+            'POST', '/api/reset/execute', body={'include_timelapse': 'yes'},
+            headers=self.auth_headers(token, csrf=csrf),
+        ))
+        self.assertEqual(response.status, 400)
         self.assertTrue(marker.exists())
 
 
@@ -1554,6 +1619,413 @@ class MediaLibraryRouteTests(AdminHttpTestBase):
     def test_close_stops_the_build_manager(self):
         self.app.close()
         self.assertTrue(self.build.stopped)
+
+
+# --------------------------------------------------------------------------- #
+# System / update / diagnostics / reboot (WP-UI7; AC-14..AC-17)
+# --------------------------------------------------------------------------- #
+
+class FakeUpdateManager:
+    def __init__(self, state=None, check=None, install=None):
+        self._state = state if state is not None else {
+            'state': 'update-available', 'installed_version': '1.0.0',
+            'latest_version': '1.1.0', 'release_summary': 'notes',
+            'in_progress': False, 'checking': False, 'installing': False,
+            'last_check': 123.0, 'source_configured': True,
+            'observed_at': NOW, 'fresh': True,
+        }
+        self._check = check if check is not None else {'ok': True, 'started': True}
+        self._install = install if install is not None else {'ok': True, 'started': True}
+        self.check_calls = 0
+        self.install_calls = 0
+        self.closed = False
+
+    def state(self):
+        return dict(self._state)
+
+    def check(self):
+        self.check_calls += 1
+        return dict(self._check)
+
+    def install(self):
+        self.install_calls += 1
+        return dict(self._install)
+
+    def close(self):
+        self.closed = True
+
+
+class FakeDiagnosticsProvider:
+    def __init__(self, document=None):
+        self._document = document if document is not None else {
+            'ok': True, 'available': True, 'state': 'ready',
+            'text': 'boot ok\n', 'lines': 1, 'bytes': 8, 'truncated': False,
+        }
+        self.secrets = None
+        self.stopped = False
+
+    def __call__(self, secrets=()):
+        self.secrets = tuple(secrets or ())
+        return dict(self._document)
+
+    def stop(self):
+        self.stopped = True
+
+
+class FakeReboot:
+    def __init__(self, ok=True):
+        self.ok = ok
+        self.calls = 0
+
+    def __call__(self):
+        self.calls += 1
+        # Mirrors privileged.PrivilegedResult: truthy exactly when ok.
+        return privileged.PrivilegedResult(self.ok, '' if self.ok else 'failed')
+
+
+class SystemRouteTests(AdminHttpTestBase):
+    def _system_app(self, **overrides):
+        kwargs = dict(
+            release_identity_fn=lambda: {
+                'version': '1.1.6', 'source_commit': 'abc1234',
+                'os_suite': 'trixie', 'kernel_package': 'linux-image',
+            },
+            application_version_fn=lambda: '1.1.6',
+            hostname_fn=lambda: 'buddy3d-test',
+        )
+        kwargs.update(overrides)
+        return self._build_app(**kwargs)
+
+    def test_requires_authentication(self):
+        response = self.app.handle(self.req('GET', '/api/system'))
+        self.assertEqual(response.status, 401)
+
+    def test_returns_bounded_system_facts(self):
+        app = self._system_app()
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/system', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertEqual(payload['version']['release'], '1.1.6')
+        self.assertEqual(payload['version']['source_commit'], 'abc1234')
+        self.assertEqual(payload['network']['hostname'], 'buddy3d-test')
+        self.assertEqual(payload['provisioning']['state'], 'claimed')
+        self.assertIn('enabled', payload['ssh'])
+        self.assertNotIn('password', response.body.decode().lower())
+        self.assertNotIn('token', response.body.decode().lower())
+
+    def test_identity_failure_degrades_without_leaking(self):
+        app = self._system_app(
+            release_identity_fn=lambda: (_ for _ in ()).throw(RuntimeError('boom')),
+            application_version_fn=lambda: (_ for _ in ()).throw(RuntimeError('boom')),
+        )
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/system', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertEqual(payload['version']['release'], '')
+
+
+class UpdateRouteTests(AdminHttpTestBase):
+    def test_routes_require_authentication(self):
+        for method, path in (
+            ('GET', '/api/update'),
+            ('POST', '/api/update/check'),
+            ('POST', '/api/update/install'),
+        ):
+            response = self.app.handle(self.req(method, path, body={}))
+            self.assertEqual(response.status, 401, path)
+
+    def test_get_update_state_is_read_only(self):
+        manager = FakeUpdateManager()
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/update', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertEqual(payload['latest_version'], '1.1.0')
+        self.assertEqual(manager.check_calls, 0)
+        self.assertEqual(manager.install_calls, 0)
+
+    def test_get_update_unavailable_without_manager(self):
+        token = self.login()
+        response = self.app.handle(self.req(
+            'GET', '/api/update', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertFalse(payload['available'])
+
+    def test_check_requires_csrf(self):
+        manager = FakeUpdateManager()
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        response = app.handle(self.req(
+            'POST', '/api/update/check', body={},
+            headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 403)
+        self.assertEqual(manager.check_calls, 0)
+
+    def test_check_is_report_only_and_starts_no_install(self):
+        manager = FakeUpdateManager()
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        response = app.handle(self.req(
+            'POST', '/api/update/check', body={},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 202)
+        self.assertEqual(manager.check_calls, 1)
+        self.assertEqual(manager.install_calls, 0)
+
+    def test_check_rejects_browser_override_fields(self):
+        manager = FakeUpdateManager()
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        for body in (
+            {'url': 'https://evil.example/m.json'},
+            {'manifest': 'x'},
+            {'channel': 'alpha'},
+            {'version': '9.9.9'},
+            {'key': 'abc'},
+            {'command': 'rm -rf /'},
+        ):
+            response = app.handle(self.req(
+                'POST', '/api/update/check', body=body,
+                headers=self.auth_headers(token, csrf=csrf)))
+            self.assertEqual(response.status, 400, body)
+        self.assertEqual(manager.check_calls, 0)
+
+    def test_check_duplicate_is_409(self):
+        manager = FakeUpdateManager(
+            check={'ok': False, 'busy': True, 'reason': 'already running'})
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        response = app.handle(self.req(
+            'POST', '/api/update/check', body={},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 409)
+
+    def test_check_unavailable_is_503(self):
+        token = self.login()
+        csrf = self.sessions.csrf_for(token)
+        response = self.app.handle(self.req(
+            'POST', '/api/update/check', body={},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 503)
+
+    def test_install_requires_fresh_reauth(self):
+        manager = FakeUpdateManager()
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        response = app.handle(self.req(
+            'POST', '/api/update/install', body={},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 403)
+        self.assertEqual(manager.install_calls, 0)
+
+    def test_install_with_inline_password_invokes_fixed_path(self):
+        manager = FakeUpdateManager()
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        response = app.handle(self.req(
+            'POST', '/api/update/install', body={'password': ADMIN_PASSWORD},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 202)
+        self.assertEqual(manager.install_calls, 1)
+        payload = json.loads(response.body)
+        self.assertIn('warning', payload)
+        self.assertIn('restart', payload['warning'].lower())
+
+    def test_install_with_window_and_empty_body(self):
+        manager = FakeUpdateManager()
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        self.assertEqual(app.handle(self.req(
+            'POST', '/api/reauth', body={'password': ADMIN_PASSWORD},
+            headers=self.auth_headers(token, csrf=csrf))).status, 200)
+        response = app.handle(self.req(
+            'POST', '/api/update/install', body={},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 202)
+        self.assertEqual(manager.install_calls, 1)
+
+    def test_install_rejects_browser_override_fields(self):
+        manager = FakeUpdateManager()
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        response = app.handle(self.req(
+            'POST', '/api/update/install',
+            body={'password': ADMIN_PASSWORD, 'url': 'https://evil.example'},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 400)
+        self.assertEqual(manager.install_calls, 0)
+
+    def test_install_duplicate_is_409(self):
+        manager = FakeUpdateManager(
+            install={'ok': False, 'busy': True, 'reason': 'already installing'})
+        app = self._build_app(update_manager=manager)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        response = app.handle(self.req(
+            'POST', '/api/update/install', body={'password': ADMIN_PASSWORD},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 409)
+
+    def test_close_closes_the_update_manager(self):
+        manager = FakeUpdateManager()
+        app = self._build_app(update_manager=manager)
+        app.close()
+        self.assertTrue(manager.closed)
+
+
+class DiagnosticsRouteTests(AdminHttpTestBase):
+    def test_requires_authentication(self):
+        response = self.app.handle(self.req('GET', '/api/diagnostics'))
+        self.assertEqual(response.status, 401)
+
+    def test_returns_bounded_document_and_passes_secrets(self):
+        provider = FakeDiagnosticsProvider()
+        app = self._build_app(diagnostics_provider=provider)
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/diagnostics', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertTrue(payload['available'])
+        self.assertEqual(payload['text'], 'boot ok\n')
+        self.assertIsInstance(provider.secrets, tuple)
+
+    def test_unavailable_without_provider(self):
+        token = self.login()
+        response = self.app.handle(self.req(
+            'GET', '/api/diagnostics', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        self.assertFalse(json.loads(response.body)['available'])
+
+    def test_provider_exception_degrades(self):
+        class Boom:
+            def __call__(self, secrets=()):
+                raise RuntimeError('boom')
+
+            def stop(self):
+                pass
+
+        app = self._build_app(diagnostics_provider=Boom())
+        token = self.login(app)
+        response = app.handle(self.req(
+            'GET', '/api/diagnostics', headers=self.auth_headers(token)))
+        self.assertEqual(response.status, 200)
+        self.assertFalse(json.loads(response.body)['available'])
+
+    def test_close_stops_the_provider(self):
+        provider = FakeDiagnosticsProvider()
+        app = self._build_app(diagnostics_provider=provider)
+        app.close()
+        self.assertTrue(provider.stopped)
+
+
+class RebootRouteTests(AdminHttpTestBase):
+    def _reboot_app(self, reboot=None):
+        return self._build_app(reboot_fn=reboot or FakeReboot())
+
+    def _prime(self, app, token, csrf):
+        self.assertEqual(app.handle(self.req(
+            'POST', '/api/reauth', body={'password': ADMIN_PASSWORD},
+            headers=self.auth_headers(token, csrf=csrf))).status, 200)
+
+    def test_requires_authentication(self):
+        response = self.app.handle(self.req(
+            'POST', '/api/reboot', body={'confirm': True}))
+        self.assertEqual(response.status, 401)
+
+    def test_requires_fresh_window_not_inline_password(self):
+        reboot = FakeReboot()
+        app = self._reboot_app(reboot)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        response = app.handle(self.req(
+            'POST', '/api/reboot',
+            body={'confirm': True, 'password': ADMIN_PASSWORD},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 403)
+        self.assertEqual(reboot.calls, 0)
+
+    def test_requires_explicit_confirmation(self):
+        reboot = FakeReboot()
+        app = self._reboot_app(reboot)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        self._prime(app, token, csrf)
+        response = app.handle(self.req(
+            'POST', '/api/reboot', body={},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 400)
+        self.assertEqual(reboot.calls, 0)
+
+    def test_reboot_invokes_fixed_verb_once(self):
+        reboot = FakeReboot()
+        app = self._reboot_app(reboot)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        self._prime(app, token, csrf)
+        response = app.handle(self.req(
+            'POST', '/api/reboot', body={'confirm': True},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 200)
+        self.assertEqual(reboot.calls, 1)
+        self.assertIn('warning', json.loads(response.body))
+
+    def test_reboot_is_rate_limited_with_retry_after(self):
+        reboot = FakeReboot()
+        app = self._reboot_app(reboot)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        self._prime(app, token, csrf)
+        first = app.handle(self.req(
+            'POST', '/api/reboot', body={'confirm': True},
+            headers=self.auth_headers(token, csrf=csrf), now=NOW))
+        self.assertEqual(first.status, 200)
+        second = app.handle(self.req(
+            'POST', '/api/reboot', body={'confirm': True},
+            headers=self.auth_headers(token, csrf=csrf), now=NOW))
+        self.assertEqual(second.status, 429)
+        self.assertIn('Retry-After', second.headers)
+        self.assertEqual(reboot.calls, 1)
+        later = NOW + device_control.DEFAULT_REBOOT_MIN_INTERVAL_SECONDS + 1
+        third = app.handle(self.req(
+            'POST', '/api/reboot', body={'confirm': True},
+            headers=self.auth_headers(token, csrf=csrf), now=later))
+        self.assertEqual(third.status, 200)
+        self.assertEqual(reboot.calls, 2)
+
+    def test_reboot_command_failure_is_not_reported_as_success(self):
+        reboot = FakeReboot(ok=False)
+        app = self._reboot_app(reboot)
+        token = self.login(app)
+        csrf = self.sessions.csrf_for(token)
+        self._prime(app, token, csrf)
+        response = app.handle(self.req(
+            'POST', '/api/reboot', body={'confirm': True},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 500)
+
+    def test_reboot_unavailable_without_callable(self):
+        token = self.login()
+        csrf = self.sessions.csrf_for(token)
+        self._prime(self.app, token, csrf)
+        response = self.app.handle(self.req(
+            'POST', '/api/reboot', body={'confirm': True},
+            headers=self.auth_headers(token, csrf=csrf)))
+        self.assertEqual(response.status, 503)
 
 
 if __name__ == '__main__':

@@ -168,6 +168,55 @@ def _006_runtime_directory(root):
     return True
 
 
+def _007_prusa_priv_system_verbs(root):
+    """Add the WP-UI7 check-update/reboot verbs to an older prusa-priv.
+
+    The fixed-verb root helper is image-owned, so an OTA application release
+    cannot replace it. This is the OTA catch-up path for devices whose installed
+    helper predates the System view's report-only update check and reboot
+    actions. The verbs are inserted before the ``*)`` fallback so dispatch order
+    is preserved; an already-patched helper is a no-op success.
+
+    This is a ROOT change and needs a reboot (or a re-run of the boot
+    migrations) to take effect on a live device.
+    """
+    helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
+    if not os.path.isfile(helper):
+        log.warning('migrations: prusa-priv not found at %s', helper)
+        return False
+    with open(helper) as f:
+        content = f.read()
+
+    additions = {
+        'check-update': (
+            '   check-update)\n'
+            '      # Report-only: prusa-updater.service runs updater_install.py check.\n'
+            '      exec "$SYSTEMCTL" start prusa-updater.service\n'
+            '      ;;\n'
+        ),
+        'reboot': (
+            '   reboot)\n'
+            '      exec "$SYSTEMCTL" reboot\n'
+            '      ;;\n'
+        ),
+    }
+    if all(f'{verb})' in content for verb in additions):
+        return True
+
+    marker = '   *)\n      exit 2'
+    if marker not in content:
+        log.warning('migrations: prusa-priv fallback marker not found')
+        return False
+    insertion = ''.join(
+        block for verb, block in additions.items()
+        if f'{verb})' not in content
+    )
+    content = content.replace(marker, insertion + marker, 1)
+    with open(helper, 'w') as f:
+        f.write(content)
+    return True
+
+
 # -- registry (append only; never reorder or rename shipped entries) -------- #
 
 MIGRATIONS = [
@@ -177,6 +226,7 @@ MIGRATIONS = [
     ('004_pi_persist_use_launcher', _004_pi_persist_use_launcher),
     ('005_prusa_priv_no_block', _005_prusa_priv_no_block),
     ('006_runtime_directory', _006_runtime_directory),
+    ('007_prusa_priv_system_verbs', _007_prusa_priv_system_verbs),
 ]
 
 

@@ -52,6 +52,8 @@ class PrusaPrivAssetTests(unittest.TestCase):
             'hotspot-stop',
             'wifi-station-apply',
             'install-update',
+            'check-update',
+            'reboot',
             'rtsp-start',
             'rtsp-stop',
             'quality-restart',
@@ -106,6 +108,8 @@ class PrusaPrivAssetTests(unittest.TestCase):
         self.assertIn('exec "$SYSTEMCTL" --no-block start prusa-camera.target', text)
         self.assertIn('exec "$SYSTEMCTL" stop prusa-provisioning.service', text)
         self.assertIn('exec "$SYSTEMCTL" start prusa-updater-install.service', text)
+        self.assertIn('exec "$SYSTEMCTL" start prusa-updater.service', text)
+        self.assertIn('exec "$SYSTEMCTL" reboot', text)
         self.assertIn(
             '"$SYSTEMCTL" restart rpicam-source.service prusa-ha-rtsp.service',
             text,
@@ -114,6 +118,45 @@ class PrusaPrivAssetTests(unittest.TestCase):
             'exec "$SYSTEMCTL" try-restart prusa-rtsp.service', text
         )
         self.assertNotIn('\n      exec systemctl', text)
+
+
+class UpdaterUnitBoundaryTests(unittest.TestCase):
+    """WP-UI7/AC-15: the helper invokes the authoritative existing units.
+
+    The repository's ``prusa-updater.service`` (``check``) and
+    ``prusa-updater-install.service`` (``install``) are the fixed signed-update
+    path; the helper must never invent a different unit or command.
+    """
+
+    def setUp(self):
+        self.helper = PRUSA_PRIV.read_text(encoding='utf-8')
+        self.systemd = REPO / 'pi-impersonator' / 'systemd'
+
+    def test_check_update_starts_the_report_only_check_unit(self):
+        block = self.helper.split('check-update)', 1)[1].split(';;', 1)[0]
+        self.assertIn('start prusa-updater.service', block)
+        self.assertNotIn('prusa-updater-install', block)
+        unit = (self.systemd / 'prusa-updater.service').read_text(encoding='utf-8')
+        exec_lines = [
+            line for line in unit.splitlines() if line.startswith('ExecStart=')
+        ]
+        self.assertEqual(len(exec_lines), 1)
+        self.assertIn('updater_install.py check', exec_lines[0])
+
+    def test_install_update_starts_the_signed_install_unit(self):
+        block = self.helper.split('install-update)', 1)[1].split(';;', 1)[0]
+        self.assertIn('start prusa-updater-install.service', block)
+        unit = (self.systemd / 'prusa-updater-install.service').read_text(
+            encoding='utf-8')
+        exec_lines = [
+            line for line in unit.splitlines() if line.startswith('ExecStart=')
+        ]
+        self.assertEqual(len(exec_lines), 1)
+        self.assertIn('updater_install.py install', exec_lines[0])
+
+    def test_reboot_is_the_fixed_systemctl_reboot(self):
+        block = self.helper.split('reboot)', 1)[1].split(';;', 1)[0]
+        self.assertIn('exec "$SYSTEMCTL" reboot', block)
 
 
 class SudoersAssetTests(unittest.TestCase):
