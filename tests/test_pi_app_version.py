@@ -142,5 +142,111 @@ class BuildIdentityTests(unittest.TestCase):
         self.assertEqual(identity['source_commit'], 'ok')
 
 
+class ActiveReleaseMetadataTests(unittest.TestCase):
+    """WP-UI3: the active signed release overrides the factory image identity."""
+
+    def _write(self, directory, name, doc):
+        path = os.path.join(directory, name)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(doc, f)
+        return path
+
+    def test_release_metadata_is_projected_and_bounded(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, 'release.json', {
+                'version': '1.1.3',
+                'source_commit': 'abc123',
+                'channel': 'stable',
+                'release_date': '2026-09-26',
+                'bundle_url': 'https://secret.example/bundle',
+                'token': 'SECRET',
+            })
+            metadata = app_version.active_release_metadata(path)
+        self.assertEqual(
+            set(metadata), set(app_version.RELEASE_METADATA_FIELDS))
+        self.assertEqual(metadata['version'], '1.1.3')
+        self.assertEqual(metadata['source_commit'], 'abc123')
+        self.assertNotIn('bundle_url', metadata)
+        self.assertNotIn('token', metadata)
+
+    def test_missing_or_malformed_metadata_is_empty(self):
+        empty = {field: '' for field in app_version.RELEASE_METADATA_FIELDS}
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(
+                app_version.active_release_metadata(os.path.join(d, 'missing.json')),
+                empty)
+            path = os.path.join(d, 'release.json')
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write('{not json')
+            self.assertEqual(app_version.active_release_metadata(path), empty)
+
+    def test_installed_release_version_reads_update_state(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = self._write(d, 'update-state.json', {
+                'installed_version': '1.1.3', 'latest_version': '1.2.0'})
+            self.assertEqual(app_version.installed_release_version(path), '1.1.3')
+            self.assertEqual(
+                app_version.installed_release_version(os.path.join(d, 'none.json')), '')
+
+    def test_application_version_prefers_the_active_release(self):
+        with tempfile.TemporaryDirectory() as d:
+            build_info = self._write(d, 'build-info.json', {'version': '0.0.0+local'})
+            release = self._write(d, 'release.json', {'version': '1.1.3'})
+            state = self._write(d, 'update-state.json', {'installed_version': '1.1.2'})
+            self.assertEqual(
+                app_version.application_version(
+                    build_info, env={}, release_metadata_path=release,
+                    release_state_path=state),
+                '1.1.3',
+            )
+
+    def test_application_version_falls_back_to_installed_version(self):
+        with tempfile.TemporaryDirectory() as d:
+            build_info = self._write(d, 'build-info.json', {'version': '0.0.0+local'})
+            state = self._write(d, 'update-state.json', {'installed_version': '1.1.3'})
+            self.assertEqual(
+                app_version.application_version(
+                    build_info, env={},
+                    release_metadata_path=os.path.join(d, 'missing.json'),
+                    release_state_path=state),
+                '1.1.3',
+            )
+
+    def test_application_version_falls_back_to_build_info(self):
+        with tempfile.TemporaryDirectory() as d:
+            build_info = self._write(d, 'build-info.json', {'version': '1.0.4'})
+            self.assertEqual(
+                app_version.application_version(
+                    build_info, env={},
+                    release_metadata_path=os.path.join(d, 'missing.json'),
+                    release_state_path=os.path.join(d, 'missing.json')),
+                '1.0.4',
+            )
+
+    def test_build_identity_prefers_release_version_and_commit(self):
+        with tempfile.TemporaryDirectory() as d:
+            build_info = self._write(d, 'build-info.json', {
+                'version': '0.0.0+local', 'source_commit': 'oldcommit',
+                'os_suite': 'trixie'})
+            release = self._write(d, 'release.json', {
+                'version': '1.1.3', 'source_commit': 'newcommit'})
+            identity = app_version.build_identity(
+                build_info, release_metadata_path=release,
+                release_state_path=os.path.join(d, 'missing.json'))
+        self.assertEqual(identity['version'], '1.1.3')
+        self.assertEqual(identity['source_commit'], 'newcommit')
+        self.assertEqual(identity['os_suite'], 'trixie')
+
+    def test_build_identity_uses_installed_version_when_no_metadata(self):
+        with tempfile.TemporaryDirectory() as d:
+            build_info = self._write(d, 'build-info.json', {'version': '0.0.0+local'})
+            state = self._write(d, 'update-state.json', {'installed_version': '1.1.3'})
+            identity = app_version.build_identity(
+                build_info,
+                release_metadata_path=os.path.join(d, 'missing.json'),
+                release_state_path=state)
+        self.assertEqual(identity['version'], '1.1.3')
+
+
 if __name__ == '__main__':
     unittest.main()

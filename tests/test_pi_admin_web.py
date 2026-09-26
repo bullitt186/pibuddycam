@@ -103,6 +103,27 @@ def _strip_js_comments(text):
     return re.sub(r'^\s*//.*$', '', without_block, flags=re.MULTILINE)
 
 
+def _function_body(code, name):
+    """Return the brace-balanced body of ``function name(...) { ... }``.
+
+    ``code`` is expected to have comments stripped first. Template-literal
+    interpolations (``${...}``) are balanced, so brace counting stays correct.
+    """
+    match = re.search(r'\bfunction\s+' + re.escape(name) + r'\s*\(', code)
+    if match is None:
+        raise AssertionError(f'function {name} not found')
+    brace = code.index('{', match.end())
+    depth = 0
+    for index in range(brace, len(code)):
+        if code[index] == '{':
+            depth += 1
+        elif code[index] == '}':
+            depth -= 1
+            if depth == 0:
+                return code[brace + 1:index]
+    raise AssertionError(f'function {name} body is not balanced')
+
+
 # --------------------------------------------------------------------------- #
 # Shell                                                                        #
 # --------------------------------------------------------------------------- #
@@ -401,10 +422,17 @@ class AdminDesignSystemTests(unittest.TestCase):
             self.assertNotIn(marker, self.css, marker)
 
     def test_html_and_js_are_local_only(self):
-        for text in (self.html, self.js):
-            for marker in ('http://', 'https://', '//cdn', 'google-analytics',
-                           'gtag(', 'fonts.googleapis'):
-                self.assertNotIn(marker, text, marker)
+        for marker in ('http://', 'https://', '//cdn', 'google-analytics',
+                       'gtag(', 'fonts.googleapis'):
+            self.assertNotIn(marker, self.html, marker)
+        # The JS builds same-host local-access URLs (http://<host>/snapshot.jpg),
+        # which is not an external load; no external host/script marker may appear.
+        for marker in ('//cdn', 'google-analytics', 'gtag(', 'fonts.googleapis',
+                       'cdn.jsdelivr', 'unpkg.com', 'https://'):
+            self.assertNotIn(marker, self.js, marker)
+        for line in self.js.splitlines():
+            if 'http://' in line:
+                self.assertIn('${host}', line, line)
 
     def test_no_copied_prusa_assets(self):
         blob = (self.css + self.html + self.js).lower()
@@ -550,12 +578,189 @@ class AdminOverviewDashboardTests(unittest.TestCase):
         ):
             self.assertIn(marker, self.css, marker)
 
-    def test_dashboard_is_read_only(self):
-        # WP-UI2 exposes no settings mutations: no PATCH/PUT/POST to settings.
+    def test_overview_poll_is_read_only_but_camera_mutations_route_through_api(self):
+        # WP-UI2 kept the Overview read-only; WP-UI3 adds settings mutations that
+        # go exclusively through PATCH /api/settings (never a direct state write).
         code = _strip_js_comments(self.js)
-        self.assertNotIn("method: 'PATCH'", code)
-        self.assertNotIn("method: 'PUT'", code)
-        self.assertNotIn('/api/settings', code)
+        self.assertIn("method: 'PATCH'", code)
+        self.assertIn('/api/settings', code)
+        self.assertNotIn('state.json', code)
+        self.assertNotIn('settings_store', code)
+        self.assertIn("method: 'PUT'", code)
+        self.assertIn('/api/integrations/mqtt', code)
+        self.assertIn('/api/integrations/prusa', code)
+
+
+# --------------------------------------------------------------------------- #
+# Camera + Integrations forms (WP-UI3/WP-UI4; AC-5..AC-9)                      #
+# --------------------------------------------------------------------------- #
+
+class AdminSettingsIntegrationsUiTests(unittest.TestCase):
+    """AC-5..AC-9: the Camera and Integrations views are wired to the APIs."""
+
+    def setUp(self):
+        self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
+        self.js = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
+
+    def test_camera_view_has_a_form_for_every_confirmed_setting(self):
+        for field in (
+            'camera_name', 'quality', 'snapshot_upload_enabled',
+            'snapshot_interval', 'timelapse_enabled', 'timelapse_interval',
+            'timelapse_fps', 'rtsp_mode', 'webrtc_mode',
+        ):
+            self.assertIn(f'data-setting="{field}"', self.html, field)
+
+    def test_camera_view_explains_unsupported_hardware_non_interactively(self):
+        self.assertIn('Unsupported hardware', self.html)
+        self.assertIn('IR/light', self.html)
+        self.assertIn('speaker', self.html)
+        self.assertIn('fan', self.html)
+        self.assertIn('motor', self.html)
+        # No interactive control for absent hardware.
+        for marker in ('name="ir"', 'name="light"', 'name="speaker"', 'name="fan"'):
+            self.assertNotIn(marker, self.html, marker)
+
+    def test_js_applies_authoritative_settings_and_restores_on_rejection(self):
+        code = _strip_js_comments(self.js)
+        for marker in (
+            'applySettings', 'submitSettingForm', 'readSettingValue',
+            'setFormBusy', 'setFormStatus',
+        ):
+            self.assertIn(marker, code, marker)
+        # A rejection still converges on the returned authoritative snapshot.
+        self.assertIn('data.settings', code)
+        self.assertIn("method: 'PATCH'", code)
+
+    def test_js_disables_submission_while_pending(self):
+        code = _strip_js_comments(self.js)
+        self.assertIn('setFormBusy(form, true)', code)
+        self.assertIn('button.disabled = busy', code)
+
+    def test_js_refresh_converges_with_dashboard_settings(self):
+        code = _strip_js_comments(self.js)
+        self.assertIn('applySettings(data.settings)', code)
+        self.assertIn('LAST_DASHBOARD', code)
+        self.assertIn('syncCameraView', code)
+
+    def test_integrations_view_has_prusa_and_mqtt_forms(self):
+        for marker in (
+            'id="prusa-form"', 'id="mqtt-form"', 'id="prusa-token"',
+            'id="prusa-fingerprint"', 'id="prusa-clear-token"',
+            'id="mqtt-uri"', 'id="mqtt-username"', 'id="mqtt-password"',
+            'id="mqtt-clear-username"', 'id="mqtt-clear-password"',
+            'id="mqtt-test"', 'id="mqtt-save-anyway"', 'id="mqtt-effective"',
+            'id="mqtt-runtime"', 'id="local-onvif"', 'id="local-ha-rtsp"',
+        ):
+            self.assertIn(marker, self.html, marker)
+
+    def test_integrations_js_requires_test_before_save_with_explicit_override(self):
+        code = _strip_js_comments(self.js)
+        self.assertIn("mqttTestState", code)
+        self.assertIn("mqttTestState !== 'ok'", code)
+        self.assertIn('mqttSaveAnyway', code)
+        self.assertIn('/api/mqtt/test', code)
+        self.assertIn('/api/integrations/mqtt', code)
+
+    def test_integrations_js_requires_reauth_for_credential_saves(self):
+        code = _strip_js_comments(self.js)
+        self.assertIn('requestReauth', code)
+        self.assertIn('/api/reauth', code)
+        self.assertIn('reauth-dialog', self.html)
+        self.assertIn('id="reauth-password"', self.html)
+        self.assertIn('/api/integrations/prusa', code)
+
+    def test_submit_mqtt_reauthenticates_before_the_put(self):
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'submitMqtt')
+        self.assertIn('requestReauth', body)
+        self.assertIn('/api/integrations/mqtt', body)
+        # Re-auth must be confirmed before the save request is issued.
+        self.assertLess(body.index('requestReauth'), body.index('/api/integrations/mqtt'))
+        # A cancelled/failed re-auth must surface an error and stop the save.
+        self.assertIn('if (!confirmed)', body)
+        self.assertIn('Re-authentication is required', body)
+        # The MQTT save body is the broker form only: the admin re-auth password
+        # field must never be read into it.
+        self.assertIn('collectMqttBody()', body)
+        for marker in ('reauth-password', 'els.reauthPassword', 'reauthPassword'):
+            self.assertNotIn(marker, body, marker)
+
+    def test_submit_mqtt_clears_typed_credentials_and_test_state(self):
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'submitMqtt')
+        self.assertIn("els.mqttUsername.value = ''", body)
+        self.assertIn("els.mqttPassword.value = ''", body)
+        self.assertIn('invalidateMqttTest()', body)
+
+    def test_collect_mqtt_body_never_includes_the_admin_password(self):
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'collectMqttBody')
+        for marker in ('reauth-password', 'els.reauthPassword', 'reauthPassword'):
+            self.assertNotIn(marker, body, marker)
+        # The broker password field is the only ``password`` it may read.
+        self.assertIn("value('mqtt-password')", body)
+
+    def test_mqtt_test_uses_stored_credential_flags_only_when_configured(self):
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'collectMqttTestBody')
+        self.assertIn('use_stored_username', body)
+        self.assertIn('use_stored_password', body)
+        self.assertIn('MQTT_CONFIGURED.username', body)
+        self.assertIn('MQTT_CONFIGURED.password', body)
+        self.assertIn("checked('mqtt-clear-username')", body)
+        self.assertIn("checked('mqtt-clear-password')", body)
+
+    def test_mqtt_test_success_is_invalidated_when_inputs_change(self):
+        code = _strip_js_comments(self.js)
+        # A canonical signature covers every effective tested/saved input ...
+        signature = _function_body(code, 'mqttInputSignature')
+        for field in ('mqtt-uri', 'mqtt-username', 'mqtt-password', 'mqtt-ca-file',
+                      'mqtt-clear-username', 'mqtt-clear-password'):
+            self.assertIn(field, signature, field)
+        # ... and an edit drops both the success and the save-anyway override.
+        invalidate = _function_body(code, 'invalidateMqttTest')
+        self.assertIn("mqttTestState = 'untested'", invalidate)
+        self.assertIn('mqttTestedSignature = null', invalidate)
+        self.assertIn('mqttSaveAnyway.checked = false', invalidate)
+        self.assertIn("addEventListener('input', invalidateMqttTest)", code)
+        self.assertIn("addEventListener('change', invalidateMqttTest)", code)
+        # The submit path re-checks the signature so a missed event is caught.
+        submit = _function_body(code, 'submitMqtt')
+        self.assertIn('mqttTestedSignature !== mqttInputSignature()', submit)
+        # A successful test records the signature it validated.
+        test = _function_body(code, 'testMqtt')
+        self.assertIn('mqttTestedSignature = mqttInputSignature()', test)
+
+    def test_mqtt_integration_reload_resets_the_test_state(self):
+        code = _strip_js_comments(self.js)
+        render = _function_body(code, 'renderIntegrations')
+        self.assertIn('MQTT_CONFIGURED.username', render)
+        self.assertIn('MQTT_CONFIGURED.password', render)
+        self.assertIn('invalidateMqttTest()', render)
+
+    def test_integrations_js_never_renders_a_stored_secret(self):
+        code = _strip_js_comments(self.js)
+        self.assertNotIn('token_configured ?', code)
+        # The token/fingerprint inputs are always blank replacement fields.
+        self.assertIn('prusa-token-state', code)
+        self.assertIn('username_configured', code)
+        self.assertIn('password_configured', code)
+
+    def test_css_defines_settings_and_integration_components(self):
+        for marker in (
+            '.setting-form', '.segmented', '.form-status', '.form-status--ok',
+            '.form-status--error', '.field__hint', '.check', '.topic-preview',
+            '.local-access', '.dialog', '.notice--warn',
+        ):
+            self.assertIn(marker, self.css, marker)
+
+    def test_js_keeps_csrf_in_memory_for_mutations(self):
+        code = _strip_js_comments(self.js)
+        for storage in ('localStorage', 'sessionStorage', 'document.cookie'):
+            self.assertNotIn(storage, code, storage)
+        self.assertIn('csrf: true', code)
+
 
 
 # --------------------------------------------------------------------------- #

@@ -542,6 +542,86 @@ def save_secrets(cfg, path=SECRETS_TOML_PATH, mode=0o600):
     return True
 
 
+def save_pair(device_cfg, secrets_cfg, device_path=DEVICE_TOML_PATH,
+              secrets_path=SECRETS_TOML_PATH, device_mode=0o640,
+              secrets_mode=0o600):
+    """Validate and persist a device+secrets pair with rollback (WP-UI4; AC-9).
+
+    Both documents are validated and serialized *before* either file is
+    touched, so an invalid candidate writes nothing and a validation failure can
+    never leave a partial pair. Each file is then written through
+    :func:`write_atomic`, which is atomic per file (temp + ``os.replace``) and
+    sets the documented mode (``0640`` device, ``0600`` secrets). Because the
+    admin and camera services run as the same service account, the rename keeps
+    the ``prusa-cam`` ownership; the mode is set explicitly on the temp file.
+
+    If the secrets write fails after the device write succeeded, the previous
+    device document is restored (or removed if it did not exist). This rollback
+    is best-effort, **not** a cross-file transaction: a rollback that itself
+    fails is logged, and the two files could then differ. Returns ``True`` only
+    when both files were written.
+
+    Validation failures raise :class:`ConfigError` (as :func:`save_device`
+    does); filesystem failures are logged non-secretly and return ``False``.
+    """
+    validated_device = _validate_device(device_cfg)
+    validated_secrets = _validate_secrets(secrets_cfg)
+    device_text = dumps_device(validated_device)
+    secrets_text = dumps_secrets(validated_secrets)
+    parse_device(device_text)
+    parse_secrets(secrets_text)
+
+    device_existed, device_backup = _read_text_if_present(device_path)
+    try:
+        write_atomic(device_path, device_text, mode=device_mode)
+    except ConfigError as e:
+        log.warning(f'config: device not saved: {e}')
+        return False
+    try:
+        write_atomic(secrets_path, secrets_text, mode=secrets_mode)
+    except ConfigError as e:
+        _restore_text(device_path, device_existed, device_backup, device_mode)
+        log.warning(f'config: secrets not saved: {e}')
+        return False
+    return True
+
+
+def _read_text_if_present(path):
+    """Return ``(existed, text)`` for ``path``; ``text`` is ``None`` if unreadable.
+
+    ``existed`` is True when the path was present (even if unreadable), so a
+    rollback never deletes a pre-existing file it could not read.
+    """
+    try:
+        with open(path, encoding='utf-8') as handle:
+            return True, handle.read()
+    except FileNotFoundError:
+        return False, ''
+    except OSError:
+        return True, None
+
+
+def _restore_text(path, existed, text, mode):
+    """Best-effort restore of a previously read document; never raises.
+
+    A file that did not exist is removed; a present-but-unreadable file is left
+    untouched (its content is unknown); otherwise the captured text is written
+    back atomically with the same mode.
+    """
+    try:
+        if not existed:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        elif text is None:
+            log.warning('config: could not restore an unreadable document')
+        else:
+            write_atomic(path, text, mode=mode)
+    except ConfigError:
+        log.warning('config: pair rollback failed')
+
+
 def load_device(path=DEVICE_TOML_PATH):
     """Load a device document; a missing file returns :func:`default_device`.
 

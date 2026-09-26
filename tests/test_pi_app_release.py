@@ -441,6 +441,22 @@ class MakeAppReleaseTests(unittest.TestCase):
         self.assertTrue((dest / "web" / "app.css").is_file())
         self.assertTrue((dest / "web" / "app.js").is_file())
 
+    def test_release_identity_metadata_is_bundled(self):
+        # WP-UI3: every bundle carries release.json so the running application
+        # reports its own version/source commit instead of the image build-info.
+        result = self.release("--source-commit", "deadbeef")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        tar_path = self.read_tar(self.bundle())
+        with tarfile.open(tar_path, "r:") as archive:
+            member = archive.getmember("./release.json")
+            doc = json.loads(archive.extractfile(member).read().decode("utf-8"))
+        self.assertEqual(doc["version"], "1.2.3")
+        self.assertEqual(doc["source_commit"], "deadbeef")
+        self.assertEqual(doc["channel"], "stable")
+        # No secret or bundle URL may ride along in the identity file.
+        self.assertNotIn("bundle_url", doc)
+        self.assertNotIn("bundle_sha256", doc)
+
     def test_dashed_requirement_matches_underscored_wheel(self):
         # pip normalizes '-' to '_' in wheel filenames; the checker must too.
         lock = self.dir / "dashed.lock"

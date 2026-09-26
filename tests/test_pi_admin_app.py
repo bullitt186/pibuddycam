@@ -296,6 +296,63 @@ class AdminTransportSourceTests(unittest.TestCase):
         declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}
         self.assertIn(('POST', '/api/mqtt/test'), declared)
 
+    def test_route_table_declares_the_settings_and_integration_routes(self):
+        routes_node = _module_assign(self.tree, 'ROUTES')
+        declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}
+        for entry in (
+            ('PATCH', '/api/settings'),
+            ('GET', '/api/integrations'),
+            ('PUT', '/api/integrations/mqtt'),
+            ('PUT', '/api/integrations/prusa'),
+        ):
+            self.assertIn(entry, declared)
+
+
+class AdminSettingsActionWiringTests(unittest.TestCase):
+    """WP-UI3/AC-4/AC-5: the transport adapts the runtime IPC mutation envelope."""
+
+    def setUp(self):
+        self.tree = _tree()
+        self.chains = _attr_chains(self.tree)
+
+    def test_build_admin_app_injects_the_settings_action(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == 'build_admin_app'
+        ]
+        self.assertEqual(len(functions), 1)
+        admin_calls = [
+            call for call in _calls(functions[0])
+            if any(chain == ['admin_http', 'AdminApp'] for chain in _attr_chains(call))
+        ]
+        passed = {
+            keyword.arg for call in admin_calls for keyword in call.keywords}
+        self.assertIn('settings_actions', passed)
+        self.assertIn('settings_actions', [a.arg for a in functions[0].args.kwonlyargs])
+
+    def test_settings_action_uses_the_runtime_settings_operation(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == '_settings_action'
+        ]
+        self.assertEqual(len(functions), 1, 'expected a single _settings_action')
+        chains = _attr_chains(functions[0])
+        self.assertIn(['client', 'settings_set'], chains)
+        self.assertIn(['data', 'get'], chains)
+        # A degraded runtime is reported, never turned into a fake success.
+        constants = _string_constants(functions[0])
+        self.assertIn('degraded', constants)
+
+    def test_settings_action_returns_no_secret(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == '_settings_action'
+        ]
+        text = ast.unparse(functions[0])
+        self.assertNotIn('token', text)
+        self.assertNotIn('password', text)
+
+
 
 class AdminDashboardWiringTests(unittest.TestCase):
     """WP-UI2/AC-4/AC-18: the transport injects the bounded runtime client."""

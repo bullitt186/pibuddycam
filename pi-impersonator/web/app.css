@@ -215,6 +215,155 @@ p {
 }
 
 /* ------------------------------------------------------------------ */
+/* Settings forms (Camera + Integrations)                              */
+/* ------------------------------------------------------------------ */
+
+.setting-form {
+  margin: 0 0 1rem;
+}
+
+.setting-form fieldset.card {
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.card__subtitle {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.field__hint {
+  margin: 0.35rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.segmented__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: var(--target);
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.segmented__option:has(input:checked) {
+  border-color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-strong);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: var(--target);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.form-status {
+  margin-top: 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.form-status--ok {
+  color: var(--success);
+}
+
+.form-status--error {
+  color: var(--danger);
+}
+
+.form-status--info {
+  color: var(--ink-muted);
+}
+
+.topic-preview__list {
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.topic-preview__row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 10rem) 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.85rem;
+}
+
+.topic-preview__row dt {
+  color: var(--ink-muted);
+  text-transform: capitalize;
+}
+
+.topic-preview__row code,
+.local-access code {
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.local-access {
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.local-access__row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.local-access__row dt {
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+}
+
+.notice--warn {
+  border-left: 4px solid var(--warning);
+  color: var(--warning);
+}
+
+.dialog {
+  width: min(92vw, 26rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 1.25rem;
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.dialog__form {
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* Boot / loading                                                      */
 /* ------------------------------------------------------------------ */
 

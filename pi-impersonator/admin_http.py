@@ -42,6 +42,13 @@ policies:
     :func:`admin_auth.reauth_ok`) are required. The request may carry the
     password inline, or the session may be inside a short re-auth window primed
     by ``POST /api/reauth``. Re-auth attempts share the login rate limiter.
+``reauth_window_only``
+    A live session **and** an already-fresh re-auth window (primed by
+    ``POST /api/reauth``) are required. Unlike ``reauth_required``, the request
+    body is never read for an admin password: the MQTT integration payload
+    carries a domain secret named ``password`` (the broker credential), so it
+    must never be fed to the admin verifier or charged to the login rate
+    limiter.
 
 Setup -> admin transition
 -------------------------
@@ -85,9 +92,11 @@ import dashboard
 import expert_config
 import factory_reset as factory_reset_module
 import mqtt_service
+import mqtt_topics
 import provisioning
 import recovery
 import runtime_ipc
+import settings_coordinator
 import setup_wizard
 import ssh_control
 
@@ -260,6 +269,29 @@ MAX_MQTT_TEST_BODY_BYTES = 4096
 #: Bound on the broker-test reason returned to the client.
 MAX_MQTT_TEST_REASON = 200
 
+#: Largest accepted ``PATCH /api/settings`` body (bytes). One field/value pair.
+MAX_SETTINGS_BODY_BYTES = 4096
+
+#: Largest accepted integration ``PUT`` body (bytes). A handful of bounded
+#: strings plus flags; anything larger is rejected before validation.
+MAX_INTEGRATION_BODY_BYTES = 16384
+
+#: Bound on any single submitted integration string (URI, path, prefix, secret).
+MAX_INTEGRATION_FIELD_CHARS = 512
+
+#: Documented warning when a fingerprint replacement may invalidate the binding.
+FINGERPRINT_BINDING_WARNING = (
+    'Changing the fingerprint can invalidate the existing Prusa Connect token '
+    'binding. Replace it only when re-registering this camera.'
+)
+
+#: Warning returned when a saved integration change needs the camera runtime to
+#: restart before it takes effect. The UI must not claim live activation.
+INTEGRATION_RESTART_WARNING = (
+    'Saved. The camera runtime must restart before this change is active; '
+    'until then the previous configuration remains in use.'
+)
+
 #: Provisioning states in which the public setup wizard is available.
 PRE_CLAIM_STATES = frozenset({
     'factory',
@@ -287,6 +319,11 @@ _PUBLIC = 'public'
 _PUBLIC_SETUP = 'public_setup'
 _AUTHENTICATED = 'authenticated'
 _REAUTH_REQUIRED = 'reauth_required'
+#: A re-auth route whose request body legitimately carries a *domain* secret
+#: named ``password`` (the MQTT broker credential). Such a route must never read
+#: that field as the admin password nor charge it to the login rate limiter; a
+#: fresh re-auth window is the only accepted proof.
+_REAUTH_WINDOW_ONLY = 'reauth_window_only'
 #: The MQTT broker test is available to the unclaimed wizard (public while setup
 #: is available) and, after claim, only to an authenticated admin session.
 _SETUP_OR_AUTHENTICATED = 'setup_or_authenticated'
@@ -352,6 +389,7 @@ class AdminApp:
         mqtt_probe=None,
         web_dir=None,
         dashboard_provider=None,
+        settings_actions=None,
     ):
         if mode not in ('setup', 'admin'):
             raise ValueError("mode must be 'setup' or 'admin'")
@@ -395,6 +433,10 @@ class AdminApp:
         # WP-UI2/AC-4: the only runtime read path. ``None`` reports a degraded
         # dashboard; the admin never constructs a CameraState or reads state.json.
         self._dashboard_provider = dashboard_provider
+        # WP-UI3/AC-5: the only runtime write path. A callable
+        # ``(field, value) -> {ok, error, changed, settings, degraded}`` backed by
+        # the runtime IPC client; ``None`` reports the runtime as unavailable.
+        self._settings_actions = settings_actions
 
         # Lazily built wizard session and reset confirmation state.
         self._wizard = None
@@ -435,6 +477,22 @@ class AdminApp:
             Route(
                 'GET', re.compile(r'^/api/dashboard$'),
                 _AUTHENTICATED, self._handle_dashboard,
+            ),
+            Route(
+                'PATCH', re.compile(r'^/api/settings$'),
+                _AUTHENTICATED, self._handle_settings_patch,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/integrations$'),
+                _AUTHENTICATED, self._handle_integrations_get,
+            ),
+            Route(
+                'PUT', re.compile(r'^/api/integrations/mqtt$'),
+                _REAUTH_WINDOW_ONLY, self._handle_integrations_mqtt_put,
+            ),
+            Route(
+                'PUT', re.compile(r'^/api/integrations/prusa$'),
+                _REAUTH_REQUIRED, self._handle_integrations_prusa_put,
             ),
             Route('POST', re.compile(r'^/api/login$'), _PUBLIC, self._handle_login),
             Route(
@@ -520,7 +578,7 @@ class AdminApp:
             self._log_request(request, response)
             return response
 
-        if route.policy in (_AUTHENTICATED, _REAUTH_REQUIRED):
+        if route.policy in (_AUTHENTICATED, _REAUTH_REQUIRED, _REAUTH_WINDOW_ONLY):
             token, denied = self._authorize(request, route.policy, body_data, now)
             if denied is not None:
                 self._log_request(request, denied)
@@ -602,6 +660,31 @@ class AdminApp:
         except Exception:  # noqa: BLE001 - a bad file must not crash routing
             return {}
         return device if isinstance(device, dict) else {}
+
+    def _stored_mqtt_credentials(self):
+        """Return ``(username, password)`` from the stored MQTT secrets.
+
+        Used only to run an explicit, authenticated broker test against a stored
+        credential. The values are returned to this process, never to a client:
+        callers must keep them out of every response and log.
+        """
+        secrets = self._load_secrets_safe()
+        mqtt = secrets.get('mqtt') if isinstance(secrets.get('mqtt'), dict) else {}
+        username = mqtt.get('username') if isinstance(mqtt.get('username'), str) else ''
+        password = mqtt.get('password') if isinstance(mqtt.get('password'), str) else ''
+        return username, password
+
+    def _authenticated_admin_session(self, request, body_data, now):
+        """True only for a live session that also presented its CSRF token.
+
+        Unlike the route policy, this holds even while the setup wizard is open:
+        a stored-secret action must never be reachable without a real admin
+        session and the per-session CSRF token.
+        """
+        token = _session_token(request)
+        if not token or not self._sessions.validate(token, now):
+            return False
+        return self._sessions.validate_csrf(token, _csrf_token(request, body_data))
 
     def _claimable_by_facts(self):
         """True when the authoritative claim predicate says the device is claimed.
@@ -700,9 +783,15 @@ class AdminApp:
             if not self._sessions.validate_csrf(token, csrf):
                 return token, self._error(request, 403, 'invalid CSRF token')
 
-        if policy == _REAUTH_REQUIRED:
+        if policy in (_REAUTH_REQUIRED, _REAUTH_WINDOW_ONLY):
             if self._reauth_fresh(token, now):
                 return token, None
+            if policy == _REAUTH_WINDOW_ONLY:
+                # The body's ``password`` is a domain secret (an MQTT broker
+                # credential), not the admin password. Never verify it and never
+                # record it as a failed admin login: the only accepted proof is
+                # the already-primed window, so prompt the caller to re-auth.
+                return token, self._error(request, 403, 're-authentication required')
             key = request.peer_ip
             allowed, retry_after = self._limiter.check(key, now)
             if not allowed:
@@ -962,6 +1051,273 @@ class AdminApp:
         )
         return self._json(request, 200, payload)
 
+    def _handle_settings_patch(self, request, match, body_data, now):
+        """Apply one bounded settings mutation through the live coordinator.
+
+        Authenticated + CSRF (enforced by ``_authorize`` for PATCH). The admin
+        process never writes ``state.json``: it forwards the field and value to
+        the camera runtime, whose single ``SettingsCoordinator`` validates,
+        applies, persists, and returns the authoritative snapshot. Unknown
+        fields, type confusion, and oversize values are rejected before they
+        cross the socket; a coordinator rejection returns the unchanged
+        snapshot plus a bounded, non-secret reason (AC-5/AC-6).
+        """
+        if _body_size(request) > MAX_SETTINGS_BODY_BYTES:
+            return self._error(request, 413, 'request body too large')
+        if not isinstance(body_data, dict):
+            return self._error(request, 400, 'invalid request body')
+        unknown = [key for key in body_data if key not in ('field', 'value')]
+        if unknown:
+            return self._error(request, 400, 'unknown field')
+        field = body_data.get('field')
+        if not isinstance(field, str) or field not in settings_coordinator.MUTATION_FIELDS:
+            return self._error(request, 400, 'unknown setting field')
+        if 'value' not in body_data:
+            return self._error(request, 400, 'value is required')
+        value = body_data.get('value')
+        if isinstance(value, str) and len(value) > MAX_INTEGRATION_FIELD_CHARS:
+            return self._error(request, 400, 'value is too long')
+        if isinstance(value, float) or not isinstance(value, (str, int, bool)):
+            return self._error(request, 400, 'value has an unsupported type')
+
+        if self._settings_actions is None:
+            return self._json(request, 503, {
+                'ok': False, 'error': 'runtime unavailable', 'runtime': 'unavailable',
+            })
+        try:
+            result = self._settings_actions(field, value)
+        except Exception:  # noqa: BLE001 - an action must never crash routing
+            log.warning('admin_http: settings action failed')
+            result = None
+        if not isinstance(result, dict):
+            return self._json(request, 503, {
+                'ok': False, 'error': 'runtime unavailable', 'runtime': 'unavailable',
+            })
+        if not result.get('ok') and result.get('degraded'):
+            return self._json(request, 503, {
+                'ok': False,
+                'error': _bounded_reason(result.get('error')) or 'runtime unavailable',
+                'runtime': 'unavailable',
+            })
+        payload = {'ok': bool(result.get('ok')), 'field': field}
+        settings = result.get('settings')
+        if isinstance(settings, dict):
+            payload['settings'] = settings
+        if result.get('ok'):
+            payload['changed'] = list(result.get('changed') or [])
+        else:
+            payload['error'] = _bounded_reason(result.get('error')) or 'setting rejected'
+        payload['runtime'] = 'live'
+        return self._json(request, 200, payload)
+
+    def _handle_integrations_get(self, request, match, body_data, now):
+        """Return the redacted Prusa/MQTT configuration and runtime state.
+
+        Never returns a stored token, password, PSK, or MQTT URI userinfo: the
+        documents are projected onto configured-state booleans and a userinfo-free
+        URI, and the runtime observations come from the already-redacted
+        dashboard provider.
+        """
+        device = self._load_device_safe()
+        secrets = self._load_secrets_safe()
+        return self._json(request, 200, {
+            'ok': True,
+            'prusa': _prusa_integration_view(device, secrets),
+            'mqtt': _mqtt_integration_view(device, secrets),
+            'runtime': self._integration_runtime_view(),
+            'trusted_lan': {
+                'notice': lan_warning(),
+                'interfaces': TRUSTED_LAN_INTERFACES,
+            },
+        })
+
+    def _integration_runtime_view(self):
+        """Return the runtime Prusa/MQTT observations, or an honest unavailable."""
+        provider = self._dashboard_provider
+        payload = None
+        if provider is not None:
+            try:
+                payload = provider()
+            except Exception:  # noqa: BLE001 - a provider must never crash routing
+                payload = None
+        if not isinstance(payload, dict):
+            return {'source': 'unavailable', 'fresh': False, 'prusa': {}, 'mqtt': {}}
+        runtime = payload.get('runtime') if isinstance(payload.get('runtime'), dict) else {}
+        prusa = payload.get('prusa') if isinstance(payload.get('prusa'), dict) else {}
+        mqtt = payload.get('mqtt') if isinstance(payload.get('mqtt'), dict) else {}
+        return {
+            'source': _bounded_reason(runtime.get('source')) or 'unknown',
+            'fresh': bool(runtime.get('fresh')),
+            'prusa': prusa,
+            'mqtt': mqtt,
+        }
+
+    def _handle_integrations_mqtt_put(self, request, match, body_data, now):
+        """Validate and atomically persist the MQTT configuration (AC-8).
+
+        Re-auth + CSRF (route policy). A blank ``username``/``password`` keeps
+        the stored value; an explicit ``clear_username``/``clear_password`` flag
+        removes it. Unknown fields, wrong types, userinfo in the URI, and
+        oversize values are rejected before any write, so a failed validation
+        leaves both files byte-for-byte unchanged. The response is truthful
+        about activation: the saved change is pending a runtime restart.
+        """
+        size_error = _integration_size_error(request)
+        if size_error is not None:
+            return size_error
+        if not isinstance(body_data, dict):
+            return self._error(request, 400, 'invalid request body')
+        allowed = {
+            'enabled', 'uri', 'client_id', 'discovery_prefix', 'topic_prefix',
+            'ca_file', 'username', 'password', 'clear_username', 'clear_password',
+        }
+        unknown = [key for key in body_data if key not in allowed]
+        if unknown:
+            return self._error(request, 400, 'unknown field')
+        for name in ('enabled', 'clear_username', 'clear_password'):
+            if name in body_data and type(body_data[name]) is not bool:
+                return self._error(request, 400, f'{name} must be a boolean')
+        strings, error = _integration_strings(
+            body_data,
+            ('uri', 'client_id', 'discovery_prefix', 'topic_prefix', 'ca_file',
+             'username', 'password'),
+        )
+        if error is not None:
+            return error
+
+        try:
+            device_cfg = config_schema.load_device(self._device_path)
+            secrets_cfg = config_schema.load_secrets(self._secrets_path)
+        except config_schema.ConfigError:
+            return self._error(
+                request, 409, 'existing configuration is invalid; use the expert editor')
+
+        mqtt = device_cfg.setdefault('mqtt', {})
+        if 'enabled' in body_data:
+            mqtt['enabled'] = body_data['enabled']
+        for name in ('uri', 'client_id', 'discovery_prefix', 'topic_prefix', 'ca_file'):
+            if name in body_data:
+                mqtt[name] = strings[name]
+
+        secret_mqtt = secrets_cfg.get('mqtt')
+        if not isinstance(secret_mqtt, dict):
+            secret_mqtt = {}
+        if body_data.get('clear_username'):
+            secret_mqtt.pop('username', None)
+        elif strings['username']:
+            secret_mqtt['username'] = strings['username']
+        if body_data.get('clear_password'):
+            secret_mqtt.pop('password', None)
+        elif strings['password']:
+            secret_mqtt['password'] = strings['password']
+        if secret_mqtt:
+            secrets_cfg['mqtt'] = secret_mqtt
+        else:
+            secrets_cfg.pop('mqtt', None)
+
+        submitted = tuple(
+            value for value in (
+                strings['username'], strings['password'], strings['uri'])
+            if value)
+        try:
+            saved = config_schema.save_pair(
+                device_cfg, secrets_cfg, self._device_path, self._secrets_path)
+        except config_schema.ConfigError as e:
+            return self._json(request, 400, {
+                'ok': False,
+                'error': _bounded_reason(e) or 'invalid MQTT configuration',
+            }, secrets=submitted)
+        if not saved:
+            return self._json(request, 500, {
+                'ok': False, 'error': 'could not save MQTT configuration',
+            }, secrets=submitted)
+        return self._json(request, 200, {
+            'ok': True,
+            'saved': True,
+            'active': False,
+            'restart_required': True,
+            'warnings': [INTEGRATION_RESTART_WARNING],
+            'mqtt': _mqtt_integration_view(device_cfg, secrets_cfg),
+        }, secrets=submitted)
+
+    def _handle_integrations_prusa_put(self, request, match, body_data, now):
+        """Replace the Prusa server/token/fingerprint safely (AC-9).
+
+        Re-auth + CSRF. A blank ``token``/``fingerprint`` keeps the stored
+        value; ``clear_token``/``clear_fingerprint`` remove it explicitly. The
+        stored token is never returned. The response warns that a fingerprint
+        replacement can invalidate the token binding and that the change is
+        pending a runtime restart.
+        """
+        size_error = _integration_size_error(request)
+        if size_error is not None:
+            return size_error
+        if not isinstance(body_data, dict):
+            return self._error(request, 400, 'invalid request body')
+        allowed = {'server', 'token', 'fingerprint', 'clear_token', 'clear_fingerprint'}
+        unknown = [key for key in body_data if key not in allowed]
+        if unknown:
+            return self._error(request, 400, 'unknown field')
+        for name in ('clear_token', 'clear_fingerprint'):
+            if name in body_data and type(body_data[name]) is not bool:
+                return self._error(request, 400, f'{name} must be a boolean')
+        strings, error = _integration_strings(
+            body_data, ('server', 'token', 'fingerprint'))
+        if error is not None:
+            return error
+
+        try:
+            device_cfg = config_schema.load_device(self._device_path)
+            secrets_cfg = config_schema.load_secrets(self._secrets_path)
+        except config_schema.ConfigError:
+            return self._error(
+                request, 409, 'existing configuration is invalid; use the expert editor')
+
+        if 'server' in body_data:
+            server = strings['server'].strip()
+            if not server:
+                return self._error(request, 400, 'prusa server must not be empty')
+            device_cfg.setdefault('prusa', {})['server'] = server
+
+        fingerprint_changed = False
+        if body_data.get('clear_fingerprint'):
+            device_cfg['fingerprint'] = ''
+            fingerprint_changed = True
+        elif strings['fingerprint'].strip():
+            device_cfg['fingerprint'] = strings['fingerprint'].strip()
+            fingerprint_changed = True
+
+        if body_data.get('clear_token'):
+            secrets_cfg.pop('prusa', None)
+        elif strings['token']:
+            secrets_cfg.setdefault('prusa', {})['token'] = strings['token']
+
+        submitted = tuple(
+            value for value in (strings['token'], strings['fingerprint']) if value)
+        try:
+            saved = config_schema.save_pair(
+                device_cfg, secrets_cfg, self._device_path, self._secrets_path)
+        except config_schema.ConfigError as e:
+            return self._json(request, 400, {
+                'ok': False,
+                'error': _bounded_reason(e) or 'invalid Prusa configuration',
+            }, secrets=submitted)
+        if not saved:
+            return self._json(request, 500, {
+                'ok': False, 'error': 'could not save Prusa configuration',
+            }, secrets=submitted)
+        warnings = [INTEGRATION_RESTART_WARNING]
+        if fingerprint_changed:
+            warnings.insert(0, FINGERPRINT_BINDING_WARNING)
+        return self._json(request, 200, {
+            'ok': True,
+            'saved': True,
+            'active': False,
+            'restart_required': True,
+            'warnings': warnings,
+            'prusa': _prusa_integration_view(device_cfg, secrets_cfg),
+        }, secrets=submitted)
+
     def _handle_login(self, request, match, body_data, now):
         """Rate-limited password login; sets the hardened session cookie."""
         key = request.peer_ip
@@ -994,6 +1350,14 @@ class AdminApp:
         CA are used only for this probe: they are never persisted and never
         logged. The reason is bounded and redacted against the supplied
         credentials, so a password or URI userinfo can never be echoed.
+
+        An authenticated admin session may additionally ask the server to use a
+        *stored* MQTT credential by setting ``use_stored_username`` /
+        ``use_stored_password``. The stored value is loaded server-side and never
+        returned or logged. The flag is refused outright without a valid session
+        (so the unauthenticated setup wizard cannot read stored secrets) and is
+        refused when no stored credential exists. The wizard keeps using the
+        submitted values only.
         """
         if self._mqtt_probe is None:
             return self._json(
@@ -1003,6 +1367,12 @@ class AdminApp:
         size = len(body) if isinstance(body, (bytes, bytearray, str)) else 0
         if size > MAX_MQTT_TEST_BODY_BYTES:
             return self._error(request, 413, 'request body too large')
+
+        for name in ('use_stored_username', 'use_stored_password'):
+            if name in body_data and type(body_data[name]) is not bool:
+                return self._error(request, 400, f'{name} must be a boolean')
+        use_stored_username = body_data.get('use_stored_username') is True
+        use_stored_password = body_data.get('use_stored_password') is True
 
         uri = body_data.get('uri')
         username = body_data.get('username', '')
@@ -1015,6 +1385,19 @@ class AdminApp:
                 value = ''
             if not isinstance(value, str):
                 return self._error(request, 400, f'mqtt {name} must be a string')
+
+        if use_stored_username or use_stored_password:
+            if not self._authenticated_admin_session(request, body_data, now):
+                return self._error(request, 403, 'authentication required')
+            stored_username, stored_password = self._stored_mqtt_credentials()
+            if use_stored_username:
+                if not stored_username:
+                    return self._error(request, 400, 'stored username is not configured')
+                username = stored_username
+            if use_stored_password:
+                if not stored_password:
+                    return self._error(request, 400, 'stored password is not configured')
+                password = stored_password
 
         config = mqtt_service.MqttConfig(
             enabled=True, uri=uri, username=username or '',
@@ -1276,6 +1659,7 @@ class AdminApp:
         encoded = self._encoded_password()
         if encoded:
             values.append(encoded)
+        values.extend(self._stored_secret_values())
         wizard = self._wizard
         if wizard is not None:
             for value in (getattr(wizard, 'token', ''), getattr(wizard, 'admin_hash', '')):
@@ -1290,9 +1674,37 @@ class AdminApp:
                             values.append(value)
         return tuple(values)
 
-    def _json(self, request, status, payload):
+    def _stored_secret_values(self):
+        """Return the stored Prusa/MQTT/Wi-Fi secrets for literal scrubbing.
+
+        The integration routes never include these values, but adding them to
+        the redaction literals means an accidental echo in an error reason or a
+        nested field is scrubbed as well (AC-17). The values are never logged.
+        """
+        values = []
+        try:
+            secrets = config_schema.load_secrets(self._secrets_path)
+        except Exception:  # noqa: BLE001 - a corrupt file must not crash routing
+            return values
+        if not isinstance(secrets, dict):
+            return values
+        prusa = secrets.get('prusa')
+        if isinstance(prusa, dict) and isinstance(prusa.get('token'), str):
+            values.append(prusa['token'])
+        mqtt = secrets.get('mqtt')
+        if isinstance(mqtt, dict):
+            for key in ('username', 'password'):
+                if isinstance(mqtt.get(key), str):
+                    values.append(mqtt[key])
+        wifi = secrets.get('wifi')
+        if isinstance(wifi, dict) and isinstance(wifi.get('psk'), str):
+            values.append(wifi['psk'])
+        return [value for value in values if value]
+
+    def _json(self, request, status, payload, secrets=()):
         """Serialize ``payload`` as JSON after redaction."""
-        safe = admin_auth.redact(payload, self._known_secrets())
+        known = self._known_secrets() + tuple(secrets or ())
+        safe = admin_auth.redact(payload, known)
         body = json.dumps(safe, sort_keys=True, default=str).encode('utf-8')
         return Response(status, {'Content-Type': 'application/json; charset=utf-8'}, body)
 
@@ -1469,6 +1881,176 @@ def _parse_body(request):
     except ValueError:
         return {}
     return {key: (values[0] if len(values) == 1 else values) for key, values in parsed.items()}
+
+
+# --------------------------------------------------------------------------- #
+# Integration request helpers (WP-UI3/WP-UI4; AC-5..AC-9/AC-17)
+# --------------------------------------------------------------------------- #
+
+def _body_size(request):
+    """Return the byte length of ``request.body`` (0 for an unsupported type)."""
+    body = request.body
+    if isinstance(body, (bytes, bytearray)):
+        return len(body)
+    if isinstance(body, str):
+        return len(body.encode('utf-8', 'replace'))
+    return 0
+
+
+def _bounded_reason(value):
+    """Return a bounded, printable reason string (never a raw object)."""
+    if isinstance(value, BaseException):
+        value = str(value)
+    return runtime_ipc.bounded_text(value, MAX_MQTT_TEST_REASON).strip()
+
+
+def _integration_size_error(request):
+    """Return a 413 response when the integration body is oversize, else ``None``."""
+    if _body_size(request) > MAX_INTEGRATION_BODY_BYTES:
+        return Response(
+            413,
+            {'Content-Type': 'application/json; charset=utf-8'},
+            b'{"error": "request body too large", "ok": false}',
+        )
+    return None
+
+
+def _integration_strings(body_data, names):
+    """Return ``({name: str}, None)`` or ``(None, error_response)``.
+
+    Every value is coerced to a string (``None`` becomes ``''``), bounded, and
+    rejected on the wrong type so a JSON object/array can never be smuggled
+    into a configuration document. Error responses carry no submitted value.
+    """
+    result = {}
+    for name in names:
+        value = body_data.get(name, '')
+        if value is None:
+            value = ''
+        if not isinstance(value, str):
+            return None, Response(
+                400,
+                {'Content-Type': 'application/json; charset=utf-8'},
+                json.dumps(
+                    {'ok': False, 'error': f'{name} must be a string'},
+                    sort_keys=True).encode('utf-8'),
+            )
+        if len(value) > MAX_INTEGRATION_FIELD_CHARS:
+            return None, Response(
+                400,
+                {'Content-Type': 'application/json; charset=utf-8'},
+                json.dumps(
+                    {'ok': False, 'error': f'{name} is too long'},
+                    sort_keys=True).encode('utf-8'),
+            )
+        result[name] = value
+    return result, None
+
+
+def _redacted_uri(value):
+    """Return ``value`` with any embedded userinfo removed (or ``''``).
+
+    The schema already rejects an MQTT URI with userinfo, but a hand-written
+    document could carry one; stripping it here means a credential in the URI
+    can never reach the browser (AC-8/AC-17).
+    """
+    if not isinstance(value, str) or not value:
+        return ''
+    try:
+        parts = urllib.parse.urlsplit(value)
+    except ValueError:
+        return ''
+    if parts.username is None and parts.password is None:
+        return value
+    host = parts.hostname or ''
+    netloc = host
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    if port is not None:
+        netloc = f'{host}:{port}'
+    return urllib.parse.urlunsplit(
+        (parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
+def _prusa_integration_view(device, secrets):
+    """Return the redacted Prusa configured state (never the token/fingerprint)."""
+    device = device if isinstance(device, dict) else {}
+    secrets = secrets if isinstance(secrets, dict) else {}
+    prusa = device.get('prusa') if isinstance(device.get('prusa'), dict) else {}
+    server = prusa.get('server') if isinstance(prusa.get('server'), str) else ''
+    token = ''
+    secret_prusa = secrets.get('prusa')
+    if isinstance(secret_prusa, dict) and isinstance(secret_prusa.get('token'), str):
+        token = secret_prusa['token']
+    fingerprint = device.get('fingerprint') if isinstance(device.get('fingerprint'), str) else ''
+    return {
+        'server': runtime_ipc.bounded_text(server, 256),
+        'server_configured': bool(server),
+        'token_configured': bool(token),
+        'fingerprint_configured': bool(fingerprint),
+        'fingerprint_warning': FINGERPRINT_BINDING_WARNING,
+    }
+
+
+def _mqtt_integration_view(device, secrets):
+    """Return the redacted MQTT configured state and effective topic preview."""
+    device = device if isinstance(device, dict) else {}
+    secrets = secrets if isinstance(secrets, dict) else {}
+    mqtt = device.get('mqtt') if isinstance(device.get('mqtt'), dict) else {}
+    secret_mqtt = secrets.get('mqtt') if isinstance(secrets.get('mqtt'), dict) else {}
+    uri = _redacted_uri(mqtt.get('uri'))
+    client_id = mqtt.get('client_id') if isinstance(mqtt.get('client_id'), str) else ''
+    ca_file = mqtt.get('ca_file') if isinstance(mqtt.get('ca_file'), str) else ''
+    discovery_prefix = (
+        mqtt.get('discovery_prefix') if isinstance(mqtt.get('discovery_prefix'), str)
+        and mqtt.get('discovery_prefix') else mqtt_topics.DEFAULT_DISCOVERY_PREFIX)
+    topic_prefix = (
+        mqtt.get('topic_prefix') if isinstance(mqtt.get('topic_prefix'), str)
+        and mqtt.get('topic_prefix') else mqtt_topics.DEFAULT_BASE_PREFIX)
+    username = secret_mqtt.get('username') if isinstance(secret_mqtt.get('username'), str) else ''
+    password = secret_mqtt.get('password') if isinstance(secret_mqtt.get('password'), str) else ''
+    return {
+        'enabled': mqtt.get('enabled') is True,
+        'uri': runtime_ipc.bounded_text(uri, 256),
+        'uri_configured': bool(uri),
+        'client_id': runtime_ipc.bounded_text(client_id, 128),
+        'ca_file_configured': bool(ca_file),
+        'discovery_prefix': runtime_ipc.bounded_text(discovery_prefix, 128),
+        'topic_prefix': runtime_ipc.bounded_text(topic_prefix, 128),
+        'username_configured': bool(username),
+        'password_configured': bool(password),
+        'effective_topics': _effective_mqtt_topics(device, secrets),
+    }
+
+
+def _effective_mqtt_topics(device, secrets):
+    """Return the bounded effective topic preview, or ``None`` when unavailable.
+
+    Uses the same builders the MQTT service uses so the preview cannot drift
+    from the published tree; a missing device identity yields ``None`` rather
+    than a fabricated topic.
+    """
+    try:
+        config = mqtt_service.MqttConfig.from_documents(
+            device, secrets, device_seed=(device or {}).get('fingerprint'))
+    except Exception:  # noqa: BLE001 - a preview must never crash a request
+        return None
+    device_id = getattr(config, 'device_id', '')
+    base = getattr(config, 'topic_prefix', '') or mqtt_topics.DEFAULT_BASE_PREFIX
+    discovery = (
+        getattr(config, 'discovery_prefix', '') or mqtt_topics.DEFAULT_DISCOVERY_PREFIX)
+    try:
+        return {
+            'availability': mqtt_topics.availability(device_id, base),
+            'state': mqtt_topics.state(device_id, base),
+            'update_state': mqtt_topics.update_state(device_id, base),
+            'update_install': mqtt_topics.update_install(device_id, base),
+            'discovery': mqtt_topics.discovery_device_topic(discovery, device_id),
+        }
+    except (ValueError, TypeError):
+        return None
 
 
 # --------------------------------------------------------------------------- #

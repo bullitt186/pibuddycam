@@ -31,6 +31,24 @@ BUILD_INFO_PATH = '/usr/share/prusa-buddy3d-camera/build-info.json'
 #: Bound the build-info read so a corrupt/huge file cannot stall startup.
 MAX_BUILD_INFO_BYTES = 64 * 1024
 
+#: Active signed application release metadata. ``make-app-release.sh`` writes
+#: this file into every bundle, and the launcher runs the active release from
+#: ``releases/current``, so its identity is the running application's identity
+#: -- not the immutable factory image's build-info. This is what keeps the
+#: dashboard from reporting the image version (``0.0.0+local``) after an OTA
+#: application update.
+RELEASE_METADATA_PATH = '/data/prusa-cam/releases/current/release.json'
+
+#: Root-written HA update state; its ``installed_version`` is the fallback when
+#: a release predates the bundled metadata file.
+RELEASE_STATE_PATH = '/data/prusa-cam/update-state.json'
+
+#: Bound the release/update-state reads so a corrupt file cannot stall startup.
+MAX_RELEASE_METADATA_BYTES = 64 * 1024
+
+#: Fields projected from the bundled release metadata (all non-secret).
+RELEASE_METADATA_FIELDS = ('version', 'source_commit', 'channel', 'release_date')
+
 #: Bound the sanitized version string.
 MAX_VERSION_LENGTH = 128
 
@@ -64,6 +82,48 @@ def _build_info_version(path):
     return _sanitize(_build_info_document(path).get('version'))
 
 
+def _read_json_document(path, max_bytes=MAX_RELEASE_METADATA_BYTES):
+    """Read ``path`` as a bounded JSON object; ``{}`` on any failure."""
+    if not isinstance(path, str) or not path:
+        return {}
+    try:
+        with open(path, encoding='utf-8') as f:
+            text = f.read(max_bytes)
+    except OSError:
+        return {}
+    try:
+        doc = json.loads(text)
+    except ValueError:
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def active_release_metadata(path=RELEASE_METADATA_PATH):
+    """Return the bounded, non-secret identity of the active application release.
+
+    Projects the bundled ``release.json`` onto :data:`RELEASE_METADATA_FIELDS`;
+    every value is sanitized (printable, bounded) and absent/unknown fields
+    become ``''``. A missing, unreadable, or malformed file yields an empty
+    mapping rather than raising, so the caller can fall through to the image
+    build-info. Never raises.
+    """
+    doc = _read_json_document(path)
+    return {
+        field: _sanitize(doc.get(field))[:MAX_IDENTITY_LENGTH]
+        for field in RELEASE_METADATA_FIELDS
+    }
+
+
+def installed_release_version(path=RELEASE_STATE_PATH):
+    """Return the root updater's ``installed_version``, or ``''``.
+
+    The update state is the fallback identity for a release installed before
+    bundles carried ``release.json``. Bounded and never raises.
+    """
+    doc = _read_json_document(path)
+    return _sanitize(doc.get('installed_version'))[:MAX_VERSION_LENGTH]
+
+
 #: Build-identity fields exposed to the dashboard. Only non-secret, non-path
 #: metadata is projected; ``package_manifest`` (a filesystem path) is excluded.
 BUILD_IDENTITY_FIELDS = (
@@ -78,30 +138,52 @@ BUILD_IDENTITY_FIELDS = (
 MAX_IDENTITY_LENGTH = 128
 
 
-def build_identity(build_info_path=BUILD_INFO_PATH):
+def build_identity(build_info_path=BUILD_INFO_PATH,
+                   release_metadata_path=RELEASE_METADATA_PATH,
+                   release_state_path=RELEASE_STATE_PATH):
     """Return the bounded, non-secret build identity for the dashboard.
 
-    Projects the optional image ``build-info.json`` onto
-    :data:`BUILD_IDENTITY_FIELDS`. Every value is sanitized (printable, bounded)
-    and unknown/absent fields become ``''``. The document path itself and any
-    unlisted key are never returned. Never raises.
+    The active signed release is authoritative when present: its
+    ``release.json`` supplies ``version``/``source_commit`` and overrides the
+    immutable factory image's ``build-info.json`` (which is why the dashboard
+    no longer reports ``0.0.0+local``/an old commit after an application
+    update). When a release predates the bundled metadata, the updater's
+    ``installed_version`` supplies the version. Every value is sanitized
+    (printable, bounded); the document paths and any unlisted key are never
+    returned. Never raises.
     """
     doc = _build_info_document(build_info_path)
     identity = {}
     for field in BUILD_IDENTITY_FIELDS:
-        value = doc.get(field)
-        identity[field] = _sanitize(value)[:MAX_IDENTITY_LENGTH]
+        identity[field] = _sanitize(doc.get(field))[:MAX_IDENTITY_LENGTH]
+
+    metadata = active_release_metadata(release_metadata_path)
+    if metadata.get('version'):
+        identity['version'] = metadata['version']
+    if metadata.get('source_commit'):
+        identity['source_commit'] = metadata['source_commit']
+    if not metadata.get('version'):
+        installed = installed_release_version(release_state_path)
+        if installed:
+            identity['version'] = installed
     return identity
 
 
-def application_version(build_info_path=BUILD_INFO_PATH, env=None):
+def application_version(build_info_path=BUILD_INFO_PATH, env=None,
+                        release_metadata_path=RELEASE_METADATA_PATH,
+                        release_state_path=RELEASE_STATE_PATH):
     """Resolve the application version; never raises.
 
-    ``build_info_path`` and ``env`` are injectable so the precedence is
-    host-testable. A missing/unreadable build-info file, an absent environment
-    variable, or a blank value falls through to the next source and finally to
-    :data:`DEFAULT_VERSION`.
+    Precedence: the active signed release (``release.json``), then the updater's
+    recorded ``installed_version``, then the factory image ``build-info.json``,
+    then the ``PRUSA_APP_VERSION`` environment variable, then
+    :data:`DEFAULT_VERSION`. The release paths and ``env`` are injectable so the
+    precedence is host-testable.
     """
+    metadata = active_release_metadata(release_metadata_path)
+    version = metadata.get('version') or installed_release_version(release_state_path)
+    if version:
+        return version
     version = _build_info_version(build_info_path)
     if version:
         return version
@@ -123,7 +205,13 @@ __all__ = [
     'BUILD_INFO_PATH',
     'MAX_BUILD_INFO_BYTES',
     'MAX_IDENTITY_LENGTH',
+    'MAX_RELEASE_METADATA_BYTES',
     'MAX_VERSION_LENGTH',
+    'RELEASE_METADATA_FIELDS',
+    'RELEASE_METADATA_PATH',
+    'RELEASE_STATE_PATH',
+    'active_release_metadata',
     'application_version',
     'build_identity',
+    'installed_release_version',
 ]

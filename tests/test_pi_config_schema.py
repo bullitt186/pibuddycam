@@ -415,5 +415,89 @@ class HostileStringTests(unittest.TestCase):
                 self.assertEqual(out, cfg)
 
 
+class SavePairTests(unittest.TestCase):
+    """WP-UI4 (AC-9): validate-before-write pair persistence with rollback."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.device_path = os.path.join(self._tmp.name, 'device.toml')
+        self.secrets_path = os.path.join(self._tmp.name, 'secrets.toml')
+
+    def _pair(self):
+        device = config_schema.default_device()
+        device['camera_name'] = 'Bench'
+        device['mqtt']['uri'] = 'mqtts://broker.example:8883'
+        device['mqtt']['enabled'] = True
+        secrets = {'prusa': {'token': 'tok-123'}, 'mqtt': {'password': 'pw-123'}}
+        return device, secrets
+
+    def test_pair_round_trip_and_modes(self):
+        device, secrets = self._pair()
+        self.assertTrue(config_schema.save_pair(
+            device, secrets, self.device_path, self.secrets_path))
+        self.assertEqual(
+            config_schema.load_device(self.device_path)['camera_name'], 'Bench')
+        self.assertEqual(config_schema.load_secrets(self.secrets_path), secrets)
+        self.assertEqual(stat.S_IMODE(os.stat(self.device_path).st_mode), 0o640)
+        self.assertEqual(stat.S_IMODE(os.stat(self.secrets_path).st_mode), 0o600)
+
+    def test_invalid_device_writes_nothing(self):
+        device, secrets = self._pair()
+        device['mqtt']['uri'] = 'http://bad'
+        with self.assertRaises(config_schema.ConfigError):
+            config_schema.save_pair(device, secrets, self.device_path, self.secrets_path)
+        self.assertFalse(os.path.exists(self.device_path))
+        self.assertFalse(os.path.exists(self.secrets_path))
+
+    def test_invalid_secrets_writes_nothing(self):
+        device, secrets = self._pair()
+        secrets['mqtt']['rogue'] = 'x'
+        with self.assertRaises(config_schema.ConfigError):
+            config_schema.save_pair(device, secrets, self.device_path, self.secrets_path)
+        self.assertFalse(os.path.exists(self.device_path))
+        self.assertFalse(os.path.exists(self.secrets_path))
+
+    def test_secrets_write_failure_rolls_back_the_device(self):
+        old_device, old_secrets = self._pair()
+        self.assertTrue(config_schema.save_device(old_device, path=self.device_path))
+        self.assertTrue(config_schema.save_secrets(old_secrets, path=self.secrets_path))
+        with open(self.device_path, encoding='utf-8') as handle:
+            before = handle.read()
+
+        # A directory at the secrets path makes the atomic replace fail.
+        os.remove(self.secrets_path)
+        os.mkdir(self.secrets_path)
+
+        new_device, new_secrets = self._pair()
+        new_device['camera_name'] = 'Changed'
+        result = config_schema.save_pair(
+            new_device, new_secrets, self.device_path, self.secrets_path)
+        self.assertFalse(result)
+        with open(self.device_path, encoding='utf-8') as handle:
+            self.assertEqual(handle.read(), before)
+        self.assertEqual(config_schema.load_device(self.device_path)['camera_name'], 'Bench')
+        self.assertTrue(os.path.isdir(self.secrets_path))
+
+    def test_absent_device_is_removed_on_rollback(self):
+        os.mkdir(self.secrets_path)  # force the secrets write to fail
+        device, secrets = self._pair()
+        result = config_schema.save_pair(
+            device, secrets, self.device_path, self.secrets_path)
+        self.assertFalse(result)
+        self.assertFalse(os.path.exists(self.device_path))
+
+    def test_ownership_is_preserved_for_the_writing_user(self):
+        device, secrets = self._pair()
+        self.assertTrue(config_schema.save_pair(
+            device, secrets, self.device_path, self.secrets_path))
+        device_stat = os.stat(self.device_path)
+        secrets_stat = os.stat(self.secrets_path)
+        self.assertEqual(device_stat.st_uid, os.getuid())
+        self.assertEqual(device_stat.st_gid, os.getgid())
+        self.assertEqual(secrets_stat.st_uid, os.getuid())
+        self.assertEqual(secrets_stat.st_gid, os.getgid())
+
+
 if __name__ == '__main__':
     unittest.main()

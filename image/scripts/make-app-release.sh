@@ -286,6 +286,32 @@ cp "$REQUIREMENTS_LOCK" "$STAGING/requirements.lock"
 mkdir -p "$STAGING/wheels"
 cp -a "$WHEELS/." "$STAGING/wheels/"
 
+# --- 2b. Active-release identity metadata -----------------------------------
+# The application reads this file from the active release directory to report
+# its own version/source commit instead of the immutable factory image's
+# build-info (which is what made the dashboard show 0.0.0+local after an OTA).
+# It carries no secret: only the version, source commit, channel, and date.
+export MR_RELEASE_METADATA="$STAGING/release.json"
+export MR_RELEASE_VERSION="$VERSION"
+export MR_RELEASE_COMMIT="$SOURCE_COMMIT"
+export MR_RELEASE_CHANNEL="$CHANNEL"
+export MR_RELEASE_DATE="$RELEASE_DATE"
+python3 - <<'PY'
+import json
+import os
+
+doc = {
+    "schema_version": 1,
+    "version": os.environ["MR_RELEASE_VERSION"],
+    "source_commit": os.environ["MR_RELEASE_COMMIT"],
+    "channel": os.environ["MR_RELEASE_CHANNEL"],
+    "release_date": os.environ.get("MR_RELEASE_DATE", ""),
+}
+with open(os.environ["MR_RELEASE_METADATA"], "w", encoding="utf-8") as handle:
+    json.dump(doc, handle, indent=2, sort_keys=True)
+    handle.write("\n")
+PY
+
 # --- 3. Deterministic bundle ------------------------------------------------
 BASE="buddy3d-camera-app-${VERSION}"
 BUNDLE="$OUT_DIR/${BASE}.tar.zst"

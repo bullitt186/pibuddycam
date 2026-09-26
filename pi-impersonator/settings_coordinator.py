@@ -24,9 +24,31 @@ import rtsp_control
 import settings_store
 import timelapse
 import webrtc_control
-from state import RAW_TO_ENUM
+from state import ENUM_TO_RAW, RAW_TO_ENUM
 
 log = logging.getLogger('prusa-cam.settings')
+
+#: The UI-facing mutation field names accepted by :meth:`apply_mutation`. This
+#: tuple *is* the allowlist: a name not present here can never reach a setter,
+#: so the runtime IPC/admin surface cannot mutate an arbitrary attribute.
+MUTATION_FIELDS = (
+    'camera_name',
+    'quality',
+    'snapshot_upload_enabled',
+    'snapshot_interval',
+    'timelapse_enabled',
+    'timelapse_interval',
+    'timelapse_fps',
+    'rtsp_mode',
+    'webrtc_mode',
+)
+
+#: Human-readable wire values mapped to the protobuf/state integers. Keeping the
+#: mapping here (not in the admin process) means the coordinator stays the one
+#: place that interprets a settings mutation.
+_QUALITY_NAMES = {'sd': 1, 'hd': 2, 'fhd': 3}
+_RTSP_NAMES = {'disabled': 1, 'enabled': 2}
+_WEBRTC_NAMES = {'disabled': 0, 'enabled': 1}
 
 # The durable settings key each transition updates, in ``state.json`` spelling.
 _KEY_QUALITY = 'quality_tier'
@@ -210,6 +232,8 @@ class SettingsCoordinator:
         return self._commit([_KEY_TIMELAPSE_INTERVAL])
 
     def set_timelapse_fps(self, fps):
+        if type(fps) is not int:
+            return self._result(False, 'timelapse fps must be an int in 1..30')
         valid = timelapse.valid_fps(fps)
         if valid is None:
             return self._result(False, 'timelapse fps must be an int in 1..30')
@@ -258,3 +282,63 @@ class SettingsCoordinator:
         if not self.state.set_camera_name(name):
             return self._result(False, 'camera name must be a non-empty string')
         return self._commit([_KEY_CAMERA_NAME])
+
+    # -- UI mutation dispatch (WP-UI3; AC-5) -------------------------------
+
+    def apply_mutation(self, field, value):
+        """Apply one allowlisted UI mutation through the existing setters.
+
+        ``field`` must be in :data:`MUTATION_FIELDS`; the value is validated by
+        the same setter the Prusa/MQTT control paths use, so the admin UI can
+        never bypass the coordinator. Every outcome carries the authoritative
+        settings snapshot (unchanged on rejection). Never raises on bad input.
+        """
+        if not isinstance(field, str) or field not in MUTATION_FIELDS:
+            return self._result(False, 'unknown setting field')
+        handler = getattr(self, '_mutate_' + field, None)
+        if handler is None:  # pragma: no cover - MUTATION_FIELDS and handlers drift
+            return self._result(False, 'setting field is not supported')
+        try:
+            return handler(value)
+        except Exception as e:  # noqa: BLE001 - a bad value must not crash the runtime
+            log.warning(f'settings: mutation {field} raised: {type(e).__name__}')
+            return self._result(False, f'{field} could not be applied')
+
+    def _mutate_camera_name(self, value):
+        if not isinstance(value, str):
+            return self._result(False, 'camera name must be a string')
+        return self.set_camera_name(value)
+
+    def _mutate_quality(self, value):
+        if not isinstance(value, str) or value not in _QUALITY_NAMES:
+            return self._result(False, 'quality must be one of sd, hd, fhd')
+        # The firmware path consumes the raw event byte (5/6/7).
+        return self.set_quality(ENUM_TO_RAW[_QUALITY_NAMES[value]], persist=True)
+
+    def _mutate_snapshot_upload_enabled(self, value):
+        return self.set_snapshot_upload(value)
+
+    def _mutate_snapshot_interval(self, value):
+        return self.set_snapshot_interval(value)
+
+    def _mutate_timelapse_enabled(self, value):
+        if type(value) is not bool:
+            return self._result(False, 'timelapse enabled must be a boolean')
+        return self.set_timelapse_enabled(
+            'timelapse_enable' if value else 'timelapse_disable')
+
+    def _mutate_timelapse_interval(self, value):
+        return self.set_timelapse_interval(value)
+
+    def _mutate_timelapse_fps(self, value):
+        return self.set_timelapse_fps(value)
+
+    def _mutate_rtsp_mode(self, value):
+        if not isinstance(value, str) or value not in _RTSP_NAMES:
+            return self._result(False, 'rtsp mode must be enabled or disabled')
+        return self.set_rtsp_mode(_RTSP_NAMES[value])
+
+    def _mutate_webrtc_mode(self, value):
+        if not isinstance(value, str) or value not in _WEBRTC_NAMES:
+            return self._result(False, 'webrtc mode must be enabled or disabled')
+        return self.set_webrtc_mode(_WEBRTC_NAMES[value])

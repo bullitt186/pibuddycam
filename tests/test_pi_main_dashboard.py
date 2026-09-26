@@ -141,5 +141,57 @@ class MainDashboardWiringTests(unittest.TestCase):
         self.assertNotIn('subprocess', text)
 
 
+class MainSettingsDispatchWiringTests(unittest.TestCase):
+    """WP-UI3: main.py marshals IPC mutations onto the owning event loop."""
+
+    def setUp(self):
+        self.tree = _tree()
+        self.source = MAIN_PY.read_text(encoding='utf-8')
+
+    def test_imports_the_settings_dispatcher(self):
+        self.assertIn('settings_dispatch', _imports(self.tree))
+
+    def test_builds_an_event_loop_dispatcher(self):
+        chains = _attr_chains(self.tree)
+        self.assertIn(['settings_dispatch', 'EventLoopMutationDispatcher'], chains)
+        calls = [
+            call for call in _calls(self.tree)
+            if any(chain == ['settings_dispatch', 'EventLoopMutationDispatcher']
+                   for chain in _attr_chains(call))
+        ]
+        self.assertTrue(calls)
+        text = ast.unparse(calls[0])
+        self.assertIn('coordinator', text)
+        self.assertIn('loop', text)
+
+    def test_settings_handler_dispatches_through_the_marshaller(self):
+        functions = _functions(self.tree, 'apply_setting')
+        self.assertEqual(len(functions), 1)
+        text = ast.unparse(functions[0])
+        self.assertIn('settings_dispatcher.apply', text)
+        # The IPC handler must not call the coordinator directly: the marshaller
+        # is the single owner boundary.
+        self.assertNotIn('coordinator.apply_mutation', text)
+
+    def test_runtime_server_registers_the_settings_handler(self):
+        server_calls = [
+            call for call in _calls(self.tree)
+            if any(chain == ['runtime_ipc', 'RuntimeServer']
+                   for chain in _attr_chains(call))
+        ]
+        handlers = [
+            keyword for call in server_calls for keyword in call.keywords
+            if keyword.arg == 'handlers'
+        ]
+        handler_text = ast.unparse(handlers[0].value)
+        self.assertIn('settings.set', handler_text)
+
+    def test_only_one_coordinator_apply_mutation_call_site(self):
+        # AC-4: the coordinator is mutated through the marshaller; main.py must
+        # not add a second direct apply_mutation path.
+        self.assertEqual(self.source.count('apply_mutation('), 0)
+
+
+
 if __name__ == '__main__':
     unittest.main()

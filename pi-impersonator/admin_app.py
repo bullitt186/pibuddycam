@@ -89,6 +89,10 @@ ROUTES = (
     ('GET', '/api/status'),
     ('GET', '/api/session'),
     ('GET', '/api/dashboard'),
+    ('PATCH', '/api/settings'),
+    ('GET', '/api/integrations'),
+    ('PUT', '/api/integrations/mqtt'),
+    ('PUT', '/api/integrations/prusa'),
     ('POST', '/api/login'),
     ('POST', '/api/mqtt/test'),
     ('POST', '/api/logout'),
@@ -256,14 +260,26 @@ def _configured_device_id(device_path=None):
     return provisioning.resolve_device_id(device_path)
 
 
+def _default_runtime_client():
+    """Return the bounded runtime-IPC client for the configured socket path.
+
+    The socket path is overridable through ``RUNTIME_SOCKET_PATH`` for a
+    non-standard install or a test. The client itself opens no connection until
+    a request is made.
+    """
+    socket_path = (
+        os.environ.get('RUNTIME_SOCKET_PATH') or runtime_ipc.DEFAULT_SOCKET_PATH
+    )
+    return runtime_ipc.RuntimeClient(socket_path)
+
+
 def _default_dashboard_provider():
     """Return the bounded runtime-IPC dashboard provider (WP-UI2; AC-4).
 
     The admin process never constructs a ``CameraState``: it reads the live
     runtime through :mod:`runtime_ipc`. :class:`dashboard.DashboardProvider`
     caches the payload on a daemon thread, so the single admin-core worker
-    never blocks on a slow or absent runtime. The socket path is overridable
-    through ``RUNTIME_SOCKET_PATH`` for a non-standard install or a test.
+    never blocks on a slow or absent runtime.
     """
     socket_path = (
         os.environ.get('RUNTIME_SOCKET_PATH') or runtime_ipc.DEFAULT_SOCKET_PATH
@@ -272,10 +288,43 @@ def _default_dashboard_provider():
     return dashboard.DashboardProvider(client)
 
 
+def _settings_action(client):
+    """Build the runtime-IPC settings mutation callable (WP-UI3; AC-5).
+
+    The returned callable runs on the admin-core worker (blocking socket I/O
+    stays off the event loop) and normalizes the runtime's envelope into the
+    shape :class:`admin_http.AdminApp` expects. A missing runtime is reported as
+    ``degraded`` so the core answers 503 instead of a fabricated success.
+    """
+
+    def action(field, value):
+        result = client.settings_set(field, value)
+        if not isinstance(result, dict) or not result.get('ok'):
+            reason = ''
+            if isinstance(result, dict):
+                reason = result.get('error', '')
+            return {
+                'ok': False,
+                'error': reason or 'runtime unavailable',
+                'degraded': True,
+            }
+        data = result.get('data') if isinstance(result.get('data'), dict) else {}
+        settings = data.get('settings')
+        return {
+            'ok': bool(data.get('ok')),
+            'error': data.get('reason', '') if not data.get('ok') else '',
+            'changed': data.get('changed') or [],
+            'settings': settings if isinstance(settings, dict) else {},
+            'degraded': False,
+        }
+
+    return action
+
+
 def build_admin_app(mode, *, device_path=None, secrets_path=None,
                     provisioning_path=None, hotspot_controller=None, probe=None,
                     start_camera=None, activate_station=None, mqtt_probe=None,
-                    dashboard_provider=None):
+                    dashboard_provider=None, settings_actions=None):
     """Build the stdlib :class:`admin_http.AdminApp` with real dependencies.
 
     Paths default to the durable ``/data`` locations through the core's own
@@ -323,6 +372,10 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
         dashboard_provider=(
             dashboard_provider if dashboard_provider is not None
             else _default_dashboard_provider()
+        ),
+        settings_actions=(
+            settings_actions if settings_actions is not None
+            else _settings_action(_default_runtime_client())
         ),
         device_path=device_path,
         secrets_path=secrets_path,

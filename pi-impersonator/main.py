@@ -61,6 +61,7 @@ import config_schema
 import dashboard
 import mqtt_service
 import runtime_ipc
+import settings_dispatch
 import updater_install
 from settings_coordinator import SettingsCoordinator, persist_state
 
@@ -1179,8 +1180,28 @@ async def main():
             secrets=(token, fingerprint) + mqtt_secrets,
         )
 
+    settings_dispatcher = settings_dispatch.EventLoopMutationDispatcher(
+        coordinator, loop
+    )
+
+    def apply_setting(params):
+        """Apply one allowlisted settings mutation through the one coordinator.
+
+        Runs on a runtime IPC worker thread, so the mutation is marshalled onto
+        the owning asyncio loop: the coordinator is never mutated concurrently
+        by the loop and an IPC worker (``settings_dispatch``). The coordinator's
+        authoritative snapshot is returned on success *and* rejection so the
+        admin UI converges.
+        """
+        field = params.get('field')
+        value = params.get('value')
+        return settings_dispatcher.apply(field, value)
+
     runtime_server = runtime_ipc.RuntimeServer(
-        handlers={'dashboard': lambda params: dashboard_payload()},
+        handlers={
+            'dashboard': lambda params: dashboard_payload(),
+            'settings.set': apply_setting,
+        },
     )
     try:
         runtime_server.start()

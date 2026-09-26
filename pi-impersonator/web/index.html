@@ -130,10 +130,136 @@
 
         <section id="view-camera" class="view" data-view-panel="camera" aria-labelledby="view-camera-title" hidden>
           <h2 id="view-camera-title" class="view__title">Camera</h2>
-          <div class="card placeholder">
-            <p class="placeholder__title">Camera controls are not available in this release</p>
-            <p class="placeholder__text">Quality, snapshot, RTSP, and WebRTC controls are added in a later update.</p>
-          </div>
+          <div id="camera-state" class="overview-state" role="status" aria-live="polite" hidden></div>
+
+          <form class="setting-form" data-setting="camera_name" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Identity</legend>
+              <div class="field">
+                <label for="camera-name">Camera name</label>
+                <input id="camera-name" name="camera_name" type="text" maxlength="64" autocomplete="off"
+                       aria-describedby="camera-name-hint">
+                <p id="camera-name-hint" class="field__hint">Shown in Prusa Connect and Home Assistant.</p>
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save name</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form class="setting-form" data-setting="quality" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Video quality</legend>
+              <div class="segmented" role="radiogroup" aria-label="Video quality">
+                <label class="segmented__option"><input type="radio" name="quality" value="sd"> SD 640×480</label>
+                <label class="segmented__option"><input type="radio" name="quality" value="hd"> HD 1280×720</label>
+                <label class="segmented__option"><input type="radio" name="quality" value="fhd"> FHD 1920×1080</label>
+              </div>
+              <p class="field__hint">A quality raise is refused while a WebRTC viewer holds the TURN quality lock; the current value is restored automatically.</p>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Apply quality</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form class="setting-form" data-setting="snapshot_upload_enabled" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Snapshot upload</legend>
+              <label class="check"><input type="checkbox" name="snapshot_upload_enabled"> Upload periodic snapshots to Prusa Connect</label>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save snapshot upload</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form class="setting-form" data-setting="snapshot_interval" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Snapshot interval</legend>
+              <div class="field">
+                <label for="snapshot-interval">Seconds between snapshots (10–600)</label>
+                <input id="snapshot-interval" name="snapshot_interval" type="number" min="10" max="600" step="1" inputmode="numeric">
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save interval</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form class="setting-form" data-setting="timelapse_enabled" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Timelapse capture</legend>
+              <label class="check"><input type="checkbox" name="timelapse_enabled"> Capture timelapse frames</label>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save timelapse capture</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form class="setting-form" data-setting="timelapse_interval" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Timelapse interval</legend>
+              <div class="field">
+                <label for="timelapse-interval">Seconds between frames (1–3600)</label>
+                <input id="timelapse-interval" name="timelapse_interval" type="number" min="1" max="3600" step="1" inputmode="numeric">
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save frame interval</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form class="setting-form" data-setting="timelapse_fps" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Timelapse playback FPS</legend>
+              <div class="field">
+                <label for="timelapse-fps">Frames per second (1–30)</label>
+                <input id="timelapse-fps" name="timelapse_fps" type="number" min="1" max="30" step="1" inputmode="numeric">
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save FPS</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form class="setting-form" data-setting="rtsp_mode" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Prusa RTSP</legend>
+              <div class="segmented" role="radiogroup" aria-label="Prusa RTSP mode">
+                <label class="segmented__option"><input type="radio" name="rtsp_mode" value="enabled"> Enabled</label>
+                <label class="segmented__option"><input type="radio" name="rtsp_mode" value="disabled"> Disabled</label>
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Apply RTSP mode</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form class="setting-form" data-setting="webrtc_mode" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">WebRTC</legend>
+              <div class="segmented" role="radiogroup" aria-label="WebRTC mode">
+                <label class="segmented__option"><input type="radio" name="webrtc_mode" value="enabled"> Enabled</label>
+                <label class="segmented__option"><input type="radio" name="webrtc_mode" value="disabled"> Disabled</label>
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Apply WebRTC mode</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <section class="card" aria-labelledby="camera-unsupported-title">
+            <h3 id="camera-unsupported-title" class="card__title">Unsupported hardware</h3>
+            <p class="placeholder__text">This camera has no controllable IR/light, speaker, fan, or motor hardware. Those controls are intentionally not shown as interactive fields, and unknown configuration fields are not guessed.</p>
+          </section>
         </section>
 
         <section id="view-timelapses" class="view" data-view-panel="timelapses" aria-labelledby="view-timelapses-title" hidden>
@@ -146,10 +272,118 @@
 
         <section id="view-integrations" class="view" data-view-panel="integrations" aria-labelledby="view-integrations-title" hidden>
           <h2 id="view-integrations-title" class="view__title">Integrations</h2>
-          <div class="card placeholder">
-            <p class="placeholder__title">Integrations are not available in this release</p>
-            <p class="placeholder__text">Prusa Connect, MQTT, and local access configuration are added in a later update.</p>
-          </div>
+          <div id="integrations-state" class="overview-state" role="status" aria-live="polite" hidden></div>
+
+          <form id="prusa-form" class="setting-form" data-reauth="true" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Prusa Connect</legend>
+              <div class="field">
+                <label for="prusa-server">Server</label>
+                <input id="prusa-server" name="server" type="text" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="prusa-token">Token</label>
+                <input id="prusa-token" name="token" type="password" autocomplete="new-password"
+                       placeholder="Leave blank to keep the current token">
+                <p id="prusa-token-state" class="field__hint">Token state unknown</p>
+              </div>
+              <label class="check"><input id="prusa-clear-token" name="clear_token" type="checkbox"> Clear the stored token</label>
+              <div class="field">
+                <label for="prusa-fingerprint">Fingerprint</label>
+                <input id="prusa-fingerprint" name="fingerprint" type="text" autocomplete="off" spellcheck="false"
+                       placeholder="Leave blank to keep the current fingerprint">
+                <p id="prusa-fingerprint-state" class="field__hint">Fingerprint state unknown</p>
+              </div>
+              <label class="check"><input id="prusa-clear-fingerprint" name="clear_fingerprint" type="checkbox"> Clear the stored fingerprint</label>
+              <p id="prusa-binding-warning" class="notice notice--warn">Changing the fingerprint can invalidate the existing Prusa Connect token binding. Replace it only when re-registering this camera.</p>
+              <div class="form-actions">
+                <button id="prusa-save" class="btn btn--primary" type="submit">Save Prusa settings</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form id="mqtt-form" class="setting-form" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">MQTT / Home Assistant</legend>
+              <label class="check"><input id="mqtt-enabled" name="enabled" type="checkbox"> Enable MQTT</label>
+              <div class="field">
+                <label for="mqtt-uri">Broker URI</label>
+                <input id="mqtt-uri" name="uri" type="text" autocomplete="off" spellcheck="false"
+                       placeholder="mqtts://broker.example:8883">
+                <p class="field__hint">Credentials must not be embedded in the URI; use the username/password fields.</p>
+              </div>
+              <div class="field">
+                <label for="mqtt-client-id">Client ID</label>
+                <input id="mqtt-client-id" name="client_id" type="text" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="mqtt-username">Username</label>
+                <input id="mqtt-username" name="username" type="text" autocomplete="off"
+                       placeholder="Leave blank to keep the current username">
+                <p id="mqtt-username-state" class="field__hint">Username state unknown</p>
+              </div>
+              <div class="field">
+                <label for="mqtt-password">Password</label>
+                <input id="mqtt-password" name="password" type="password" autocomplete="new-password"
+                       placeholder="Leave blank to keep the current password">
+                <p id="mqtt-password-state" class="field__hint">Password state unknown</p>
+              </div>
+              <label class="check"><input id="mqtt-clear-username" name="clear_username" type="checkbox"> Clear the stored username</label>
+              <label class="check"><input id="mqtt-clear-password" name="clear_password" type="checkbox"> Clear the stored password</label>
+              <div class="field">
+                <label for="mqtt-ca-file">TLS CA file</label>
+                <input id="mqtt-ca-file" name="ca_file" type="text" autocomplete="off" spellcheck="false"
+                       placeholder="Leave blank to use the system trust store">
+                <p id="mqtt-ca-state" class="field__hint">CA state unknown</p>
+              </div>
+              <div class="field">
+                <label for="mqtt-discovery-prefix">Discovery prefix</label>
+                <input id="mqtt-discovery-prefix" name="discovery_prefix" type="text" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="mqtt-topic-prefix">Topic prefix</label>
+                <input id="mqtt-topic-prefix" name="topic_prefix" type="text" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="form-actions">
+                <button id="mqtt-test" class="btn btn--ghost" type="button">Test connection</button>
+                <button id="mqtt-save" class="btn btn--primary" type="submit">Save MQTT settings</button>
+              </div>
+              <label class="check"><input id="mqtt-save-anyway" type="checkbox"> Save anyway — the last connection test did not succeed</label>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+              <div class="topic-preview">
+                <h3 class="card__subtitle">Effective topics</h3>
+                <dl id="mqtt-effective" class="topic-preview__list" aria-label="Effective MQTT topics"></dl>
+              </div>
+              <p id="mqtt-runtime" class="field__hint" role="status">Runtime state unknown</p>
+            </fieldset>
+          </form>
+
+          <section class="card" aria-labelledby="local-access-title">
+            <h3 id="local-access-title" class="card__title">Local access</h3>
+            <dl class="local-access">
+              <div class="local-access__row">
+                <dt>ONVIF endpoint</dt>
+                <dd><code id="local-onvif">—</code></dd>
+              </div>
+              <div class="local-access__row">
+                <dt>Snapshot URL</dt>
+                <dd><code id="local-snapshot">—</code></dd>
+              </div>
+              <div class="local-access__row">
+                <dt>Home Assistant RTSP</dt>
+                <dd><code id="local-ha-rtsp">—</code></dd>
+              </div>
+              <div class="local-access__row">
+                <dt>Prusa RTSP</dt>
+                <dd><code id="local-prusa-rtsp">—</code></dd>
+              </div>
+            </dl>
+            <div class="form-actions">
+              <button id="copy-local-access" class="btn btn--ghost" type="button">Copy local access details</button>
+            </div>
+            <p class="notice notice--trusted">__TRUSTED_LAN_NOTICE__</p>
+          </section>
         </section>
 
         <section id="view-system" class="view" data-view-panel="system" aria-labelledby="view-system-title" hidden>
@@ -161,6 +395,22 @@
         </section>
       </div>
     </div>
+
+    <dialog id="reauth-dialog" class="dialog" aria-labelledby="reauth-title">
+      <form id="reauth-form" class="dialog__form" novalidate>
+        <h2 id="reauth-title" class="card__title">Confirm your password</h2>
+        <p class="field__hint">Changing credentials requires your admin password.</p>
+        <div class="field">
+          <label for="reauth-password">Admin password</label>
+          <input id="reauth-password" type="password" autocomplete="current-password">
+        </div>
+        <p id="reauth-error" class="form-error" role="alert" hidden></p>
+        <div class="form-actions">
+          <button id="reauth-cancel" class="btn btn--ghost" type="button">Cancel</button>
+          <button id="reauth-confirm" class="btn btn--primary" type="submit">Confirm</button>
+        </div>
+      </form>
+    </dialog>
   </main>
 
   <footer class="site-footer">

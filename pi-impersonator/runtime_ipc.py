@@ -71,6 +71,15 @@ MAX_KEY_CHARS = 128
 #: never be dispatched, so a future write slice must extend it explicitly.
 READ_OPERATIONS = ('dashboard', 'ping')
 
+#: WP-UI3/AC-5: the only mutating operation the runtime exposes. It carries one
+#: allowlisted settings field/value pair; the runtime's ``SettingsCoordinator``
+#: performs the actual validation and apply. A future mutation must be added
+#: here explicitly -- there is no generic "set attribute" operation.
+WRITE_OPERATIONS = ('settings.set',)
+
+#: Every operation the server may dispatch and the client may request.
+ALLOWED_OPERATIONS = READ_OPERATIONS + WRITE_OPERATIONS
+
 #: Connection admission bounds: at most ``max_connections`` in flight and
 #: ``max_workers`` being served at once. Excess connections are closed at once
 #: rather than queued, so a flood cannot grow memory.
@@ -157,7 +166,7 @@ class RuntimeServer:
         # never reach a callable. ``ping`` is a built-in liveness probe.
         self._handlers = {}
         for name, handler in (handlers or {}).items():
-            if isinstance(name, str) and name in READ_OPERATIONS and callable(handler):
+            if isinstance(name, str) and name in ALLOWED_OPERATIONS and callable(handler):
                 self._handlers[name] = handler
         self._handlers.setdefault('ping', lambda params: {'pong': True})
 
@@ -371,7 +380,7 @@ class RuntimeClient:
 
     def request(self, op, params=None):
         """Send one allowlisted operation and return a bounded result dict."""
-        if not isinstance(op, str) or op not in READ_OPERATIONS:
+        if not isinstance(op, str) or op not in ALLOWED_OPERATIONS:
             return self._degraded('operation not allowed')
         envelope = {'op': op, 'params': bound_value(params or {})}
         try:
@@ -416,6 +425,16 @@ class RuntimeClient:
         """Return a liveness probe result (or degraded)."""
         return self.request('ping')
 
+    def settings_set(self, field, value):
+        """Apply one allowlisted settings mutation through the live coordinator.
+
+        Returns the runtime's bounded ``{ok, data}`` envelope (or a degraded
+        result when the socket is absent). The field/value are bounded and the
+        runtime validates them again; a bad value is a normal rejection, not a
+        transport error.
+        """
+        return self.request('settings.set', {'field': field, 'value': value})
+
     def _read_line(self, connection, limit):
         deadline = time.monotonic() + self._timeout
         chunks = bytearray()
@@ -458,6 +477,7 @@ def _close_socket(sock):
 
 
 __all__ = [
+    'ALLOWED_OPERATIONS',
     'DEFAULT_MAX_CONNECTIONS',
     'DEFAULT_MAX_WORKERS',
     'DEFAULT_RUNTIME_DIR',
@@ -470,6 +490,7 @@ __all__ = [
     'READ_OPERATIONS',
     'RuntimeClient',
     'RuntimeServer',
+    'WRITE_OPERATIONS',
     'bound_value',
     'bounded_text',
 ]
