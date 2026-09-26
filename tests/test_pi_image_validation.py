@@ -267,9 +267,25 @@ def make_rootfs(base):
         "<!doctype html><title>synthetic shell</title>\n", encoding="utf-8")
     (web / "app.css").write_text(":root{--bg:#fff}\n", encoding="utf-8")
     (web / "app.js").write_text("export {};\n", encoding="utf-8")
+    (web / "favicon.svg").write_text(
+        "<svg xmlns='http://www.w3.org/2000/svg'></svg>\n", encoding="utf-8")
     launcher = app / "launcher.sh"
     shutil.copy2(REPO_ROOT / "image" / "assets" / "launcher.sh", launcher)
     launcher.chmod(0o755)
+    # Admin TLS provisioning (appliance image/security defect): the boot-time
+    # generator ships as admin_tls.py and admin_app.py must reference the
+    # fail-closed resolver. Keep the synthetic content free of secret-looking
+    # patterns so the image secret scan is not tripped.
+    (app / "admin_tls.py").write_text(
+        "TLS_DIR = '/data/prusa-cam/config/admin-tls'\n"
+        "def ensure():\n    return True\n",
+        encoding="utf-8",
+    )
+    (app / "admin_app.py").write_text(
+        "def resolve_server_tls(mode):\n    raise TlsConfigurationError(mode)\n"
+        "class TlsConfigurationError(RuntimeError):\n    pass\n",
+        encoding="utf-8",
+    )
 
     # Hash-locked runtime venv + dependency lock (WP-R3/AC-14). The installer
     # copies the lock mode 0644 and builds the venv with
@@ -318,6 +334,12 @@ def make_rootfs(base):
     dnsmasq.parent.mkdir(parents=True, exist_ok=True)
     dnsmasq.write_text("#!/bin/sh\n# synthetic dnsmasq\nexit 0\n", encoding="utf-8")
     dnsmasq.chmod(0o755)
+    # openssl is required by the boot-time admin TLS provisioner; the validator
+    # asserts the binary is present (added explicitly to the package manifest).
+    openssl = root / "usr" / "bin" / "openssl"
+    openssl.parent.mkdir(parents=True, exist_ok=True)
+    openssl.write_text("#!/bin/sh\n# synthetic openssl\nexit 0\n", encoding="utf-8")
+    openssl.chmod(0o755)
     # Shared-mode NAT backend (nftables/iptables); the validator requires one.
     nft = root / "usr" / "sbin" / "nft"
     nft.write_text("#!/bin/sh\n# synthetic nft\nexit 0\n", encoding="utf-8")
@@ -1447,6 +1469,102 @@ class AdminWebAssetValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("local admin web assets missing", result.stdout)
+
+    def test_missing_favicon_fails(self):
+        # favicon.svg is in the served allowlist, so the image must ship it.
+        root = self._root()
+        (self._web(root) / "favicon.svg").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("local admin web assets missing", result.stdout)
+
+
+class AdminTlsValidationTests(unittest.TestCase):
+    """Appliance image/security defect: boot-provisioned admin TLS wiring."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.image = make_image(Path(cls.tmp) / "image.img")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _root(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        return make_rootfs(tmp)
+
+    def _app(self, root):
+        return Path(root) / "opt" / "prusa-cam"
+
+    def _systemd(self, root):
+        return Path(root) / "etc" / "systemd" / "system"
+
+    def test_good_rootfs_reports_admin_tls_wiring(self):
+        root = self._root()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(
+            "admin TLS provisioning module present", result.stdout)
+        self.assertIn(
+            "openssl present for boot-time admin TLS provisioning", result.stdout)
+        self.assertIn(
+            "admin_app.py fails closed when admin-mode TLS is unavailable",
+            result.stdout,
+        )
+        self.assertIn(
+            "prusa-admin.service reads the boot-provisioned", result.stdout)
+        self.assertIn(
+            "prusa-provisioning.service keeps the setup portal plain HTTP",
+            result.stdout,
+        )
+
+    def test_missing_admin_tls_module_fails(self):
+        root = self._root()
+        (self._app(root) / "admin_tls.py").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("admin TLS provisioning module missing", result.stdout)
+
+    def test_missing_openssl_fails(self):
+        root = self._root()
+        (root / "usr" / "bin" / "openssl").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("openssl missing", result.stdout)
+
+    def test_admin_app_without_fail_closed_wiring_fails(self):
+        root = self._root()
+        (self._app(root) / "admin_app.py").write_text(
+            "# no TLS resolver here\n", encoding="utf-8")
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must fail closed without admin-mode TLS", result.stdout)
+
+    def test_pi_persist_must_run_before_admin(self):
+        root = self._root()
+        unit = self._systemd(root) / "pi-persist.service"
+        unit.write_text(
+            unit.read_text(encoding="utf-8").replace(
+                " prusa-admin.service\n", "\n"),
+            encoding="utf-8",
+        )
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("prusa-admin.service", result.stdout)
+
+    def test_setup_portal_with_tls_env_fails(self):
+        root = self._root()
+        unit = self._systemd(root) / "prusa-provisioning.service"
+        unit.write_text(
+            unit.read_text(encoding="utf-8") + "Environment=ADMIN_TLS_CERT=/x\n",
+            encoding="utf-8",
+        )
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("setup portal", result.stdout)
 
 
 class RuntimeDirectoryValidationTests(unittest.TestCase):

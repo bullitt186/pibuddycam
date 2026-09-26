@@ -334,13 +334,13 @@ else
    if [ -f "$persist_file" ]; then
       persist_ok=1
       for token in data-ready.target rpicam-source.service prusa-cam.service \
-                   prusa-rtsp.service prusa-ha-rtsp.service; do
+                   prusa-rtsp.service prusa-ha-rtsp.service prusa-admin.service; do
          unit_has "$persist_file" Before "$token" || persist_ok=0
       done
       if [ "$persist_ok" = 1 ]; then
-         report ok "pi-persist.service is Before= the data-ready gate and camera units"
+         report ok "pi-persist.service is Before= the data-ready gate, camera and admin units"
       else
-         report fail "pi-persist.service must be Before= data-ready.target and the camera units"
+         report fail "pi-persist.service must be Before= data-ready.target, the camera units and prusa-admin.service"
       fi
    fi
 
@@ -550,6 +550,25 @@ else
        report ok "prusa-camera.target Wants= prusa-admin.service"
     else
        report fail "prusa-camera.target must Wants= prusa-admin.service"
+    fi
+
+    # Admin TLS (appliance image/security defect): the claimed console must read
+    # the boot-provisioned env file for ADMIN_TLS_CERT/ADMIN_TLS_KEY. The setup
+    # portal must stay plain HTTP on the hotspot address and never take TLS env.
+    if [ -f "$admin_unit" ] \
+       && grep -q 'EnvironmentFile=-/etc/prusa-cam/admin.env' "$admin_unit"; then
+       report ok "prusa-admin.service reads the boot-provisioned /etc/prusa-cam/admin.env"
+    else
+       report fail "prusa-admin.service must read /etc/prusa-cam/admin.env for ADMIN_TLS_*"
+    fi
+    prov_unit="$SYSTEMD_DIR/prusa-provisioning.service"
+    if [ -f "$prov_unit" ] \
+       && grep -q 'ADMIN_MODE=setup' "$prov_unit" \
+       && grep -q 'ADMIN_HOST=192.168.4.1' "$prov_unit" \
+       && ! grep -q 'ADMIN_TLS_' "$prov_unit"; then
+       report ok "prusa-provisioning.service keeps the setup portal plain HTTP on 192.168.4.1"
+    else
+       report fail "prusa-provisioning.service must keep the setup portal HTTP on 192.168.4.1"
     fi
 
     # WP-R4b/AC-27: the updater timer is optional and isolated. The camera
@@ -1160,16 +1179,40 @@ PY
 
    # WP-UI1/AC-2: the factory app tree ships the local admin shell and its
    # allowlisted assets; admin_http serves only those under /assets/<name>.
+   # favicon.svg is allowlisted, so a shell missing it would 404 the icon.
    if [ -f "$MOUNT_ROOT/opt/prusa-cam/web/index.html" ] \
       && [ -f "$MOUNT_ROOT/opt/prusa-cam/web/app.css" ] \
-      && [ -f "$MOUNT_ROOT/opt/prusa-cam/web/app.js" ]; then
+      && [ -f "$MOUNT_ROOT/opt/prusa-cam/web/app.js" ] \
+      && [ -f "$MOUNT_ROOT/opt/prusa-cam/web/favicon.svg" ]; then
       report ok "local admin web assets present under /opt/prusa-cam/web"
    else
       report fail "local admin web assets missing under /opt/prusa-cam/web"
    fi
 
-   launcher=""
-   for candidate in launcher.sh run.sh bin/launcher.sh; do
+    # Admin TLS provisioning (appliance image/security defect): the boot-time
+    # generator ships as admin_tls.py and shells out to openssl with an argv
+    # list; admin_app.py must fail closed rather than serve :443 as plaintext.
+    if [ -f "$MOUNT_ROOT/opt/prusa-cam/admin_tls.py" ]; then
+       report ok "admin TLS provisioning module present (/opt/prusa-cam/admin_tls.py)"
+    else
+       report fail "admin TLS provisioning module missing (/opt/prusa-cam/admin_tls.py)"
+    fi
+    if [ -x "$MOUNT_ROOT/usr/bin/openssl" ]; then
+       report ok "openssl present for boot-time admin TLS provisioning"
+    else
+       report fail "openssl missing (admin TLS provisioning cannot generate a keypair)"
+    fi
+    admin_transport="$MOUNT_ROOT/opt/prusa-cam/admin_app.py"
+    if [ -f "$admin_transport" ] \
+       && grep -q 'resolve_server_tls' "$admin_transport" \
+       && grep -q 'TlsConfigurationError' "$admin_transport"; then
+       report ok "admin_app.py fails closed when admin-mode TLS is unavailable"
+    else
+       report fail "admin_app.py must fail closed without admin-mode TLS (no HTTP on :443)"
+    fi
+
+    launcher=""
+    for candidate in launcher.sh run.sh bin/launcher.sh; do
       if [ -x "$MOUNT_ROOT/opt/prusa-cam/$candidate" ]; then
          launcher="$candidate"
          break

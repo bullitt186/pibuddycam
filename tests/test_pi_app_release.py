@@ -229,6 +229,8 @@ class MakeAppReleaseTests(unittest.TestCase):
             "<!doctype html><title>shell</title>\n", encoding="utf-8")
         (src / "web" / "app.css").write_text(":root{--bg:#fff}\n", encoding="utf-8")
         (src / "web" / "app.js").write_text("export {};\n", encoding="utf-8")
+        (src / "web" / "favicon.svg").write_text(
+            "<svg xmlns='http://www.w3.org/2000/svg'></svg>\n", encoding="utf-8")
         (src / "tests").mkdir()
         (src / "tests" / "test_x.py").write_text("def test(): pass\n")
         (src / "__pycache__").mkdir()
@@ -429,7 +431,7 @@ class MakeAppReleaseTests(unittest.TestCase):
         result = self.release()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         names = {member.name.lstrip("./") for member in self.members(self.bundle())}
-        for asset in ("web/index.html", "web/app.css", "web/app.js"):
+        for asset in ("web/index.html", "web/app.css", "web/app.js", "web/favicon.svg"):
             self.assertIn(asset, names)
         dest = self.dir / "extracted-web"
         ok, reason = updater.extract_bundle(
@@ -437,9 +439,35 @@ class MakeAppReleaseTests(unittest.TestCase):
             expected_sha256=self.read_manifest()["bundle_sha256"],
         )
         self.assertTrue(ok, reason)
-        self.assertTrue((dest / "web" / "index.html").is_file())
-        self.assertTrue((dest / "web" / "app.css").is_file())
-        self.assertTrue((dest / "web" / "app.js").is_file())
+        for asset in ("index.html", "app.css", "app.js", "favicon.svg"):
+            self.assertTrue((dest / "web" / asset).is_file(), asset)
+
+    def test_every_shipped_web_asset_is_bundled(self):
+        # Copy the real shipped web tree so a new asset cannot be added to the
+        # allowlist/directory without travelling in the signed bundle.
+        real_web = PI_DIR / "web"
+        shutil.rmtree(self.src / "web")
+        shutil.copytree(real_web, self.src / "web")
+        result = self.release()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        names = {member.name.lstrip("./") for member in self.members(self.bundle())}
+        shipped = {path.name for path in real_web.iterdir() if path.is_file()}
+        for asset in shipped:
+            self.assertIn(f"web/{asset}", names, asset)
+
+    def test_shipped_application_modules_are_bundled(self):
+        # Every top-level application module (including the WP-UI1..UI7 ones)
+        # must travel in the signed bundle; the staging exclude list may not
+        # drop .py files. This guards the whole module set, not one file.
+        modules = sorted(path.name for path in PI_DIR.glob("*.py"))
+        self.assertTrue(modules, "expected shipped Python modules")
+        for name in modules:
+            shutil.copy2(PI_DIR / name, self.src / name)
+        result = self.release()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        names = {member.name.lstrip("./") for member in self.members(self.bundle())}
+        for name in modules:
+            self.assertIn(name, names, name)
 
     def test_release_identity_metadata_is_bundled(self):
         # WP-UI3: every bundle carries release.json so the running application
