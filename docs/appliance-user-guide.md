@@ -164,6 +164,120 @@ then publish the authoritative state even on rejection (`last_command_error` car
 non-secret reason). State JSON never contains secrets. MQTT failures are isolated and cannot
 disturb Prusa signaling or local media services.
 
+## Local web console
+
+After a successful claim, the appliance serves a self-hosted administration console at:
+
+```text
+https://buddy3d-<device-id>.local/admin
+```
+
+The TLS certificate is device-generated and self-signed, so the browser warning is expected and
+acceptable. The keypair is provisioned once on the durable `/data` partition and reused on every
+boot; the console **fails closed** rather than serving plaintext if TLS is unavailable. The console
+is **trusted-LAN only**; do not port-forward it. It uses only local assets
+(semantic HTML, one stylesheet, one vanilla ES module, one SVG icon) with a strict Content Security
+Policy — no CDN, web font, analytics, or framework. Unauthenticated clients see only the sign-in
+form; all device data lives behind the authenticated API.
+
+Sign in with the **administrator password** set during onboarding. Sessions are server-side with
+idle and absolute expiry and an `HttpOnly`/`Secure`/`SameSite` cookie; a session that expires (or is
+revoked) returns the console to the sign-in view on the next request. Every state-changing request
+carries a per-session CSRF token, and credential or destructive actions additionally require a
+fresh password re-authentication in a modal. Login and re-authentication are rate-limited.
+
+### Overview
+
+- Camera status and telemetry: resolution, quality, Wi-Fi RSSI, CPU temperature, uptime, free
+  storage, active application release, and per-subsystem status chips (camera, Prusa, snapshots,
+  RTSP, WebRTC, MQTT, storage, updates) with configured-vs-runtime-vs-freshness distinctions.
+- **Local monitor** — an authenticated **low-rate snapshot view**, roughly 1 frame per second while
+  the tab is visible (slower when hidden), taken from the shared camera stream. It is explicitly
+  **not full-rate video** and never opens a second libcamera consumer, so it cannot disturb the
+  camera source, snapshots, or Prusa signaling. Use **Pause/Resume** to stop or restart refreshing
+  and **Download current snapshot** for a one-off JPEG. If no frame is available the console says so
+  rather than showing a stale image.
+- A persistent trusted-LAN warning reminds you that ONVIF, `/snapshot.jpg`, and RTSP are
+  unauthenticated by v1 policy.
+
+### Camera
+
+Settings are applied through the same shared settings coordinator as Prusa/MQTT/startup restore;
+each form waits for the authoritative response before reporting success.
+
+| Control | Range / values | Notes |
+|---|---|---|
+| Camera name | text | Shown in Prusa Connect and Home Assistant. |
+| Video quality | SD 640×480 / HD 1280×720 / FHD 1920×1080 | A raise refused by the WebRTC **TURN quality lock** is explained and the current value is restored automatically. |
+| Snapshot upload | on/off | Periodic uploads to Prusa Connect. |
+| Snapshot interval | 10–600 s | |
+| Timelapse capture | on/off | |
+| Timelapse interval | 1–3600 s | |
+| Timelapse playback FPS | 1–30 | |
+| Prusa RTSP | enabled/disabled | Controls the `:8554/live` endpoint. |
+| WebRTC | enabled/disabled | Configured mode; active streaming is reported separately. |
+
+Unsupported IR/light, speaker, fan, and motor hardware is shown as a non-interactive note; those
+controls are never fabricated.
+
+### Integrations
+
+- **Prusa Connect** — server, token replacement, and fingerprint. Stored values are **never
+  displayed**: the form shows `configured`/`not configured` and a blank field means “keep the
+  current value”; explicit clear checkboxes remove one. Replacing the fingerprint warns that it can
+  invalidate the existing token binding. Saving requires fresh password re-authentication.
+- **MQTT / Home Assistant** — enablement, broker URI (no embedded credentials), client ID, optional
+  username/password, TLS CA file, discovery prefix, and topic prefix. **Test connection** performs a
+  non-persistent broker test (it may use a stored credential when the replacement field is left
+  blank). A save is refused after a failed or stale test unless you tick **Save anyway**; it always
+  requires fresh re-authentication and reports truthfully that the camera runtime must restart
+  before the change is active. The effective-topic preview and runtime connection state are shown.
+
+### Timelapses
+
+- Library statistics (video count, frame count, library size).
+- **Build video** assembles stored JPEG frames into one MJPEG AVI. Only one build runs at a time; a
+  duplicate request is refused and the console follows the running job with progress, success, or a
+  bounded error reason.
+- A filterable (completed/error/pending/unknown), paginated video gallery with **direct download**
+  (whole-file and HTTP range) and a frame browser with bounded previews.
+- **Inline playback** depends on the browser's MJPEG AVI support; when the browser cannot decode it,
+  the console says so and direct download always works. No CPU-heavy transcoding runs on the Pi.
+- **Deletion is deliberately not offered.** Use the Samba share (`smb://<device>/sdcard`) for bulk
+  export and the existing low-space pruning for retention.
+
+### System
+
+- **Health & version** — application version, active release, source commit, provisioning state,
+  runtime freshness, storage, temperature, and uptime.
+- **Signed update** — read-only state on load; **Check for updates** is report-only and never
+  installs; **Install update** requires fresh re-authentication and warns that the camera and admin
+  services restart, so the console may disconnect. Reconnect and re-check the state; never start a
+  second install.
+- **Diagnostics** — load or download a bounded, redacted current-boot journal for the fixed
+  appliance units. No command, unit, or path can be supplied from the browser.
+- **Access & recovery** — enable/disable SSH (re-authentication required) and **Enter setup /
+  recovery mode**, which writes the BOOT recovery sentinel and restarts into the setup hotspot after
+  an explicit browser confirmation. The console disconnects and the device must be re-onboarded.
+- **Danger zone** — **Reboot** needs a checked acknowledgement plus re-authentication and is rate
+  limited (a second reboot within the window is refused with a retry hint). **Factory reset**
+  requires the typed phrase `RESET`, an explicit confirmation, and re-authentication; it keeps a
+  dated backup and lets you choose whether stored timelapse media is also deleted, then reports the
+  exact file count removed.
+
+The raw TOML editor remains available to experts through the existing configuration API and the
+documented apply/validate commands; it is not the primary settings UX.
+
+### Console limitations (current)
+
+- The local monitor is a low-rate snapshot refresh, not full-rate video; a full local video path is
+  a separately documented follow-up.
+- MJPEG AVI inline playback is browser-dependent; download is the guaranteed path.
+- Local browsing does **not** close the still-open Connect `file_list`/`client_trigger` portions of
+  `GAP-TIMELAPSE-01` or `GAP-SIO-01`, and it does not change the external camera-service registry
+  classification that currently hides the normal Connect live/settings UI.
+- Credential changes and MQTT/Prusa edits require a camera-runtime restart before they take effect.
+
 ## Backup, reflash, recovery, and factory reset
 
 ### Durable data (`/data`)

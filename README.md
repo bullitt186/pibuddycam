@@ -35,6 +35,7 @@ protocol from the ARM firmware and reimplements it so you can:
 | Understand the wire protocol (the spec) | [`docs/protocol.md`](docs/protocol.md) |
 | **Set up the Pi impersonator (one command)** | [`pi-impersonator/README.md`](pi-impersonator/README.md) ⭐ |
 | **Use the released appliance image (flash → onboarding → HA/MQTT)** | [`docs/appliance-user-guide.md`](docs/appliance-user-guide.md) |
+| **Operate the local web console (Camera/MQTT/Timelapses/System)** | [`docs/appliance-user-guide.md#local-web-console`](docs/appliance-user-guide.md#local-web-console) |
 | Run the local RTSP proxy / control tool | [`proxy/README.md`](proxy/README.md) |
 | Reproduce or extend the RE work | [`docs/reverse-engineering.md`](docs/reverse-engineering.md) |
 | See exactly what changed in firmware 3.1.6 | [`docs/firmware-3.1.6.md`](docs/firmware-3.1.6.md) |
@@ -43,6 +44,49 @@ protocol from the ARM firmware and reimplements it so you can:
 | Know the firmware / project sources | [`docs/sources.md`](docs/sources.md) |
 | Check the official REST spec (no WebRTC) | [`docs/openapi.yaml`](docs/openapi.yaml) — pointer to Prusa's source |
 | Understand licensing & IP boundaries | [`NOTICE.md`](NOTICE.md) |
+
+## Local web console
+
+Every **claimed** appliance serves a self-hosted control console — no CDN, web font, analytics, or
+JavaScript framework, and no Internet exposure required:
+
+```
+https://buddy3d-<device-id>.local/admin
+```
+
+The certificate is device-generated and self-signed, so a browser warning is expected and
+acceptable. The console is **trusted-LAN only** and every device-data request is authenticated.
+
+- **Overview** — camera status, telemetry (resolution, quality, Wi-Fi RSSI, CPU temperature,
+  uptime, free storage, active release), per-subsystem status chips, and a **Local monitor**. The
+  monitor is an authenticated low-rate snapshot refresh (about 1 fps while visible, slower when
+  hidden) taken from the shared camera stream; it is **not full-rate video** and never opens a
+  second camera consumer. Pause/Resume and snapshot Download are available.
+- **Camera** — camera name, SD/HD/FHD quality, periodic snapshot upload + interval (10–600 s),
+  timelapse capture/interval (1–3600 s)/playback FPS (1–30), Prusa RTSP mode, and WebRTC mode.
+  A quality raise refused by the WebRTC TURN lock is explained and the authoritative value is
+  restored; unsupported IR/light/speaker/fan/motor hardware is shown as non-interactive.
+- **Integrations** — Prusa Connect server/token/fingerprint replacement (with the fingerprint
+  binding warning) and MQTT/Home Assistant (enablement, URI, client ID, optional credentials, TLS
+  CA, discovery/topic prefixes, a live connection test, effective-topic preview, and runtime
+  state). Credential changes require fresh password re-authentication; stored secrets are never
+  rendered — fields show `configured`/`not configured` and blank means “keep”.
+- **Timelapses** — library stats, one serialized **Build video** action (busy/progress/error, no
+  duplicate builds), a filterable/paginated gallery with direct download and HTTP range support, a
+  paginated frame browser with previews, and honest browser-playback detection with a download
+  fallback for MJPEG AVI. **Deletion is not offered**; use the Samba share for bulk export.
+- **System** — health/version/release/commit/provisioning/SSH, a **report-only** signed-update
+  check and an explicitly approved install (fresh re-auth; warns the console may disconnect),
+  bounded redacted current-boot diagnostics, SSH enable/disable, enter setup/recovery, reboot, and
+  a two-step factory reset with a typed `RESET` phrase and an include-media choice.
+
+Security model: `hashlib.scrypt` admin password hash (never the password), server-side sessions
+with idle/absolute expiry, `Secure`/`HttpOnly`/`SameSite` cookies, per-session CSRF tokens, login
+and re-auth rate limiting, and re-authentication for every credential/destructive action. Tokens,
+MQTT credentials, PSKs, cookies, and personal paths are redacted from responses and logs.
+
+The full navigation semantics, limitations, and recovery instructions are in
+[`docs/appliance-user-guide.md`](docs/appliance-user-guide.md#local-web-console).
 
 ## Repository layout
 
@@ -66,6 +110,7 @@ protocol from the ARM firmware and reimplements it so you can:
 ├── pi-impersonator/          Python impersonator that runs on the Pi (primary impl)
 │   ├── bootstrap.sh          one-command fresh-Pi provisioning (run from your machine)
 │   ├── deploy.sh             legacy developer-install deploy (not the appliance OTA path)
+│   ├── web/                  self-hosted local web console (semantic HTML/CSS/vanilla JS)
 │   ├── config.ini.example    config template (copy → config.ini, fill in token — never commit)
 │   └── systemd/              ready-to-install unit files
 ├── proxy/                    Rust cloud-stream proxy + camera control tool

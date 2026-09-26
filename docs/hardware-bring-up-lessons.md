@@ -84,7 +84,7 @@ Test state (temporary, removed after): `/etc/prusa-updater.conf` pointed at the
 test manifest URL with `SSL_CERT_FILE`, and `/data/prusa-cam/test-ca.pem` was
 present; both were reverted and ROOT remounted read-only.
 
-## Admin TLS provisioning (appliance image/security defect — repo fix, live verification pending)
+## Admin TLS provisioning (appliance image/security defect — live-verified 2026-09-26)
 
 Live diagnosis found `prusa-admin` serving HTTP on `:443` because
 `/etc/prusa-cam/admin.env` did not exist. `admin_app.py` only *consumed*
@@ -110,12 +110,24 @@ image/security defect, not a firmware `GAP-*` item.
   `admin.env` wiring, the setup-portal HTTP behavior, and the fail-closed
   `admin_app` wiring.
 
-**Pending live verification (not yet done):** boot a freshly flashed image and
-confirm `/data/prusa-cam/config/admin-tls/` is created once, `/etc/prusa-cam/
-admin.env` is recreated on reboot, the same certificate survives a reboot,
-`https://buddy3d-<device-id>.local/admin` serves TLS on `:443` only, removing
-`admin.env`/the keypair makes `prusa-admin.service` fail instead of serving HTTP,
-and the setup hotspot still serves `http://192.168.4.1`.
+**Live verification (application release `1.1.8`, source `0474b46`, 2026-09-26):**
+the signed updater installed the exact reviewed application release, after which
+the committed image-owned `pi-persist.service` and `prusa-admin.service` files
+were installed on ROOT for the authorized hardware test. `pi-persist` created
+the durable keypair and volatile `admin.env`; the keypair was byte-identical
+after a second `admin_tls.ensure()` call. The certificate SAN includes
+`buddy3d-<device-id>.local`, `https://<device-ip>/admin` returned HTTP 200 over TLS,
+and a plaintext HTTP request to port 443 was rejected. The key directory/key/
+cert/env ownership and modes were respectively `prusa-cam:prusa-cam`
+`0750`/`0600`/`0644`/`0640`. Snapshot returned JPEG, RTSP returned H.264
+640×480, all camera/admin services were active, temporary updater URL/CA files
+were removed, and ROOT was restored read-only. Before provisioning, release
+`1.1.8` also live-demonstrated fail-closed behavior: `prusa-admin` exited with
+the expected missing-TLS critical error instead of serving HTTP.
+
+A fresh-image boot and setup-hotspot regression remain to be exercised when a
+new card is built and user-flashed; offline tests and image validation cover
+those paths in the meantime.
 
 ## Defects found only on hardware
 
@@ -140,7 +152,7 @@ and the setup hotspot still serves `http://192.168.4.1`.
 | 17 | Install reports success but the device still runs the **factory** app | `default_restart_services` ran `systemctl restart prusa-camera.target`; the launcher units are `WantedBy=multi-user.target` with no `PartOf=`, so restarting the target restarts none of them and health passed against the stale app | restart the four units that exec `launcher.sh` by name (`5de54c9`) |
 | 18 | Same as 17 after fixing the restart: `ps` shows `/opt/prusa-cam/main.py` although `current` points at the release | `tempfile.mkdtemp` creates the staging dir `0700 root`; `switch_release` renamed it unchanged, and the launcher runs as the unprivileged `prusa-cam` user, which cannot traverse a `0700` root dir, so it silently fell back to the factory app | chmod the activated release dir to `0755` (root-owned, world-traversable) in `switch_release` (`22363b2`) |
 | 19 | Connect configuration reached the app, but video quality never changed; journal said `sudo: prusa-cam : command not allowed` | the quality path still called broad `sudo systemctl` commands, which the appliance's intentionally narrow sudoers policy rejects | add fixed `prusa-priv quality-restart` and route quality changes through it (`c1d3e76`; live-verified HD→FHD on `1.0.4`) |
-| 20 | claimed admin console served **plaintext HTTP on :443** (diagnosed live) | `/etc/prusa-cam/admin.env` was absent: `admin_app.py` consumed `ADMIN_TLS_CERT`/`ADMIN_TLS_KEY` but no boot-time generator existed, and `/etc/prusa-cam` is tmpfs while ROOT is read-only | boot-time `admin_tls.ensure()` from `pi-persist.service` generates a durable `/data` keypair and recreates `admin.env`; `admin_app` now fails closed without it. **Repo-implemented; live verification pending** (see below) |
+| 20 | claimed admin console served **plaintext HTTP on :443** (diagnosed live) | `/etc/prusa-cam/admin.env` was absent: `admin_app.py` consumed `ADMIN_TLS_CERT`/`ADMIN_TLS_KEY` but no boot-time generator existed, and `/etc/prusa-cam` is tmpfs while ROOT is read-only | boot-time `admin_tls.ensure()` from `pi-persist.service` generates a durable `/data` keypair and recreates `admin.env`; `admin_app` now fails closed without it. Live-verified on release `1.1.8` (`0474b46`) on 2026-09-26; fresh-image/setup-hotspot verification remains pending (see above) |
 
 ## Operational lessons (not code bugs)
 
