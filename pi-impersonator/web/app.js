@@ -190,7 +190,13 @@ function showLogin(message) {
   }
   if (els.timelapseBuild) els.timelapseBuild.disabled = false;
   if (els.reauthDialog && els.reauthDialog.open) els.reauthDialog.close();
-  reauthResolver = null;
+  // A pending re-auth promise must settle (as cancelled) before the dialog is
+  // discarded, or a sensitive action would await forever after an expiry.
+  if (reauthResolver) {
+    const pending = reauthResolver;
+    reauthResolver = null;
+    pending(false);
+  }
   if (els.boot) els.boot.hidden = true;
   if (els.main) els.main.hidden = false;
   if (els.loginView) els.loginView.hidden = false;
@@ -1410,6 +1416,10 @@ async function submitSettingForm(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const field = form.dataset.setting;
+  // The MQTT and Prusa forms are also `.setting-form` for shared styling but
+  // carry no `data-setting`; they own their submit handlers. Without this guard
+  // both handlers run and a stray PATCH /api/settings is issued.
+  if (!field) return;
   const value = readSettingValue(form, field);
   if (value === undefined) {
     setFormStatus(form, 'error', 'Enter a valid value before saving.');

@@ -324,20 +324,22 @@
               <button class="chip" type="button" data-timelapse-filter="unknown" aria-pressed="false">Unknown</button>
             </div>
             <p id="timelapse-videos-empty" class="placeholder__text" hidden>No timelapse videos yet. Build one from the stored frames.</p>
-            <table id="timelapse-videos" class="media-table" hidden>
-              <caption class="visually-hidden">Assembled timelapse videos</caption>
-              <thead>
-                <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Size</th>
-                  <th scope="col">Created</th>
-                  <th scope="col">Playback</th>
-                  <th scope="col">Download</th>
-                </tr>
-              </thead>
-              <tbody id="timelapse-videos-body"></tbody>
-            </table>
+            <div class="table-scroll">
+              <table id="timelapse-videos" class="media-table" hidden>
+                <caption class="visually-hidden">Assembled timelapse videos</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Size</th>
+                    <th scope="col">Created</th>
+                    <th scope="col">Playback</th>
+                    <th scope="col">Download</th>
+                  </tr>
+                </thead>
+                <tbody id="timelapse-videos-body"></tbody>
+              </table>
+            </div>
             <nav id="timelapse-videos-pager" class="pager" aria-label="Video pages" hidden>
               <button id="timelapse-videos-prev" class="btn" type="button">Previous</button>
               <span id="timelapse-videos-page" class="pager__label"></span>

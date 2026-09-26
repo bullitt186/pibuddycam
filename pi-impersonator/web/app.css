@@ -53,6 +53,14 @@
   box-sizing: border-box;
 }
 
+/* The view/login/monitor elements set `display` in their own rules, which
+ * would otherwise override the user-agent rule that hides an element carrying
+ * the hidden attribute, leaving every state visible at once. Keep it
+ * authoritative. */
+[hidden] {
+  display: none !important;
+}
+
 html {
   background: var(--bg);
   color: var(--ink);
@@ -129,11 +137,21 @@ p {
 
 .btn--ghost {
   background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.btn--ghost:hover {
+  background: var(--surface-2);
+}
+
+/* The sign-out button lives on the charcoal topbar and needs light ink. */
+.topbar .btn--ghost {
   color: var(--nav-ink);
   border-color: var(--nav-muted);
 }
 
-.btn--ghost:hover {
+.topbar .btn--ghost:hover {
   background: var(--nav-2);
 }
 
@@ -706,6 +724,13 @@ p {
   font-variant-numeric: tabular-nums;
 }
 
+/* The video table has six columns; on a 360px phone it may exceed the content
+ * width, so it scrolls inside its own box instead of forcing page overflow. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .media-table th,
 .media-table td {
   padding: 0.5rem 0.6rem;
@@ -850,16 +875,20 @@ p {
     position: sticky;
     bottom: 0;
     flex-direction: row;
+    flex-wrap: wrap;
     justify-content: space-around;
     gap: 0.25rem;
     padding: 0.4rem;
     border-top: 1px solid var(--nav-2);
+    /* The five labels' min-content must never widen the page grid. */
+    min-width: 0;
   }
 
   .nav__item {
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 0;
     text-align: center;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     padding: 0.4rem 0.25rem;
   }
 
@@ -869,6 +898,7 @@ p {
 
   .topbar {
     flex-wrap: wrap;
+    min-width: 0;
   }
 }
 

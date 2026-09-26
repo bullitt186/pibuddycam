@@ -184,9 +184,13 @@ SECURITY_HEADERS = {
 }
 
 #: CSP for the local HTML shell: only same-origin assets, no inline code.
+#: ``blob:`` is required for images because the live monitor and snapshot
+#: previews are rendered from authenticated fetch responses via
+#: ``URL.createObjectURL`` (browser-found: a stricter ``img-src`` silently
+#: blocked every local-monitor frame).
 HTML_CSP = (
     "default-src 'none'; script-src 'self'; style-src 'self'; "
-    "img-src 'self' data:; connect-src 'self'; font-src 'self'; "
+    "img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; "
     "base-uri 'none'; form-action 'self'; frame-ancestors 'none'; "
     "object-src 'none'"
 )

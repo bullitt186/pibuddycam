@@ -329,6 +329,10 @@ class AdminSecurityHeaderTests(unittest.TestCase):
         self.assertIn("default-src 'none'", csp)
         self.assertIn("script-src 'self'", csp)
         self.assertIn("frame-ancestors 'none'", csp)
+        # The live monitor renders an authenticated frame through
+        # URL.createObjectURL, so the shell must allow blob: images or every
+        # monitor frame is silently blocked by CSP.
+        self.assertIn("img-src 'self' data: blob:", csp)
         self.assertNotIn("'unsafe-inline'", csp)
         self.assertNotIn('http:', csp)
         self.assertNotIn('https:', csp)
@@ -446,6 +450,15 @@ class AdminDesignSystemTests(unittest.TestCase):
         self.assertIn(':focus-visible', self.css)
         self.assertIn('outline: 3px solid var(--focus)', self.css)
 
+    def test_hidden_attribute_is_authoritative_over_display_rules(self):
+        # .boot/.login/.shell/.overview/.live-monitor__image set display, which
+        # would otherwise override the UA [hidden] rule and show every state at
+        # once (browser-found during E2E). The shell must force hidden off.
+        self.assertIn('[hidden]', self.css)
+        hidden_block = self.css.split('[hidden]', 1)[1].split('}', 1)[0]
+        self.assertIn('display: none', hidden_block)
+        self.assertIn('!important', hidden_block)
+
     def test_reduced_motion_is_respected(self):
         self.assertIn('prefers-reduced-motion: reduce', self.css)
         block = self.css.split('prefers-reduced-motion: reduce', 1)[1]
@@ -454,6 +467,12 @@ class AdminDesignSystemTests(unittest.TestCase):
 
     def test_responsive_layout_covers_narrow_screens(self):
         self.assertIn('@media (max-width: 760px)', self.css)
+        block = self.css.split('@media (max-width: 760px)', 1)[1]
+        self.assertIn('grid-template-columns: 1fr', block)
+        # The five bottom-nav labels must be able to shrink/wrap instead of
+        # forcing the page grid wider than a 360px viewport.
+        self.assertIn('flex-wrap: wrap', block)
+        self.assertIn('min-width: 0', block)
         self.assertIn('@media (max-width: 380px)', self.css)
         self.assertIn('grid-template-areas', self.css)
 
@@ -637,6 +656,15 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
         self.assertIn('setFormBusy(form, true)', code)
         self.assertIn('button.disabled = busy', code)
 
+    def test_mqtt_and_prusa_forms_do_not_route_through_the_settings_patch(self):
+        # #mqtt-form/#prusa-form share the .setting-form styling but have no
+        # data-setting; the generic submit handler must bail so it never issues
+        # a stray PATCH /api/settings.
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'submitSettingForm')
+        self.assertIn("form.dataset.setting", body)
+        self.assertIn('if (!field) return', body)
+
     def test_js_refresh_converges_with_dashboard_settings(self):
         code = _strip_js_comments(self.js)
         self.assertIn('applySettings(data.settings)', code)
@@ -760,6 +788,15 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
         for storage in ('localStorage', 'sessionStorage', 'document.cookie'):
             self.assertNotIn(storage, code, storage)
         self.assertIn('csrf: true', code)
+
+    def test_login_reset_settles_a_pending_reauth_promise(self):
+        # A session expiry while a sensitive action awaits re-auth must settle
+        # the promise (as cancelled), not drop the resolver and hang forever.
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'showLogin')
+        self.assertIn('reauthResolver', body)
+        self.assertIn('pending(false)', body)
+        self.assertIn('reauthResolver = null', body)
 
 
 
@@ -931,6 +968,16 @@ class AdminTimelapseUiTests(unittest.TestCase):
             '.pager', '.pager__label', '.overview-state--loading',
         ):
             self.assertIn(marker, self.css, marker)
+
+    def test_video_table_scrolls_instead_of_overflowing_at_360px(self):
+        # Six columns cannot fit 360px; the table must scroll inside its own
+        # box so the page itself never gains a horizontal scrollbar.
+        table = self.html.index('id="timelapse-videos"')
+        wrapper = self.html.rindex('table-scroll', 0, table)
+        self.assertLess(wrapper, table)
+        self.assertIn('.table-scroll', self.css)
+        scroll_block = self.css.split('.table-scroll', 1)[1].split('}', 1)[0]
+        self.assertIn('overflow-x: auto', scroll_block)
 
 
 # --------------------------------------------------------------------------- #
