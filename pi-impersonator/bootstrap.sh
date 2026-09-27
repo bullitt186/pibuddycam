@@ -12,8 +12,8 @@ set -euo pipefail
 PI="${1:-${PI:-}}"
 [ -n "$PI" ] || { echo "usage: PI=user@host $0"; exit 2; }
 PI_USER="${PI%@*}"
-SERVICE_USER="${SERVICE_USER:-prusa-cam}"
-APP_ROOT="${APP_ROOT:-/opt/prusa-cam}"
+SERVICE_USER="${SERVICE_USER:-pibuddycam}"
+APP_ROOT="${APP_ROOT:-/opt/pibuddycam}"
 SRC="$(cd "$(dirname "$0")" && pwd)"
 SSH=(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new "$PI")
 log() { printf '\n\033[1m» %s\033[0m\n' "$*"; }
@@ -50,22 +50,22 @@ log "python venv under $APP_ROOT (--system-site-packages so gi/Gst are visible) 
   sudo $APP_ROOT/venv/bin/pip install -q --upgrade pip aiohttp python-socketio && \
   sudo chown -R $SERVICE_USER:$SERVICE_USER $APP_ROOT"
 
-log "install + enable systemd units (verbatim: User=prusa-cam / /opt/prusa-cam)"
-for u in rpicam-source.service prusa-rtsp.service prusa-ha-rtsp.service \
-         prusa-cam.service pi-persist.service prusa-data-ready.service data-ready.target; do
+log "install + enable systemd units (verbatim: User=pibuddycam / /opt/pibuddycam)"
+for u in rpicam-source.service pibuddycam-rtsp.service pibuddycam-ha-rtsp.service \
+         pibuddycam.service pi-persist.service pibuddycam-data-ready.service data-ready.target; do
   "${SSH[@]}" "sudo install -m 0644 /dev/stdin /etc/systemd/system/$u" < "$SRC/systemd/$u"
 done
-"${SSH[@]}" 'sudo systemctl daemon-reload && sudo systemctl enable data-ready.target prusa-data-ready.service rpicam-source prusa-rtsp prusa-ha-rtsp prusa-cam pi-persist'
+"${SSH[@]}" 'sudo systemctl daemon-reload && sudo systemctl enable data-ready.target pibuddycam-data-ready.service rpicam-source pibuddycam-rtsp pibuddycam-ha-rtsp pibuddycam pi-persist'
 
-log "deploy code + provision /etc/prusa-cam + quality.env (reuses deploy.sh)"
-"$SRC/deploy.sh" "$PI" || true   # prusa-cam will crash-loop until config.ini exists — that's fine
+log "deploy code + provision /etc/pibuddycam + quality.env (reuses deploy.sh)"
+"$SRC/deploy.sh" "$PI" || true   # pibuddycam will crash-loop until config.ini exists — that's fine
 
 cat <<EOF
 
 $(printf '\033[1m✓ bootstrap done.\033[0m')  Final manual step — the token secret is not in the repo:
   scp config.ini $PI:/tmp/config.ini
   ssh $PI "sudo install -o $SERVICE_USER -g $SERVICE_USER -m 0600 /tmp/config.ini $APP_ROOT/config.ini && rm -f /tmp/config.ini"
-  ssh $PI 'sudo systemctl restart prusa-cam && journalctl -u prusa-cam -n 20 --no-pager'
+  ssh $PI 'sudo systemctl restart pibuddycam && journalctl -u pibuddycam -n 20 --no-pager'
   # expect: /c/info response … registered=True, and Snapshot: 200
 
 Once it's confirmed registering, lock the SD read-only:

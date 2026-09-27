@@ -1,5 +1,5 @@
 /*
- * Buddy3D Camera local console.
+ * PiBuddyCam local console.
  *
  * No framework, no CDN, no build step. The module talks to the existing
  * authenticated admin API only:
@@ -138,7 +138,7 @@ function cacheElements() {
   els.localOnvif = document.getElementById('local-onvif');
   els.localSnapshot = document.getElementById('local-snapshot');
   els.localHaRtsp = document.getElementById('local-ha-rtsp');
-  els.localPrusaRtsp = document.getElementById('local-prusa-rtsp');
+  els.localPrusaRtsp = document.getElementById('local-pibuddycam-rtsp');
   els.copyLocalAccess = document.getElementById('copy-local-access');
   els.systemState = document.getElementById('system-state');
   els.systemAppVersion = document.getElementById('system-app-version');
@@ -856,7 +856,7 @@ async function downloadLiveSnapshot() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'buddy3d-snapshot.jpg';
+    link.download = 'pibuddycam-snapshot.jpg';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1772,7 +1772,7 @@ function renderMqttRuntime(runtime) {
 }
 
 function localHost() {
-  return window.location.hostname || 'buddy3d-camera.local';
+  return window.location.hostname || 'pibuddycam.local';
 }
 
 function renderLocalAccess() {
@@ -2293,7 +2293,7 @@ function downloadDiagnostics() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'buddy3d-diagnostics.txt';
+  link.download = 'pibuddycam-diagnostics.txt';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

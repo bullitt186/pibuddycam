@@ -35,12 +35,12 @@ def quality_change_allowed(current_enum, requested_enum, turn_online):
 
 # Absolute (home-dir independent) so the same path works for a dedicated service account.
 # Overridable via env for the self-check below.
-QUALITY_ENV = os.environ.get('PRUSA_QUALITY_ENV', '/etc/prusa-cam/quality.env')
+QUALITY_ENV = os.environ.get('PIBUDDYCAM_QUALITY_ENV', '/etc/pibuddycam/quality.env')
 
 # Ephemeral live override, read by rpicam-source *after* QUALITY_ENV so a
 # GAP-QUALITY-02 live change can move the encoder without writing the persisted
 # tier. Cleared on reboot like every other tmpfs/overlay write.
-QUALITY_LIVE_ENV = os.environ.get('PRUSA_QUALITY_LIVE_ENV', '/etc/prusa-cam/quality.live.env')
+QUALITY_LIVE_ENV = os.environ.get('PIBUDDYCAM_QUALITY_LIVE_ENV', '/etc/pibuddycam/quality.live.env')
 
 
 def write_live(quality):

@@ -1,7 +1,7 @@
 """Boot-time ROOT migrations for OTA-deployed fixes (runs as root in pi-persist).
 
 Each migration is a named, idempotent function that returns ``True`` on success.
-Completed migrations are tracked in ``/data/prusa-cam/migrations.json`` so they
+Completed migrations are tracked in ``/data/pibuddycam/migrations.json`` so they
 run exactly once.  ROOT is remounted read-write only when pending migrations
 exist, and remounted read-only afterward — even on failure.
 
@@ -22,9 +22,9 @@ import logging
 import os
 import subprocess
 
-log = logging.getLogger('prusa-cam.migrations')
+log = logging.getLogger('pibuddycam.migrations')
 
-MIGRATION_STATE_PATH = '/data/prusa-cam/migrations.json'
+MIGRATION_STATE_PATH = '/data/pibuddycam/migrations.json'
 
 # -- migration functions ---------------------------------------------------- #
 
@@ -41,7 +41,7 @@ def _002_install_samba_config(root):
     samba_dir = os.path.join(root, 'etc', 'samba')
     share_conf = os.path.join(samba_dir, 'smb-sdcard.conf')
     main_conf = os.path.join(samba_dir, 'smb.conf')
-    tmpfiles = os.path.join(root, 'etc', 'tmpfiles.d', 'buddy3d-samba.conf')
+    tmpfiles = os.path.join(root, 'etc', 'tmpfiles.d', 'pibuddycam-samba.conf')
 
     os.makedirs(samba_dir, exist_ok=True)
     with open(share_conf, 'w') as f:
@@ -51,7 +51,7 @@ def _002_install_samba_config(root):
             '   browseable = yes\n'
             '   read only = no\n'
             '   guest ok = yes\n'
-            '   force user = prusa-cam\n'
+            '   force user = pibuddycam\n'
             '   create mask = 0644\n'
             '   directory mask = 0755\n'
         )
@@ -70,7 +70,7 @@ def _002_install_samba_config(root):
     os.makedirs(os.path.dirname(tmpfiles), exist_ok=True)
     with open(tmpfiles, 'w') as f:
         f.write(
-            '# Samba volatile state on the tmpfs /var (buddy3d appliance).\n'
+            '# Samba volatile state on the tmpfs /var (pibuddycam appliance).\n'
             'd /var/lib/samba          0755 root root -\n'
             'd /var/lib/samba/private  0700 root root -\n'
             'd /var/log/samba          0755 root root -\n'
@@ -99,8 +99,8 @@ def _004_pi_persist_use_launcher(root):
         return False
     with open(unit) as f:
         content = f.read()
-    old = 'ExecStart=/opt/prusa-cam/venv/bin/python /opt/prusa-cam/persist_restore.py'
-    new = 'ExecStart=/opt/prusa-cam/launcher.sh persist_restore.py'
+    old = 'ExecStart=/opt/pibuddycam/venv/bin/python /opt/pibuddycam/persist_restore.py'
+    new = 'ExecStart=/opt/pibuddycam/launcher.sh persist_restore.py'
     if new in content:
         return True
     if old not in content:
@@ -113,20 +113,20 @@ def _004_pi_persist_use_launcher(root):
     return True
 
 
-def _005_prusa_priv_no_block(root):
-    """Change start-camera in prusa-priv to use --no-block."""
-    helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
+def _005_pibuddycam_priv_no_block(root):
+    """Change start-camera in pibuddycam-priv to use --no-block."""
+    helper = os.path.join(root, 'usr', 'libexec', 'pibuddycam', 'pibuddycam-priv')
     if not os.path.isfile(helper):
-        log.warning('migrations: prusa-priv not found at %s', helper)
+        log.warning('migrations: pibuddycam-priv not found at %s', helper)
         return False
     with open(helper) as f:
         content = f.read()
-    old = 'exec "$SYSTEMCTL" start prusa-camera.target'
-    new = 'exec "$SYSTEMCTL" --no-block start prusa-camera.target'
+    old = 'exec "$SYSTEMCTL" start pibuddycam.target'
+    new = 'exec "$SYSTEMCTL" --no-block start pibuddycam.target'
     if new in content:
         return True
     if old not in content:
-        log.warning('migrations: prusa-priv start-camera line not found')
+        log.warning('migrations: pibuddycam-priv start-camera line not found')
         return False
     content = content.replace(old, new)
     with open(helper, 'w') as f:
@@ -135,30 +135,30 @@ def _005_prusa_priv_no_block(root):
 
 
 def _006_runtime_directory(root):
-    """Give prusa-cam.service the service-owned runtime dir (WP-UI2/AC-4).
+    """Give pibuddycam.service the service-owned runtime dir (WP-UI2/AC-4).
 
-    The bounded local control socket lives under ``/run/prusa-cam``. ``/run`` is
+    The bounded local control socket lives under ``/run/pibuddycam``. ``/run`` is
     root-owned, so systemd must create that directory; ``RuntimeDirectory=``
     does it with the service account as owner. This is the OTA catch-up path for
     devices whose image predates the unit change; the factory unit in
-    ``pi-impersonator/systemd/prusa-cam.service`` already carries it.
+    ``pi-impersonator/systemd/pibuddycam.service`` already carries it.
     """
-    unit = os.path.join(root, 'etc', 'systemd', 'system', 'prusa-cam.service')
+    unit = os.path.join(root, 'etc', 'systemd', 'system', 'pibuddycam.service')
     if not os.path.isfile(unit):
-        log.warning('migrations: prusa-cam.service not found at %s', unit)
+        log.warning('migrations: pibuddycam.service not found at %s', unit)
         return False
     with open(unit) as f:
         content = f.read()
-    if 'RuntimeDirectory=prusa-cam' in content:
+    if 'RuntimeDirectory=pibuddycam' in content:
         return True
-    marker = 'User=prusa-cam\n'
+    marker = 'User=pibuddycam\n'
     if marker not in content:
-        log.warning('migrations: prusa-cam.service User= line not found')
+        log.warning('migrations: pibuddycam.service User= line not found')
         return False
     addition = (
-        'User=prusa-cam\n'
+        'User=pibuddycam\n'
         '# WP-UI2/AC-4: service-owned runtime dir for the local control socket.\n'
-        'RuntimeDirectory=prusa-cam\n'
+        'RuntimeDirectory=pibuddycam\n'
         'RuntimeDirectoryMode=0750\n'
     )
     content = content.replace(marker, addition, 1)
@@ -168,8 +168,8 @@ def _006_runtime_directory(root):
     return True
 
 
-def _007_prusa_priv_system_verbs(root):
-    """Add the WP-UI7 check-update/reboot verbs to an older prusa-priv.
+def _007_pibuddycam_priv_system_verbs(root):
+    """Add the WP-UI7 check-update/reboot verbs to an older pibuddycam-priv.
 
     The fixed-verb root helper is image-owned, so an OTA application release
     cannot replace it. This is the OTA catch-up path for devices whose installed
@@ -180,9 +180,9 @@ def _007_prusa_priv_system_verbs(root):
     This is a ROOT change and needs a reboot (or a re-run of the boot
     migrations) to take effect on a live device.
     """
-    helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
+    helper = os.path.join(root, 'usr', 'libexec', 'pibuddycam', 'pibuddycam-priv')
     if not os.path.isfile(helper):
-        log.warning('migrations: prusa-priv not found at %s', helper)
+        log.warning('migrations: pibuddycam-priv not found at %s', helper)
         return False
     with open(helper) as f:
         content = f.read()
@@ -190,8 +190,8 @@ def _007_prusa_priv_system_verbs(root):
     additions = {
         'check-update': (
             '   check-update)\n'
-            '      # Report-only: prusa-updater.service runs updater_install.py check.\n'
-            '      exec "$SYSTEMCTL" start prusa-updater.service\n'
+            '      # Report-only: pibuddycam-updater.service runs updater_install.py check.\n'
+            '      exec "$SYSTEMCTL" start pibuddycam-updater.service\n'
             '      ;;\n'
         ),
         'reboot': (
@@ -205,7 +205,7 @@ def _007_prusa_priv_system_verbs(root):
 
     marker = '   *)\n      exit 2'
     if marker not in content:
-        log.warning('migrations: prusa-priv fallback marker not found')
+        log.warning('migrations: pibuddycam-priv fallback marker not found')
         return False
     insertion = ''.join(
         block for verb, block in additions.items()
@@ -224,9 +224,9 @@ MIGRATIONS = [
     ('002_install_samba_config', _002_install_samba_config),
     ('003_mask_console_setup', _003_mask_console_setup),
     ('004_pi_persist_use_launcher', _004_pi_persist_use_launcher),
-    ('005_prusa_priv_no_block', _005_prusa_priv_no_block),
+    ('005_pibuddycam_priv_no_block', _005_pibuddycam_priv_no_block),
     ('006_runtime_directory', _006_runtime_directory),
-    ('007_prusa_priv_system_verbs', _007_prusa_priv_system_verbs),
+    ('007_pibuddycam_priv_system_verbs', _007_pibuddycam_priv_system_verbs),
 ]
 
 

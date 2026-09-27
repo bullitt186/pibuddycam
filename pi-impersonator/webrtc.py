@@ -12,7 +12,7 @@ from gi.repository import Gst, GstWebRTC, GstSdp, GLib
 import threading
 
 Gst.init(None)
-log = logging.getLogger('prusa-cam.webrtc')
+log = logging.getLogger('pibuddycam.webrtc')
 
 # GAP-WEBRTC-06: the candidate-type fields' wire form is NOT confirmed. The live
 # server rejected a numeric encoding (fields 2/3 as bytes) with the `error` event

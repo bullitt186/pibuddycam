@@ -35,7 +35,7 @@ import admin_auth
 import mqtt_state
 from runtime_ipc import bound_value, bounded_text
 
-log = logging.getLogger('prusa-cam.dashboard')
+log = logging.getLogger('pibuddycam.dashboard')
 
 #: Per-subsystem freshness thresholds (seconds). An observation older than its
 #: threshold is reported with ``fresh: false`` but is not hidden.

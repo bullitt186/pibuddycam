@@ -33,7 +33,7 @@ import dataclasses
 import logging
 import subprocess
 
-log = logging.getLogger('prusa-cam.ssh_control')
+log = logging.getLogger('pibuddycam.ssh_control')
 
 #: The documented systemd unit controlled here.
 SSH_SERVICE = 'ssh'

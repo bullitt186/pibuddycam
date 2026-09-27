@@ -8,14 +8,14 @@ itself: every hardware action is an injected zero-argument callable.
 Security boundaries
 -------------------
 * **Read** is a bounded projection of the root-written
-  ``/data/prusa-cam/update-state.json`` (the HA update schema) plus the active
+  ``/data/pibuddycam/update-state.json`` (the HA update schema) plus the active
   release identity. It never returns the manifest/bundle URL, the signing key,
   the channel, or a command.
 * **Check** only calls the injected ``check_fn``, which in production starts the
-  existing report-only root unit ``prusa-updater.service`` through the fixed-verb
+  existing report-only root unit ``pibuddycam-updater.service`` through the fixed-verb
   helper (``privileged.check_update``). It never installs.
 * **Install** only calls the injected ``install_fn``, which in production starts
-  ``prusa-updater-install.service`` through the fixed-verb helper
+  ``pibuddycam-updater-install.service`` through the fixed-verb helper
   (``privileged.install_update``). It never accepts a URL, CA, key, channel,
   bundle, manifest, version, service name, or command from a caller.
 * No browser value reaches either callable: the request body is validated to be
@@ -35,7 +35,7 @@ import time
 
 import updater_install
 
-log = logging.getLogger('prusa-cam.update_control')
+log = logging.getLogger('pibuddycam.update_control')
 
 #: Root-written HA update-state document (read-only projection).
 DEFAULT_UPDATE_STATE_PATH = updater_install.DEFAULT_UPDATE_STATE_PATH
@@ -45,7 +45,7 @@ DEFAULT_LAST_CHECK_PATH = updater_install.DEFAULT_LAST_CHECK_PATH
 
 #: Root-owned updater configuration. Only its presence/emptiness is observed;
 #: the URL value is never read out of the process, returned, or logged.
-DEFAULT_UPDATER_CONFIG_PATH = '/etc/prusa-updater.conf'
+DEFAULT_UPDATER_CONFIG_PATH = '/etc/pibuddycam-updater.conf'
 
 #: The manifest-URL environment key written by the root updater config.
 MANIFEST_URL_ENV = updater_install.MANIFEST_URL_ENV
@@ -78,7 +78,7 @@ def _bounded(value, limit=MAX_REASON_CHARS):
 def update_source_configured(path=DEFAULT_UPDATER_CONFIG_PATH):
     """Return True when a non-empty manifest URL is configured for the updater.
 
-    Reads only the root-owned ``/etc/prusa-updater.conf`` (world-readable
+    Reads only the root-owned ``/etc/pibuddycam-updater.conf`` (world-readable
     ``0644``) and checks whether :data:`MANIFEST_URL_ENV` is set to a non-empty
     value. The URL itself is never returned, logged, or retained. Never raises.
     """

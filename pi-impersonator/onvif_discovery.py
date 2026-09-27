@@ -7,7 +7,7 @@ import socket
 from onvif_facade import discovery_response
 
 
-log = logging.getLogger('prusa-cam.onvif.discovery')
+log = logging.getLogger('pibuddycam.onvif.discovery')
 GROUP = '239.255.255.250'
 PORT = 3702
 

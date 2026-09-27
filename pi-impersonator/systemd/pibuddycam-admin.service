@@ -1,20 +1,20 @@
 # Post-claim admin HTTP UI (admin_app.py), the thin aiohttp transport over the
 # stdlib admin_http core. Binds :443 over HTTPS at
-# https://buddy3d-<device-id>.local. The port is below 1024, so
+# https://pibuddycam-<device-id>.local. The port is below 1024, so
 # CAP_NET_BIND_SERVICE is required.
 #
-# This unit is pulled by prusa-camera.target (its [Install]
-# WantedBy=prusa-camera.target), so the admin UI is only reachable after claim.
-# The pre-claim captive portal is served by prusa-provisioning.service instead,
+# This unit is pulled by pibuddycam.target (its [Install]
+# WantedBy=pibuddycam.target), so the admin UI is only reachable after claim.
+# The pre-claim captive portal is served by pibuddycam-provisioning.service instead,
 # bound to the setup hotspot at http://192.168.4.1.
 #
 # TLS is mandatory: pi-persist.service (Before= this unit) provisions the durable
-# keypair and recreates /etc/prusa-cam/admin.env with ADMIN_TLS_CERT/ADMIN_TLS_KEY
+# keypair and recreates /etc/pibuddycam/admin.env with ADMIN_TLS_CERT/ADMIN_TLS_KEY
 # on every boot. admin_app.py fails closed when they are missing or invalid, so
 # this unit never serves plaintext HTTP on :443.
 # data-ready.target gates this unit on a real, writable PERSIST /data mount (AC-7).
 [Unit]
-Description=Buddy3D camera admin / provisioning UI
+Description=PiBuddyCam admin / provisioning UI
 After=network-online.target data-ready.target
 Wants=network-online.target
 Requires=data-ready.target
@@ -23,16 +23,16 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=prusa-cam
-WorkingDirectory=/opt/prusa-cam
+User=pibuddycam
+WorkingDirectory=/opt/pibuddycam
 Environment=ADMIN_MODE=admin
-EnvironmentFile=-/etc/prusa-cam/admin.env
+EnvironmentFile=-/etc/pibuddycam/admin.env
 # WP-R4c: start through the launcher so an installed signed release under DATA
 # (and its per-release venv) runs; the launcher falls back to the factory app.
-ExecStart=/opt/prusa-cam/launcher.sh admin_app.py
+ExecStart=/opt/pibuddycam/launcher.sh admin_app.py
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=prusa-camera.target
+WantedBy=pibuddycam.target

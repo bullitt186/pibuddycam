@@ -1,4 +1,4 @@
-# Buddy3D Camera Appliance — User Guide
+# PiBuddyCam — User Guide
 
 Operator-facing guide for the Raspberry Pi camera appliance image published by this project.
 It describes the intended released image and the flows implemented in this repository. Deep
@@ -13,7 +13,7 @@ them rather than duplicating them.
 
 ## What it is / scope
 
-The Buddy3D Camera Appliance turns a **Raspberry Pi Zero 2 W** with one CSI camera module into a
+PiBuddyCam turns a **Raspberry Pi Zero 2 W** with one CSI camera module into a
 Prusa Connect–compatible network camera, and exposes it locally over ONVIF/RTSP and (optionally)
 MQTT for Home Assistant.
 
@@ -58,7 +58,7 @@ exact disk layout.
 Preferred method — Raspberry Pi Imager:
 
 1. Install **Raspberry Pi Imager 2.x**.
-2. Add the project's Imager OS-list/repository JSON and select the Buddy3D camera image. The
+2. Add the project's Imager OS-list/repository JSON and select the PiBuddyCam image. The
    rendered manifest and hashes are produced by the release pipeline; see
    [`image/README.md`](../image/README.md) for the manifest contract.
 3. Optionally supply Wi-Fi/hostname/SSH customization in Imager. Wi-Fi values provided here are
@@ -88,7 +88,7 @@ release-artifact assembly, signing, and validation steps.
 
 While the device is **unclaimed**, it exposes a temporary setup access point and captive portal:
 
-- **Setup hotspot SSID:** `Buddy3D-Setup-<last6-device-id>` (for example `Buddy3D-Setup-a1b2c3`).
+- **Setup hotspot SSID:** `PiBuddyCam-Setup-<last6-device-id>` (for example `PiBuddyCam-Setup-a1b2c3`).
 - **Captive portal:** `http://192.168.4.1`.
 
 The setup AP is open by design, because a headless DIY device cannot deliver a unique credential
@@ -110,7 +110,7 @@ The wizard steps, in order:
     start the normal camera target.
 
 After a successful claim, the setup hotspot stops and the administration UI is served on the
-station network at `https://buddy3d-<device-id>.local`. That certificate is device-generated and
+station network at `https://pibuddycam-<device-id>.local`. That certificate is device-generated and
 self-signed, so a browser warning is expected and acceptable.
 
 The provisioning state machine is
@@ -145,16 +145,16 @@ broker auto-discovery and no credential extraction from Home Assistant.
 Stable topics are derived from the persisted appliance UUID (not the name or IP):
 
 ```text
-buddy3d/<device-id>/availability              retained "online" + retained LWT "offline"
-buddy3d/<device-id>/state                     retained authoritative state JSON
-buddy3d/<device-id>/command/<name>            QoS 1, never retained
-buddy3d/<device-id>/update/state              retained update state (HA update schema)
-buddy3d/<device-id>/update/install            non-retained literal install command
+pibuddycam/<device-id>/availability              retained "online" + retained LWT "offline"
+pibuddycam/<device-id>/state                     retained authoritative state JSON
+pibuddycam/<device-id>/command/<name>            QoS 1, never retained
+pibuddycam/<device-id>/update/state              retained update state (HA update schema)
+pibuddycam/<device-id>/update/install            non-retained literal install command
 ```
 
-The default discovery prefix is `homeassistant`; the default base prefix is `buddy3d`. Both are
+The default discovery prefix is `homeassistant`; the default base prefix is `pibuddycam`. Both are
 configurable. Discovery is published as one retained device document at
-`<discovery-prefix>/device/buddy3d_<device-id>/config`, creating a separate
+`<discovery-prefix>/device/pibuddycam_<device-id>/config`, creating a separate
 `<camera name> Controls` device (no duplicate MQTT camera entity). Home Assistant’s `online`
 birth message triggers a republish of discovery and state after a randomized delay, so entities
 survive broker and HA restarts.
@@ -169,7 +169,7 @@ disturb Prusa signaling or local media services.
 After a successful claim, the appliance serves a self-hosted administration console at:
 
 ```text
-https://buddy3d-<device-id>.local/admin
+https://pibuddycam-<device-id>.local/admin
 ```
 
 The TLS certificate is device-generated and self-signed, so the browser warning is expected and
@@ -287,21 +287,21 @@ documented apply/validate commands; it is not the primary settings UX.
 layout is:
 
 ```text
-/data/prusa-cam/config/device.toml       non-secret appliance configuration
-/data/prusa-cam/config/secrets.toml      Prusa/MQTT/admin secrets (mode 0600)
-/data/prusa-cam/state.json               versioned runtime state
-/data/prusa-cam/identity.json            stable appliance UUID
-/data/prusa-cam/releases/<version>/      installed application releases
-/data/prusa-cam/releases/current         atomic symlink to the active release
-/data/prusa-cam/releases/previous        atomic symlink to the rollback release
+/data/pibuddycam/config/device.toml       non-secret appliance configuration
+/data/pibuddycam/config/secrets.toml      Prusa/MQTT/admin secrets (mode 0600)
+/data/pibuddycam/state.json               versioned runtime state
+/data/pibuddycam/identity.json            stable appliance UUID
+/data/pibuddycam/releases/<version>/      installed application releases
+/data/pibuddycam/releases/current         atomic symlink to the active release
+/data/pibuddycam/releases/previous        atomic symlink to the rollback release
 /data/network/system-connections/        durable NetworkManager profiles
 /data/sdcard/timelapse/                  emulated SD/timelapse store
-/data/prusa-cam/backups/                 bounded configuration backups
+/data/pibuddycam/backups/                 bounded configuration backups
 ```
 
 `/mnt/sdcard` is the bind-mounted firmware-facing path and is also exported read/write as the
 Samba share `[sdcard]` — browse it at `smb://<device>/sdcard` (guest access, mapped to the
-`prusa-cam` service account). See the distribution plan §2.5 for the layout contract.
+`pibuddycam` service account). See the distribution plan §2.5 for the layout contract.
 
 ### Backup
 
@@ -314,7 +314,7 @@ data; in-place preservation across a full-image flash is not claimed.
 Two documented recovery entries start setup/recovery mode without reflashing:
 
 - **Authenticated “Enter setup mode”** action in the web UI (or CLI).
-- **BOOT sentinel:** with the device powered off, create an empty file named `buddy3d-recovery`
+- **BOOT sentinel:** with the device powered off, create an empty file named `pibuddycam-recovery`
   on the `BOOT` (FAT) partition; the next boot starts the setup hotspot instead of the camera
   target. Remove the sentinel once recovery is complete.
 
@@ -356,9 +356,9 @@ Application updates replace project Python code, static web assets, and pinned p
 They **cannot** replace the kernel, boot firmware, partition table, systemd base units, Debian or
 GStreamer/libcamera packages, or the signing public key — those require a new image.
 
-- **Artifacts:** each release is a signed `buddy3d-camera-app-<version>.tar.zst` bundle with
+- **Artifacts:** each release is a signed `pibuddycam-app-<version>.tar.zst` bundle with
   `.sha256` and `.minisig`, plus a signed `update-manifest.json`. The image trusts only the
-  committed public key (`image/keys/buddy3d-release.pub`); the private signing key never leaves
+  committed public key (`image/keys/pibuddycam-release.pub`); the private signing key never leaves
   the release environment.
 - **Report-only checks:** the updater checks for a new stable version about once per 24 hours
   (with jitter) and on an authenticated manual request. It never auto-installs.
@@ -385,11 +385,11 @@ The full algorithm is in the distribution plan §7.
 ## Backups and data
 
 - Durable state lives on `PERSIST` (`/data`). ROOT is the real ext4 filesystem mounted read-only;
-  `/var` and `/etc/prusa-cam` hold intended volatile state on tmpfs. `overlayroot` was configured
+  `/var` and `/etc/pibuddycam` hold intended volatile state on tmpfs. `overlayroot` was configured
   in the early design but did not activate on the accepted hardware.
 - Journald logging is volatile and size-limited. The web UI can expose a redacted, bounded
   diagnostic log assembled from the current boot.
-- `/etc/prusa-cam/quality.env` is intentionally ephemeral: the live video tier resets to the
+- `/etc/pibuddycam/quality.env` is intentionally ephemeral: the live video tier resets to the
   persisted value on reboot.
 - Before reflashing, export configuration and timelapse media (see [Backup](#backup)).
 
@@ -398,19 +398,19 @@ The full algorithm is in the distribution plan §7.
 Collect logs with `journalctl`:
 
 ```sh
-journalctl -u prusa-provisioning -n 100 --no-pager   # setup hotspot / captive portal
-journalctl -u prusa-cam       -n 100 --no-pager      # main application
+journalctl -u pibuddycam-provisioning -n 100 --no-pager   # setup hotspot / captive portal
+journalctl -u pibuddycam       -n 100 --no-pager      # main application
 journalctl -u rpicam-source   -n 100 --no-pager      # camera source (libcamera owner)
-journalctl -u prusa-rtsp      -n 100 --no-pager      # Prusa RTSP :8554
-journalctl -u prusa-ha-rtsp   -n 100 --no-pager      # Home Assistant RTSP :8555
-journalctl -u prusa-updater   -n 100 --no-pager      # update availability checks
+journalctl -u pibuddycam-rtsp      -n 100 --no-pager      # Prusa RTSP :8554
+journalctl -u pibuddycam-ha-rtsp   -n 100 --no-pager      # Home Assistant RTSP :8555
+journalctl -u pibuddycam-updater   -n 100 --no-pager      # update availability checks
 ```
 
 Common first-boot issues:
 
 - **No setup hotspot:** confirm the device is still unclaimed and that `PERSIST` mounted at
   `/data` (a missing/corrupt `/data` starts recovery, not the camera). Check
-  `journalctl -u prusa-provisioning`.
+  `journalctl -u pibuddycam-provisioning`.
 - **Camera probe fails:** reseat the CSI ribbon, confirm exactly one supported sensor, and use the
   wizard’s retry action. A failed camera keeps the appliance in setup/recovery mode and does not
   cause a restart loop.

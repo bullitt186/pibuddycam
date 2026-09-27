@@ -1,35 +1,35 @@
 #!/bin/bash
-# Fixed-verb root helper for the Buddy3D appliance (WP-R1, AC-17/B3).
+# Fixed-verb root helper for the PiBuddyCam appliance (WP-R1, AC-17/B3).
 #
-# The unprivileged prusa-cam service account is allowed by
-# /etc/sudoers.d/prusa-cam to run ONLY this script. Sudoers entries that list a
+# The unprivileged pibuddycam service account is allowed by
+# /etc/sudoers.d/pibuddycam to run ONLY this script. Sudoers entries that list a
 # command without arguments permit ANY arguments, so this script validates the
 # verb itself and exposes nothing else: an unknown verb exits 2 before any
 # privileged command runs.
 #
 # Verbs:
-#   start-camera         systemctl start prusa-camera.target
-#   stop-provisioning    systemctl stop prusa-provisioning.service
+#   start-camera         systemctl start pibuddycam.target
+#   stop-provisioning    systemctl stop pibuddycam-provisioning.service
 #   hotspot-start        hotspot_ctl.py start  (setup AP, 192.168.4.1/24)
 #   hotspot-stop         hotspot_ctl.py stop
 #   wifi-station-apply   wifi_station.py apply <ssid>, PSK read from stdin
-#   install-update       systemctl start prusa-updater-install.service
-#   check-update         systemctl start prusa-updater.service (report-only)
+#   install-update       systemctl start pibuddycam-updater-install.service
+#   check-update         systemctl start pibuddycam-updater.service (report-only)
 #   reboot               systemctl reboot
-#   rtsp-start           systemctl start prusa-rtsp.service
-#   rtsp-stop            systemctl stop prusa-rtsp.service
+#   rtsp-start           systemctl start pibuddycam-rtsp.service
+#   rtsp-stop            systemctl stop pibuddycam-rtsp.service
 #   quality-restart      restart source/HA RTSP, try-restart Prusa RTSP
 #
 # The Wi-Fi PSK is never an argument: it is forwarded on stdin to
 # wifi_station.py, which writes it to a 0600 NetworkManager ``passwd-file`` and
 # activates the profile with `nmcli connection up ... passwd-file <file>`.
 #
-# PRUSA_CAM_APP_ROOT exists only so host tests can stub the application root; a
+# PIBUDDYCAM_APP_ROOT exists only so host tests can stub the application root; a
 # real sudo invocation resets the environment (env_reset is pinned in
-# /etc/sudoers.d/prusa-cam), so it cannot redirect the helper.
+# /etc/sudoers.d/pibuddycam), so it cannot redirect the helper.
 set -eu
 
-APP_ROOT="${PRUSA_CAM_APP_ROOT:-/opt/prusa-cam}"
+APP_ROOT="${PIBUDDYCAM_APP_ROOT:-/opt/pibuddycam}"
 PYTHON="$APP_ROOT/venv/bin/python"
 
 # Absolute path: the helper must not depend on the caller's PATH (secure_path is
@@ -39,36 +39,36 @@ SYSTEMCTL=/usr/bin/systemctl
 verb="${1:-}"
 case "$verb" in
    start-camera)
-      # --no-block: the target Conflicts= prusa-provisioning.service, so a
+      # --no-block: the target Conflicts= pibuddycam-provisioning.service, so a
       # blocking start deadlocks when called from within provisioning itself
       # (provisioning can't exit while its subprocess waits for the target,
       # and the target can't activate until provisioning exits).  The caller
       # (privileged.start_camera) polls is-active after the --no-block start.
-      exec "$SYSTEMCTL" --no-block start prusa-camera.target
+      exec "$SYSTEMCTL" --no-block start pibuddycam.target
       ;;
    stop-provisioning)
-      exec "$SYSTEMCTL" stop prusa-provisioning.service
+      exec "$SYSTEMCTL" stop pibuddycam-provisioning.service
       ;;
    install-update)
-      exec "$SYSTEMCTL" start prusa-updater-install.service
+      exec "$SYSTEMCTL" start pibuddycam-updater-install.service
       ;;
    check-update)
-      # Report-only: prusa-updater.service runs ``updater_install.py check`` and
+      # Report-only: pibuddycam-updater.service runs ``updater_install.py check`` and
       # never installs. The admin UI's manual check starts this fixed unit.
-      exec "$SYSTEMCTL" start prusa-updater.service
+      exec "$SYSTEMCTL" start pibuddycam-updater.service
       ;;
    reboot)
       exec "$SYSTEMCTL" reboot
       ;;
    rtsp-start)
-      exec "$SYSTEMCTL" start prusa-rtsp.service
+      exec "$SYSTEMCTL" start pibuddycam-rtsp.service
       ;;
    rtsp-stop)
-      exec "$SYSTEMCTL" stop prusa-rtsp.service
+      exec "$SYSTEMCTL" stop pibuddycam-rtsp.service
       ;;
    quality-restart)
-      "$SYSTEMCTL" restart rpicam-source.service prusa-ha-rtsp.service
-      exec "$SYSTEMCTL" try-restart prusa-rtsp.service
+      "$SYSTEMCTL" restart rpicam-source.service pibuddycam-ha-rtsp.service
+      exec "$SYSTEMCTL" try-restart pibuddycam-rtsp.service
       ;;
    hotspot-start)
       exec "$PYTHON" "$APP_ROOT/hotspot_ctl.py" start

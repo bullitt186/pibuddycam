@@ -265,7 +265,7 @@ class MakeAppReleaseTests(unittest.TestCase):
         return run(cmd, env=merged)
 
     def bundle(self, out=None, version="1.2.3"):
-        return (out or (self.dir / "out")) / f"buddy3d-camera-app-{version}.tar.zst"
+        return (out or (self.dir / "out")) / f"pibuddycam-app-{version}.tar.zst"
 
     def read_manifest(self, out=None):
         path = (out or (self.dir / "out")) / "update-manifest.json"
@@ -291,13 +291,13 @@ class MakeAppReleaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         out = self.dir / "out"
         for name in (
-            "buddy3d-camera-app-1.2.3.tar.zst",
-            "buddy3d-camera-app-1.2.3.tar.zst.sha256",
+            "pibuddycam-app-1.2.3.tar.zst",
+            "pibuddycam-app-1.2.3.tar.zst.sha256",
             "update-manifest.json",
         ):
             self.assertTrue((out / name).is_file(), f"missing {name}")
         # No key supplied: signatures are omitted with a clear warning.
-        self.assertFalse((out / "buddy3d-camera-app-1.2.3.tar.zst.minisig").exists())
+        self.assertFalse((out / "pibuddycam-app-1.2.3.tar.zst.minisig").exists())
         self.assertFalse((out / "update-manifest.json.minisig").exists())
         self.assertIn("no --key provided", result.stderr)
 
@@ -313,14 +313,14 @@ class MakeAppReleaseTests(unittest.TestCase):
         self.assertEqual(manifest.reboot_required, False)
         self.assertEqual(
             manifest.bundle_url,
-            "https://example.org/releases/v1.2.3/buddy3d-camera-app-1.2.3.tar.zst",
+            "https://example.org/releases/v1.2.3/pibuddycam-app-1.2.3.tar.zst",
         )
         self.assertEqual(
             manifest.bundle_sha256, hashlib.sha256(bundle.read_bytes()).hexdigest()
         )
         self.assertEqual(manifest.bundle_size, bundle.stat().st_size)
 
-        sha_line = (out / "buddy3d-camera-app-1.2.3.tar.zst.sha256").read_text()
+        sha_line = (out / "pibuddycam-app-1.2.3.tar.zst.sha256").read_text()
         recorded, _, name = sha_line.strip().partition("  ")
         self.assertEqual(recorded, manifest.bundle_sha256)
         self.assertEqual(name, bundle.name)
@@ -504,7 +504,7 @@ class MakeAppReleaseTests(unittest.TestCase):
         result = self.release("--key", str(sec))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         out = self.dir / "out"
-        bundle_sig = out / "buddy3d-camera-app-1.2.3.tar.zst.minisig"
+        bundle_sig = out / "pibuddycam-app-1.2.3.tar.zst.minisig"
         manifest_sig = out / "update-manifest.json.minisig"
         self.assertTrue(bundle_sig.is_file())
         self.assertTrue(manifest_sig.is_file())
@@ -528,7 +528,7 @@ class MakeAppReleaseTests(unittest.TestCase):
         result = self.release()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("UNSIGNED", result.stderr)
-        self.assertFalse((self.dir / "out" / "buddy3d-camera-app-1.2.3.tar.zst.minisig").exists())
+        self.assertFalse((self.dir / "out" / "pibuddycam-app-1.2.3.tar.zst.minisig").exists())
         self.assertFalse((self.dir / "out" / "update-manifest.json.minisig").exists())
 
     # -- rejections --------------------------------------------------------

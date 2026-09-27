@@ -64,12 +64,13 @@ stays stdlib-only. Only 2 tests are expected to skip. They are mutually exclusiv
    published assets exactly match `dist/`.
 
 **Minimum image version:** the workflow sets the application manifest's `min_image_version` to
-the release's own version. The updater enforces it only when it is given the installed image
-version: `--current-image-version`, defaulting to the `PRUSA_IMAGE_VERSION` environment variable.
-No appliance unit sets that today, so the check is currently skipped and a CI-built bundle installs
-on older images. If you ever wire the image version into `prusa-updater*.service`, older images
-will start refusing such bundles. Build those releases manually (below) with an explicit
-`--min-image-version`.
+the release's own version. The updater compares it with the installed image version: the
+`--current-image-version` argument, else the `PIBUDDYCAM_IMAGE_VERSION` environment variable, else
+(since 1.4.0) the `version` in the image's own `/usr/share/pibuddycam/build-info.json`. Only a strict
+`X.Y.Z` counts. Development images report `0.0.0+local`, which skips the check. So a CI-built bundle installs only on an image of the same or a newer version. An
+application-only release meant for older images must be built manually (below) with an explicit
+`--min-image-version`. Pre-rename images (before 1.4.0) don't run this check, but they can't run a
+1.4.0+ bundle either: `image_guard` stops it and the old updater rolls back.
 
 **Image-owned changes** (systemd units, packages, `/usr/libexec` helpers, udev/NM rules, boot
 config) only reach devices through a newly flashed image. The OTA bundle cannot change them.
@@ -83,17 +84,18 @@ Use this when the runner is unavailable or a lower `min_image_version` is needed
    `pip download --require-hashes --only-binary=:all: --platform manylinux_2_17_aarch64 --platform manylinux2014_aarch64 --platform manylinux_2_28_aarch64 --python-version 3.13 --implementation cp --abi cp313 --abi abi3 --abi none -r image/requirements.lock -d wheels`.
    A pip running under another Python evaluates the markers wrongly.
 2. Run `image/scripts/make-app-release.sh --version X.Y.Z --out-dir dist --wheels wheels --url-base https://github.com/<owner>/<repo>/releases/download/vX.Y.Z --key <minisign secret key> [--min-image-version …]`.
-3. Verify with `minisign -V -p image/keys/buddy3d-release.pub` and create the release with
+3. Verify with `minisign -V -p image/keys/pibuddycam-release.pub` and create the release with
    `gh release create vX.Y.Z dist/*`. Pushing that tag also triggers `release.yml`. Its publish step
    then updates the same release, so decide which path owns a given tag.
 
 ## OTA on the device
 
-Devices check the manifest configured as `PRUSA_UPDATE_MANIFEST_URL` in the root-owned
-`/etc/prusa-updater.conf`. It is unset by default, which disables the check. GitHub's moving URL
-`https://github.com/<owner>/<repo>/releases/latest/download/update-manifest.json` follows new
-stable releases. Every bundle and manifest is verified against the embedded public key
-`image/keys/buddy3d-release.pub`.
+Devices check the manifest configured as `PIBUDDYCAM_UPDATE_MANIFEST_URL` in the root-owned
+`/etc/pibuddycam-updater.conf`. Since 1.4.0 the image writes the project's moving GitHub URL,
+`https://github.com/bullitt186/pibuddycam/releases/latest/download/update-manifest.json`, which
+follows each new stable release. A build can override it with the environment variable
+`PIBUDDYCAM_UPDATE_MANIFEST_URL_DEFAULT`, and an empty value disables the check. Every bundle and manifest is verified against the embedded public key
+`image/keys/pibuddycam-release.pub`.
 
 Building or publishing a release never authorizes installing it on the owner's device. The owner
 triggers OTA themselves.

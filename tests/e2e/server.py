@@ -329,7 +329,7 @@ class FakeDiagnosticsProvider:
     def __call__(self, secrets=()):
         self.secrets = tuple(secrets or ())
         text = (
-            '-- prusa-cam.service --\n'
+            '-- pibuddycam.service --\n'
             'E2E synthetic diagnostics; no device or secret is involved.\n'
         )
         return {
@@ -412,12 +412,12 @@ class Environment:
     """One synthetic temp tree plus the app/fakes bound to it."""
 
     def __init__(self, media='default', scenarios=None):
-        self.root = tempfile.TemporaryDirectory(prefix='prusa-e2e-')
+        self.root = tempfile.TemporaryDirectory(prefix='pibuddycam-e2e-')
         base = Path(self.root.name)
         self.device_path = base / 'device.toml'
         self.secrets_path = base / 'secrets.toml'
         self.provisioning_path = base / 'provisioning.json'
-        self.recovery_path = base / 'buddy3d-recovery'
+        self.recovery_path = base / 'pibuddycam-recovery'
         self.media_dir = base / 'timelapse'
         self.media_dir.mkdir()
         self.runtime = FakeRuntime()
@@ -432,7 +432,7 @@ class Environment:
         device['camera_name'] = 'E2E Camera'
         device['fingerprint'] = 'aabbccddee01'
         device['prusa']['server'] = E2E_PRUSA_SERVER
-        device['admin']['hostname'] = 'buddy3d-e2e.local'
+        device['admin']['hostname'] = 'pibuddycam-e2e.local'
         self.device_path.write_text(
             config_schema.dumps_device(device), encoding='utf-8')
         secrets = {'admin': {'password_hash': E2E_ADMIN_HASH}}
@@ -490,7 +490,7 @@ class Environment:
                 'os_suite': 'trixie', 'kernel_package': 'linux-image-e2e',
             },
             application_version_fn=lambda: '1.2.3',
-            hostname_fn=lambda: 'buddy3d-e2e',
+            hostname_fn=lambda: 'pibuddycam-e2e',
         )
 
     def _mqtt_probe(self, config):
@@ -610,7 +610,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                 media=payload.get('media', 'default'),
                 scenarios=payload.get('scenarios'),
             )
-            self._write_json(200, {'ok': True, 'hostname': 'buddy3d-e2e'})
+            self._write_json(200, {'ok': True, 'hostname': 'pibuddycam-e2e'})
             return
         if method == 'POST' and action == 'expire':
             with state.lock:
@@ -708,7 +708,7 @@ def main(argv=None):
     """CLI entry point: serve until SIGINT/SIGTERM and clean up."""
     import argparse
 
-    parser = argparse.ArgumentParser(description='Buddy3D admin UI E2E server')
+    parser = argparse.ArgumentParser(description='PiBuddyCam admin UI E2E server')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=0)
     args = parser.parse_args(argv)

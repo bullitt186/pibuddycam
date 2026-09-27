@@ -16,9 +16,9 @@ import config_schema  # noqa: E402
 class ConstantsTests(unittest.TestCase):
     def test_schema_version_and_paths(self):
         self.assertEqual(config_schema.SCHEMA_VERSION, 1)
-        self.assertEqual(config_schema.CONFIG_DIR, '/data/prusa-cam/config')
-        self.assertEqual(config_schema.DEVICE_TOML_PATH, '/data/prusa-cam/config/device.toml')
-        self.assertEqual(config_schema.SECRETS_TOML_PATH, '/data/prusa-cam/config/secrets.toml')
+        self.assertEqual(config_schema.CONFIG_DIR, '/data/pibuddycam/config')
+        self.assertEqual(config_schema.DEVICE_TOML_PATH, '/data/pibuddycam/config/device.toml')
+        self.assertEqual(config_schema.SECRETS_TOML_PATH, '/data/pibuddycam/config/secrets.toml')
 
     def test_exception_hierarchy(self):
         for exc in (config_schema.SchemaTooNewError, config_schema.UnknownKeyError,
@@ -38,7 +38,7 @@ class DefaultDeviceTests(unittest.TestCase):
         self.assertEqual(cfg['mqtt']['uri'], 'mqtts://broker.example:8883')
         self.assertEqual(cfg['mqtt']['client_id'], '')
         self.assertEqual(cfg['mqtt']['discovery_prefix'], 'homeassistant')
-        self.assertEqual(cfg['mqtt']['topic_prefix'], 'buddy3d')
+        self.assertEqual(cfg['mqtt']['topic_prefix'], 'pibuddycam')
         self.assertEqual(cfg['mqtt']['ca_file'], '')
         self.assertEqual(cfg['admin']['hostname'], '')
 

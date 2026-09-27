@@ -98,8 +98,8 @@ class IntegrationApiTests(unittest.TestCase):
             'uri': 'mqtts://broker.example:8883',
             'client_id': 'bench-client',
             'discovery_prefix': 'homeassistant',
-            'topic_prefix': 'buddy3d',
-            'ca_file': '/data/prusa-cam/config/ca.pem',
+            'topic_prefix': 'pibuddycam',
+            'ca_file': '/data/pibuddycam/config/ca.pem',
         })
         secrets = {
             'prusa': {'token': CANARY_TOKEN},
@@ -324,7 +324,7 @@ class IntegrationApiTests(unittest.TestCase):
 
         app = self._build_app(mqtt_probe=probe)
         token, csrf = self._login(app)
-        with self.assertLogs('prusa-cam.admin_http', level='DEBUG') as logs:
+        with self.assertLogs('pibuddycam.admin_http', level='DEBUG') as logs:
             response = app.handle(_make_request(
                 'POST', '/api/mqtt/test',
                 body={'uri': 'mqtts://broker.example:8883',
@@ -344,7 +344,7 @@ class IntegrationApiTests(unittest.TestCase):
 
         app = self._build_app(mqtt_probe=probe)
         token, csrf = self._login(app)
-        with self.assertLogs('prusa-cam.admin_http', level='DEBUG') as logs:
+        with self.assertLogs('pibuddycam.admin_http', level='DEBUG') as logs:
             response = app.handle(_make_request(
                 'POST', '/api/mqtt/test',
                 body={'uri': 'mqtts://broker.example:8883',

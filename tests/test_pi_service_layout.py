@@ -16,14 +16,14 @@ import persist_restore  # noqa: E402
 
 APP_UNITS = (
     'rpicam-source.service',
-    'prusa-cam.service',
-    'prusa-rtsp.service',
-    'prusa-ha-rtsp.service',
+    'pibuddycam.service',
+    'pibuddycam-rtsp.service',
+    'pibuddycam-ha-rtsp.service',
 )
 ALL_UNITS = APP_UNITS + (
     'bootlog.service',
     'pi-persist.service',
-    'prusa-data-ready.service',
+    'pibuddycam-data-ready.service',
     'data-ready.target',
 )
 # Files this contract is allowed to touch that must not name a personal account
@@ -43,12 +43,12 @@ def unit(name):
 
 class ServiceIdentityConstantsTests(unittest.TestCase):
     def test_default_service_user_is_dedicated(self):
-        self.assertEqual(persist_restore.DEFAULT_SERVICE_USER, 'prusa-cam')
+        self.assertEqual(persist_restore.DEFAULT_SERVICE_USER, 'pibuddycam')
 
     def test_durable_layout_constants(self):
-        self.assertEqual(persist_restore.DATA_CONFIG_DIR, '/data/prusa-cam/config')
-        self.assertEqual(persist_restore.DATA_RELEASES_DIR, '/data/prusa-cam/releases')
-        self.assertEqual(persist_restore.DATA_BACKUPS_DIR, '/data/prusa-cam/backups')
+        self.assertEqual(persist_restore.DATA_CONFIG_DIR, '/data/pibuddycam/config')
+        self.assertEqual(persist_restore.DATA_RELEASES_DIR, '/data/pibuddycam/releases')
+        self.assertEqual(persist_restore.DATA_BACKUPS_DIR, '/data/pibuddycam/backups')
         self.assertEqual(persist_restore.DATA_NETWORK_DIR, '/data/network')
         self.assertEqual(
             persist_restore.DATA_NETWORK_CONNECTIONS,
@@ -60,19 +60,19 @@ class ServiceIdentityConstantsTests(unittest.TestCase):
         for path in (
             '/data/sdcard',
             '/data/sdcard/timelapse',
-            '/data/prusa-cam',
-            '/data/prusa-cam/config',
-            '/data/prusa-cam/releases',
-            '/data/prusa-cam/backups',
+            '/data/pibuddycam',
+            '/data/pibuddycam/config',
+            '/data/pibuddycam/releases',
+            '/data/pibuddycam/backups',
             '/data/network',
             '/data/network/system-connections',
         ):
             self.assertIn(path, modes)
         # config/backups hold secrets and migration backups: not world-readable.
-        self.assertEqual(modes['/data/prusa-cam/config'], 0o750)
-        self.assertEqual(modes['/data/prusa-cam/backups'], 0o750)
+        self.assertEqual(modes['/data/pibuddycam/config'], 0o750)
+        self.assertEqual(modes['/data/pibuddycam/backups'], 0o750)
         # The root updater owns installation targets; releases stays traversable.
-        self.assertEqual(modes['/data/prusa-cam/releases'], 0o755)
+        self.assertEqual(modes['/data/pibuddycam/releases'], 0o755)
 
 
 class DurableLayoutCreationTests(unittest.TestCase):
@@ -98,14 +98,14 @@ class DurableLayoutCreationTests(unittest.TestCase):
         # re-asserted as root-owned; everything else is handed to the service
         # account so it can write state/config/backups/frames.
         expected_chown = [
-            (path, 'root' if path in persist_restore.ROOT_ONLY_DIRS else 'prusa-cam')
+            (path, 'root' if path in persist_restore.ROOT_ONLY_DIRS else 'pibuddycam')
             for path in expected
         ]
         self.assertEqual(calls['chown'], expected_chown)
         chmod = dict(calls['chmod'])
-        self.assertEqual(chmod['/data/prusa-cam/config'], 0o750)
-        self.assertEqual(chmod['/data/prusa-cam/backups'], 0o750)
-        self.assertEqual(chmod['/data/prusa-cam/releases'], 0o755)
+        self.assertEqual(chmod['/data/pibuddycam/config'], 0o750)
+        self.assertEqual(chmod['/data/pibuddycam/backups'], 0o750)
+        self.assertEqual(chmod['/data/pibuddycam/releases'], 0o755)
         self.assertEqual(chmod['/data/network'], 0o700)
         self.assertEqual(chmod['/data/network/system-connections'], 0o700)
 
@@ -115,7 +115,7 @@ class DurableLayoutCreationTests(unittest.TestCase):
             {
                 '/data/network',
                 '/data/network/system-connections',
-                '/data/prusa-cam/releases',
+                '/data/pibuddycam/releases',
             },
         )
 
@@ -152,8 +152,8 @@ class UnitLayoutTests(unittest.TestCase):
         for name in APP_UNITS:
             with self.subTest(unit=name):
                 text = unit(name)
-                self.assertIn('User=prusa-cam', text)
-                self.assertIn('/opt/prusa-cam', text)
+                self.assertIn('User=pibuddycam', text)
+                self.assertIn('/opt/pibuddycam', text)
                 self.assertNotIn('/home/', text)
 
     def test_app_units_are_gated_on_data_ready(self):
@@ -168,19 +168,19 @@ class UnitLayoutTests(unittest.TestCase):
                     any('data-ready.target' in ln for ln in requires), text)
 
     def test_ha_unit_still_requires_rpicam_source(self):
-        self.assertIn('Requires=rpicam-source.service', unit('prusa-ha-rtsp.service'))
+        self.assertIn('Requires=rpicam-source.service', unit('pibuddycam-ha-rtsp.service'))
 
     def test_cam_unit_creates_the_service_owned_runtime_directory(self):
-        # WP-UI2/AC-4: the local control socket lives under /run/prusa-cam; /run
+        # WP-UI2/AC-4: the local control socket lives under /run/pibuddycam; /run
         # is root-owned, so systemd must create the directory for the service.
-        text = unit('prusa-cam.service')
-        self.assertIn('RuntimeDirectory=prusa-cam', text)
+        text = unit('pibuddycam.service')
+        self.assertIn('RuntimeDirectory=pibuddycam', text)
         self.assertIn('RuntimeDirectoryMode=0750', text)
 
     def test_bootlog_and_persist_use_app_root(self):
-        self.assertIn('ExecStart=/opt/prusa-cam/bootlog.sh', unit('bootlog.service'))
+        self.assertIn('ExecStart=/opt/pibuddycam/bootlog.sh', unit('bootlog.service'))
         persist = unit('pi-persist.service')
-        self.assertIn('Environment=SERVICE_USER=prusa-cam', persist)
+        self.assertIn('Environment=SERVICE_USER=pibuddycam', persist)
         self.assertIn('launcher.sh persist_restore.py', persist)
         self.assertIn('RequiresMountsFor=/data', persist)
         self.assertIn('ConditionPathIsMountPoint=/data', persist)
@@ -188,30 +188,30 @@ class UnitLayoutTests(unittest.TestCase):
     def test_pi_persist_runs_before_gate_and_services(self):
         before = [ln for ln in unit('pi-persist.service').splitlines()
                   if ln.startswith('Before=')][0]
-        for name in ('prusa-data-ready.service', 'data-ready.target') + APP_UNITS:
+        for name in ('pibuddycam-data-ready.service', 'data-ready.target') + APP_UNITS:
             with self.subTest(name=name):
                 self.assertIn(name, before)
 
     def test_pi_persist_provisions_admin_tls_before_admin(self):
-        # Appliance image/security defect: pi-persist writes /etc/prusa-cam/
-        # admin.env, so it must be ordered before prusa-admin.service.
+        # Appliance image/security defect: pi-persist writes /etc/pibuddycam/
+        # admin.env, so it must be ordered before pibuddycam-admin.service.
         before = [ln for ln in unit('pi-persist.service').splitlines()
                   if ln.startswith('Before=')][0]
-        self.assertIn('prusa-admin.service', before)
+        self.assertIn('pibuddycam-admin.service', before)
 
     def test_data_ready_gate_units(self):
-        service = unit('prusa-data-ready.service')
+        service = unit('pibuddycam-data-ready.service')
         self.assertIn('Type=oneshot', service)
         self.assertIn('RemainAfterExit=yes', service)
         self.assertIn('RequiresMountsFor=/data', service)
         self.assertIn('After=local-fs.target pi-persist.service', service)
         self.assertIn('Before=data-ready.target', service)
-        self.assertIn('/opt/prusa-cam/data_ready.py', service)
+        self.assertIn('/opt/pibuddycam/data_ready.py', service)
         self.assertIn('WantedBy=data-ready.target', service)
 
         target = unit('data-ready.target')
-        self.assertIn('Requires=prusa-data-ready.service', target)
-        self.assertIn('After=prusa-data-ready.service', target)
+        self.assertIn('Requires=pibuddycam-data-ready.service', target)
+        self.assertIn('After=pibuddycam-data-ready.service', target)
         self.assertIn('WantedBy=multi-user.target', target)
 
     def test_no_personal_username_or_home_path(self):
@@ -219,8 +219,9 @@ class UnitLayoutTests(unittest.TestCase):
             with self.subTest(file=rel):
                 text = (PI_DIR / rel).read_text()
                 self.assertNotIn('bullitt', text)
-                self.assertNotIn('/home/pi', text)
-                self.assertNotIn('User=pi', text)
+                # Word boundaries: the pibuddycam account legitimately starts with "pi".
+                self.assertNotRegex(text, r'/home/pi\b')
+                self.assertNotRegex(text, r'User=pi\b')
 
 
 if __name__ == '__main__':

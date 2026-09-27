@@ -50,7 +50,7 @@ identity or secrets, is not auditable, and cannot be rebuilt reliably.
 The documented normal flow is:
 
 1. Download Raspberry Pi Imager 2.x.
-2. Open the project-published Imager manifest/repository file, select the Buddy3D camera image,
+2. Open the project-published Imager manifest/repository file, select the PiBuddyCam image,
    optionally provide Wi-Fi/hostname/SSH customization, and flash the card.
 3. Connect the CSI camera, insert the card, and power the Pi.
 4. Complete setup through the temporary setup hotspot and captive portal. Wi-Fi values already
@@ -74,7 +74,7 @@ Use a top-level `image/` subtree; do not mix image generation into `pi-impersona
 image/
   README.md                         build and local test instructions
   rpi-image-gen.lock                pinned upstream commit/release
-  config/buddy3d-pi-zero2w.yaml     complete image composition
+  config/pibuddycam-pi-zero2w.yaml     complete image composition
   layer/                            project-specific layers and hooks
   assets/                           systemd units, defaults, icon, web assets
   scripts/build-image.sh            deterministic build entry point
@@ -101,7 +101,7 @@ claim a QEMU or foreign-architecture build as the supported release path.
   in application archives.
 - Produce an SPDX or CycloneDX SBOM plus an installed-package manifest.
 - Record the source commit, image-builder revision, OS suite, kernel package, and package manifest
-  in `/usr/share/prusa-buddy3d-camera/build-info.json`.
+  in `/usr/share/pibuddycam/build-info.json`.
 - The signed release artifact is the trust boundary. Reproducible build instructions are required,
   but do not promise byte-identical output unless CI proves it.
 
@@ -110,12 +110,12 @@ claim a QEMU or foreign-architecture build as the supported release path.
 For a tag such as `v1.0.0`, publish:
 
 ```text
-buddy3d-camera-pi-zero2w-1.0.0.img.xz
-buddy3d-camera-pi-zero2w-1.0.0.img.xz.sha256
-buddy3d-camera-pi-zero2w-1.0.0.img.xz.minisig
-buddy3d-camera-pi-zero2w-1.0.0.spdx.json
-buddy3d-camera-pi-zero2w-1.0.0.packages.txt
-buddy3d-camera-os-list.json
+pibuddycam-pi-zero2w-1.0.0.img.xz
+pibuddycam-pi-zero2w-1.0.0.img.xz.sha256
+pibuddycam-pi-zero2w-1.0.0.img.xz.minisig
+pibuddycam-pi-zero2w-1.0.0.spdx.json
+pibuddycam-pi-zero2w-1.0.0.packages.txt
+pibuddycam-os-list.json
 ```
 
 The Imager manifest must include image URL, compressed and extracted sizes, compressed and
@@ -146,7 +146,7 @@ The third partition must be last. On first boot, before NetworkManager and camer
 
 Use PARTUUIDs in the boot command line and `fstab`; never assume `/dev/mmcblk0p3`. ROOT is mounted
 directly read-only. Hardware acceptance showed `overlayroot` does not activate, so writable runtime
-paths must be explicit tmpfs mounts (`/var`, `/etc/prusa-cam`) and durable data must be under
+paths must be explicit tmpfs mounts (`/var`, `/etc/pibuddycam`) and durable data must be under
 `/data` on `PERSIST`.
 
 The build fails when the populated ROOT filesystem exceeds 75% of its 4 GiB capacity. Reduce the
@@ -158,13 +158,13 @@ extracted image must fit every standards-compliant 8 GB card while leaving usefu
 Use these durable locations:
 
 ```text
-/data/prusa-cam/config/device.toml       non-secret appliance configuration
-/data/prusa-cam/config/secrets.toml      Prusa/MQTT/admin secrets
-/data/prusa-cam/state.json               current versioned runtime state
-/data/prusa-cam/identity.json            generated stable appliance UUID
-/data/prusa-cam/releases/<version>/      installed application releases
-/data/prusa-cam/releases/current         atomic symlink to active release
-/data/prusa-cam/releases/previous        atomic symlink to rollback release
+/data/pibuddycam/config/device.toml       non-secret appliance configuration
+/data/pibuddycam/config/secrets.toml      Prusa/MQTT/admin secrets
+/data/pibuddycam/state.json               current versioned runtime state
+/data/pibuddycam/identity.json            generated stable appliance UUID
+/data/pibuddycam/releases/<version>/      installed application releases
+/data/pibuddycam/releases/current         atomic symlink to active release
+/data/pibuddycam/releases/previous        atomic symlink to rollback release
 /data/network/system-connections/        durable NetworkManager profiles
 /data/sdcard/timelapse/                  existing emulated SD/timelapse store
 /data/backups/                           bounded configuration backups
@@ -172,7 +172,7 @@ Use these durable locations:
 
 Preserve `/mnt/sdcard` as the bind-mounted firmware-facing/SMB path. Replace the hard-coded
 `DEFAULT_SERVICE_USER='<operator>'` and all home-directory assumptions with a dedicated non-login
-`prusa-cam` system account. The service account owns application configuration, state, releases,
+`pibuddycam` system account. The service account owns application configuration, state, releases,
 and media. Secrets are mode `0600`; configuration directories are not world-readable.
 
 DATA must mount before NetworkManager and every camera-related unit. If DATA is missing, corrupt,
@@ -192,8 +192,8 @@ Retain the existing sensor-sharing invariant:
 CSI camera
   -> rpicam-source.service        sole libcamera sensor owner
      -> stream_mux.py
-        -> prusa-rtsp :8554/live  Prusa-mode controlled
-        -> prusa-ha-rtsp :8555/live, always available
+        -> pibuddycam-rtsp :8554/live  Prusa-mode controlled
+        -> pibuddycam-ha-rtsp :8555/live, always available
         -> snapshots/uploads
         -> WebRTC
 ```
@@ -208,20 +208,20 @@ Create explicit systemd targets rather than relying on enablement order:
 
 ```text
 local-fs.target
-  -> prusa-data-grow.service
+  -> pibuddycam-data-grow.service
   -> data-ready.target
      -> NetworkManager.service
-     -> prusa-provisioning.service OR prusa-camera.target
+     -> pibuddycam-provisioning.service OR pibuddycam.target
 
-prusa-camera.target
+pibuddycam.target
   -> pi-persist.service
   -> rpicam-source.service
-  -> prusa-rtsp.service
-  -> prusa-ha-rtsp.service
-  -> prusa-cam.service
-  -> prusa-mqtt.service (only when configured)
-  -> prusa-admin.service
-  -> prusa-updater.timer
+  -> pibuddycam-rtsp.service
+  -> pibuddycam-ha-rtsp.service
+  -> pibuddycam.service
+  -> pibuddycam-mqtt.service (only when configured)
+  -> pibuddycam-admin.service
+  -> pibuddycam-updater.timer
 ```
 
 Local integration failures remain isolated. A failure in WS-Discovery, MQTT, administration, or
@@ -290,7 +290,7 @@ systemd restart loop. The wizard shows the exact probe failure and a retry actio
 
 ### 4.3 Setup hotspot and web wizard
 
-While unclaimed, expose a temporary Wi-Fi network named `Buddy3D-Setup-<last6-device-id>` and a
+While unclaimed, expose a temporary Wi-Fi network named `PiBuddyCam-Setup-<last6-device-id>` and a
 captive portal at `http://192.168.4.1`. The hotspot may be open because a unique credential cannot
 be delivered from a headless unlabelled DIY device. Document that initial setup should be performed
 in a trusted physical location.
@@ -311,7 +311,7 @@ The wizard must:
 
 Do not bind an unclaimed administration wizard to the normal LAN interface. After claim, serve the
 administration UI using a device-generated HTTPS certificate at
-`https://buddy3d-<device-id>.local`. A browser warning for the self-signed certificate is acceptable
+`https://pibuddycam-<device-id>.local`. A browser warning for the self-signed certificate is acceptable
 and must be documented.
 
 ### 4.4 Original Prusa QR pairing
@@ -355,7 +355,7 @@ single apply command. Invalid files are rejected without replacing live configur
 Support two recovery entries:
 
 - Authenticated “Enter setup mode” action in the web UI or CLI.
-- A documented `buddy3d-recovery` sentinel placed on the BOOT partition while powered off.
+- A documented `pibuddycam-recovery` sentinel placed on the BOOT partition while powered off.
 
 Factory reset is separate and destructive. Require a second explicit confirmation/sentinel, first
 create a dated backup on DATA, and delete that backup only after the reset system has completed a
@@ -381,11 +381,11 @@ enabled = false
 uri = "mqtts://broker.example:8883"
 client_id = ""                      # generated default when empty
 discovery_prefix = "homeassistant"
-topic_prefix = "buddy3d"
+topic_prefix = "pibuddycam"
 ca_file = ""                        # optional uploaded CA under /data
 
 [admin]
-hostname = "buddy3d-abcdef"
+hostname = "pibuddycam-abcdef"
 ```
 
 The separate secrets document holds the Prusa token, MQTT username/password, Wi-Fi secret where
@@ -400,8 +400,8 @@ A newer unsupported schema enters recovery with the original file untouched.
 Implement an idempotent importer for:
 
 - Existing `pi-impersonator/config.ini` identity/upload values.
-- `/data/prusa-cam/state.json`.
-- `/etc/prusa-cam/quality.env` and RTSP mode where durable state lacks them.
+- `/data/pibuddycam/state.json`.
+- `/etc/pibuddycam/quality.env` and RTSP mode where durable state lacks them.
 - `/data/sdcard` or `/mnt/sdcard` timelapse files.
 
 Validate the complete converted configuration before activation. Preserve source files under a
@@ -446,7 +446,7 @@ assuming the Home Assistant Mosquitto add-on:
 - Optional username/password.
 - System CA validation and an optional custom CA PEM.
 - Configurable discovery prefix, default `homeassistant`.
-- Configurable base prefix, default `buddy3d`.
+- Configurable base prefix, default `pibuddycam`.
 - Keepalive and reconnect backoff with bounded jitter.
 
 Do not implement broker auto-discovery or broker credential extraction from Home Assistant. The web
@@ -458,20 +458,20 @@ test topic before saving.
 Derive `<device-id>` from the persisted appliance UUID, not the changeable name or IP address:
 
 ```text
-buddy3d/<device-id>/availability
-buddy3d/<device-id>/state
-buddy3d/<device-id>/command/quality
-buddy3d/<device-id>/command/snapshot_upload
-buddy3d/<device-id>/command/snapshot_interval
-buddy3d/<device-id>/command/timelapse_enabled
-buddy3d/<device-id>/command/timelapse_interval
-buddy3d/<device-id>/command/timelapse_fps
-buddy3d/<device-id>/command/timelapse_build
-buddy3d/<device-id>/command/prusa_rtsp
-buddy3d/<device-id>/command/webrtc
-buddy3d/<device-id>/command/restart
-buddy3d/<device-id>/update/state
-buddy3d/<device-id>/update/install
+pibuddycam/<device-id>/availability
+pibuddycam/<device-id>/state
+pibuddycam/<device-id>/command/quality
+pibuddycam/<device-id>/command/snapshot_upload
+pibuddycam/<device-id>/command/snapshot_interval
+pibuddycam/<device-id>/command/timelapse_enabled
+pibuddycam/<device-id>/command/timelapse_interval
+pibuddycam/<device-id>/command/timelapse_fps
+pibuddycam/<device-id>/command/timelapse_build
+pibuddycam/<device-id>/command/prusa_rtsp
+pibuddycam/<device-id>/command/webrtc
+pibuddycam/<device-id>/command/restart
+pibuddycam/<device-id>/update/state
+pibuddycam/<device-id>/update/install
 ```
 
 Publish `availability` as retained `online` with a retained LWT of `offline`. Publish authoritative
@@ -510,11 +510,11 @@ username, or raw exception traces.
 Publish one retained Home Assistant MQTT **device discovery** document at:
 
 ```text
-<discovery-prefix>/device/buddy3d_<device-id>/config
+<discovery-prefix>/device/pibuddycam_<device-id>/config
 ```
 
 It must contain required origin information, stable unique IDs, device name `<camera name> Controls`,
-manufacturer `Prusa Community`, model `Buddy3D Raspberry Pi Camera`, application version, serial/
+manufacturer `PiBuddyCam community`, model `PiBuddyCam`, application version, serial/
 UUID, normalized WLAN MAC connection, availability topic, and these components:
 
 | HA entity | Type | Behavior |
@@ -564,9 +564,9 @@ packages, GStreamer/libcamera packages, or signing public key. Changes to those 
 Publish each application release through GitHub Releases as:
 
 ```text
-buddy3d-camera-app-<version>.tar.zst
-buddy3d-camera-app-<version>.tar.zst.sha256
-buddy3d-camera-app-<version>.tar.zst.minisig
+pibuddycam-app-<version>.tar.zst
+pibuddycam-app-<version>.tar.zst.sha256
+pibuddycam-app-<version>.tar.zst.minisig
 update-manifest.json
 update-manifest.json.minisig
 ```
@@ -586,7 +586,7 @@ bundles that exceed configured size/free-space limits.
    and free space before extracting.
 5. Reject absolute paths, `..`, devices, links escaping the release directory, unexpected owners,
    and setuid/setgid content.
-6. Extract to `/data/prusa-cam/releases/<version>.staging` and create its venv using only bundled,
+6. Extract to `/data/pibuddycam/releases/<version>.staging` and create its venv using only bundled,
    hash-pinned wheels plus required system site packages.
 7. Run compile, import, configuration migration dry-run, and local preflight tests.
 8. Rename staging to the final version directory, update `previous`, and atomically replace the

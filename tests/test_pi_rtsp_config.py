@@ -38,7 +38,7 @@ class RtspConfigTests(unittest.TestCase):
 
 class HomeAssistantUnitTests(unittest.TestCase):
     def test_unit_is_independent_and_always_on(self):
-        unit = (PI_DIR / 'systemd' / 'prusa-ha-rtsp.service').read_text()
+        unit = (PI_DIR / 'systemd' / 'pibuddycam-ha-rtsp.service').read_text()
         self.assertIn('RTSP_PORT=8555', unit)
         self.assertIn('RTSP_PATH=/live', unit)
         self.assertIn('Requires=rpicam-source.service', unit)

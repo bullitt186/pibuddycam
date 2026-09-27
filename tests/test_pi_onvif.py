@@ -86,7 +86,7 @@ class DeviceSoapTests(OnvifTestCase):
         _, info = self.call('device', onvif.TDS, 'GetDeviceInformation')
         _, network = self.call('device', onvif.TDS, 'GetNetworkInterfaces')
         self.assertEqual(texts(info, 'Manufacturer'), ['Niceboy'])
-        self.assertEqual(texts(info, 'Model'), ['Buddy3D-C1'])
+        self.assertEqual(texts(info, 'Model'), ['PiBuddyCam'])
         self.assertEqual(texts(info, 'FirmwareVersion'), ['3.1.6'])
         self.assertEqual(texts(info, 'SerialNumber'), ['AABBCCDDEEFF'])
         self.assertEqual(texts(network, 'HwAddress'), ['AA:BB:CC:DD:EE:FF'])

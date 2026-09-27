@@ -26,12 +26,12 @@ IMAGE = REPO_ROOT / "image"
 LOCK = IMAGE / "rpi-image-gen.lock"
 REQUIREMENTS_IN = IMAGE / "requirements.in"
 REQUIREMENTS_LOCK = IMAGE / "requirements.lock"
-CONFIG = IMAGE / "config" / "buddy3d-pi-zero2w.yaml"
+CONFIG = IMAGE / "config" / "pibuddycam-pi-zero2w.yaml"
 LAYER_DIR = IMAGE / "layer"
 ASSETS = IMAGE / "assets"
 ASSET_SYSTEMD = ASSETS / "systemd"
-PRUSA_PRIV = ASSETS / "prusa-priv"
-SUDOERS = ASSETS / "sudoers" / "prusa-cam"
+PIBUDDYCAM_PRIV = ASSETS / "pibuddycam-priv"
+SUDOERS = ASSETS / "sudoers" / "pibuddycam"
 REPO_SYSTEMD = REPO_ROOT / "pi-impersonator" / "systemd"
 
 def _git_ignored(relative_paths):
@@ -57,24 +57,24 @@ PINNED_TAG = "v2.8.0"
 
 REUSED_UNITS = [
     "rpicam-source.service",
-    "prusa-rtsp.service",
-    "prusa-ha-rtsp.service",
-    "prusa-cam.service",
-    "prusa-admin.service",
-    "prusa-provisioning.service",
+    "pibuddycam-rtsp.service",
+    "pibuddycam-ha-rtsp.service",
+    "pibuddycam.service",
+    "pibuddycam-admin.service",
+    "pibuddycam-provisioning.service",
     "pi-persist.service",
-    "prusa-data-ready.service",
+    "pibuddycam-data-ready.service",
     "data-ready.target",
     "bootlog.service",
-    "prusa-updater.service",
-    "prusa-updater.timer",
-    "prusa-updater-install.service",
+    "pibuddycam-updater.service",
+    "pibuddycam-updater.timer",
+    "pibuddycam-updater-install.service",
 ]
 
 IMAGE_ONLY_UNITS = [
-    "prusa-data-grow.service",
-    "prusa-camera.target",
-    "prusa-boot-mode.service",
+    "pibuddycam-data-grow.service",
+    "pibuddycam.target",
+    "pibuddycam-boot-mode.service",
 ]
 
 # Direct Python runtime dependencies (image/requirements.in / AC-14).
@@ -159,19 +159,19 @@ class ImageScaffoldingTests(unittest.TestCase):
             REQUIREMENTS_IN,
             REQUIREMENTS_LOCK,
             CONFIG,
-            LAYER_DIR / "buddy3d-image.yaml",
-            LAYER_DIR / "buddy3d-suite.yaml",
+            LAYER_DIR / "pibuddycam-image.yaml",
+            LAYER_DIR / "pibuddycam-suite.yaml",
             LAYER_DIR / "genimage.cfg.in.ext4",
             LAYER_DIR / "setup.sh",
             LAYER_DIR / "pre-image.sh",
             LAYER_DIR / "post-build.sh",
             LAYER_DIR / "mke2fs.conf",
-            ASSETS / "prusa-data-grow.sh",
+            ASSETS / "pibuddycam-data-grow.sh",
             ASSETS / "install-factory-app.sh",
             ASSETS / "build-info.py",
-            PRUSA_PRIV,
+            PIBUDDYCAM_PRIV,
             SUDOERS,
-            ASSETS / "icon" / "buddy3d-camera.png",
+            ASSETS / "icon" / "pibuddycam.png",
             IMAGE / "scripts" / "build-image.sh",
         ]
         missing = [str(p.relative_to(REPO_ROOT)) for p in required if not p.is_file()]
@@ -189,18 +189,18 @@ class ImageScaffoldingTests(unittest.TestCase):
         self.assertIsInstance(config, dict)
 
         image = config["image"]
-        self.assertEqual(image["layer"], "buddy3d-image")
+        self.assertEqual(image["layer"], "pibuddycam-image")
         self.assertTrue((LAYER_DIR / f"{image['layer']}.yaml").is_file())
 
         suite = config["layer"]["base"]
-        self.assertEqual(suite, "buddy3d-suite")
+        self.assertEqual(suite, "pibuddycam-suite")
         self.assertTrue((LAYER_DIR / f"{suite}.yaml").is_file())
 
         # The project-specific layer resolves its asset directories relative to
         # its own file; assert those targets and the assets they install exist.
         self.assertTrue(ASSETS.is_dir())
         for name in (
-            "prusa-data-grow.sh",
+            "pibuddycam-data-grow.sh",
             "install-factory-app.sh",
             "build-info.py",
         ):
@@ -230,8 +230,8 @@ class ImageScaffoldingTests(unittest.TestCase):
 
     @unittest.skipUnless(yaml is not None, "PyYAML not available")
     def test_layer_metadata_declares_layout_variables(self):
-        text = read_text(LAYER_DIR / "buddy3d-image.yaml")
-        self.assertIn("X-Env-Layer-Name: buddy3d-image", text)
+        text = read_text(LAYER_DIR / "pibuddycam-image.yaml")
+        self.assertIn("X-Env-Layer-Name: pibuddycam-image", text)
         self.assertIn("X-Env-Var-boot_part_size: 512M", text)
         self.assertIn("X-Env-Var-root_part_size: 4G", text)
         self.assertIn("X-Env-Var-persist_part_size: 512M", text)
@@ -243,7 +243,7 @@ class ImageScaffoldingTests(unittest.TestCase):
         # The config's IGconf_packages list is not reliably installed by the
         # built-in customize20-packages hook, so the layer's mmdebstrap.packages
         # list is authoritative for the runtime (WP-R3 build bring-up).
-        doc = yaml.safe_load(read_text(LAYER_DIR / "buddy3d-image.yaml"))
+        doc = yaml.safe_load(read_text(LAYER_DIR / "pibuddycam-image.yaml"))
         packages = set(doc["mmdebstrap"]["packages"])
         for name in (
             "rpicam-apps",
@@ -327,16 +327,16 @@ class ImageScaffoldingTests(unittest.TestCase):
         # Pi Zero 2 W USB host mode (wired Ethernet/operator path).
         self.assertIn("dtoverlay=dwc2,dr_mode=host", setup)
         # ROOT stays read-only; volatile runtime state (NM/systemd/Samba and the
-        # app's ephemeral /etc/prusa-cam files) is mounted on tmpfs so a
+        # app's ephemeral /etc/pibuddycam files) is mounted on tmpfs so a
         # power-off cannot damage the OS and the runtime is still writable.
         self.assertIn("tmpfs                 /var            tmpfs", setup)
-        self.assertIn("tmpfs                 /etc/prusa-cam  tmpfs", setup)
+        self.assertIn("tmpfs                 /etc/pibuddycam  tmpfs", setup)
         # PERSIST is mounted at /data, never part of the overlay.
         self.assertIn("/data", setup)
 
         # No device-name assumption in executable lines (comments may mention
         # /dev/mmcblk0pN to explain what is avoided).
-        for path in (LAYER_DIR / "setup.sh", ASSETS / "prusa-data-grow.sh"):
+        for path in (LAYER_DIR / "setup.sh", ASSETS / "pibuddycam-data-grow.sh"):
             for line in code_lines(read_text(path)):
                 self.assertNotIn("/dev/mmcblk0p", line, f"device name in {path}: {line}")
 
@@ -364,21 +364,21 @@ class ImageScaffoldingTests(unittest.TestCase):
             )
 
     def test_grow_service_ordering(self):
-        unit = parse_unit(ASSET_SYSTEMD / "prusa-data-grow.service")
+        unit = parse_unit(ASSET_SYSTEMD / "pibuddycam-data-grow.service")
         section = unit["Unit"]
         self.assertIn("local-fs.target", section["After"].split())
         self.assertIn("data-ready.target", section["Before"].split())
         self.assertEqual(section["ConditionPathIsMountPoint"], "/data")
         self.assertEqual(section["RequiresMountsFor"], "/data")
-        self.assertEqual(unit["Service"]["ExecStart"], "/usr/libexec/prusa-data-grow")
+        self.assertEqual(unit["Service"]["ExecStart"], "/usr/libexec/pibuddycam-data-grow")
         self.assertEqual(unit["Service"]["Type"], "oneshot")
 
         dropin = parse_unit(ASSET_SYSTEMD / "data-ready.target.d" / "10-data-grow.conf")
-        self.assertIn("prusa-data-grow.service", dropin["Unit"]["Requires"].split())
-        self.assertIn("prusa-data-grow.service", dropin["Unit"]["After"].split())
+        self.assertIn("pibuddycam-data-grow.service", dropin["Unit"]["Requires"].split())
+        self.assertIn("pibuddycam-data-grow.service", dropin["Unit"]["After"].split())
 
     def test_camera_target_ordering_and_isolation(self):
-        unit = parse_unit(ASSET_SYSTEMD / "prusa-camera.target")
+        unit = parse_unit(ASSET_SYSTEMD / "pibuddycam.target")
         section = unit["Unit"]
         self.assertIn("data-ready.target", section["Requires"].split())
         self.assertIn("data-ready.target", section["After"].split())
@@ -387,53 +387,53 @@ class ImageScaffoldingTests(unittest.TestCase):
         for name in (
             "pi-persist.service",
             "rpicam-source.service",
-            "prusa-rtsp.service",
-            "prusa-ha-rtsp.service",
-            "prusa-cam.service",
-            "prusa-admin.service",
+            "pibuddycam-rtsp.service",
+            "pibuddycam-ha-rtsp.service",
+            "pibuddycam.service",
+            "pibuddycam-admin.service",
         ):
             self.assertIn(name, wants)
             self.assertIn(name, after)
         # The setup runtime is mutually exclusive with the camera runtime.
-        self.assertIn("prusa-provisioning.service", section["Conflicts"].split())
+        self.assertIn("pibuddycam-provisioning.service", section["Conflicts"].split())
         # AC-18: the camera target is ordered after the provisioning process so
         # it cannot start while QR capture/probe may still hold the sensor.
-        self.assertIn("prusa-provisioning.service", section["After"].split())
+        self.assertIn("pibuddycam-provisioning.service", section["After"].split())
         # WP-R4b: the updater timer is pulled optionally (available after claim)
         # and is never a hard requirement of camera startup.
-        self.assertIn("prusa-updater.timer", wants)
+        self.assertIn("pibuddycam-updater.timer", wants)
         # Optional later units must never be hard requirements.
-        for optional in ("prusa-mqtt.service", "prusa-updater.timer"):
+        for optional in ("pibuddycam-mqtt.service", "pibuddycam-updater.timer"):
             self.assertNotIn(optional, section.get("Requires", "").split())
         # WP-R4c: the install oneshot is triggered only via the root helper and
         # is never part of camera startup.
-        self.assertNotIn("prusa-updater-install.service", wants)
-        self.assertNotIn("prusa-updater-install.service", after)
+        self.assertNotIn("pibuddycam-updater-install.service", wants)
+        self.assertNotIn("pibuddycam-updater-install.service", after)
         self.assertNotIn(
-            "prusa-updater-install.service", section.get("Requires", "").split()
+            "pibuddycam-updater-install.service", section.get("Requires", "").split()
         )
 
     def test_provisioning_unit_is_conflicts_gated_and_never_enabled(self):
-        unit = parse_unit(REPO_SYSTEMD / "prusa-provisioning.service")
+        unit = parse_unit(REPO_SYSTEMD / "pibuddycam-provisioning.service")
         section = unit["Unit"]
         self.assertIn("data-ready.target", section["After"].split())
         self.assertIn("network-online.target", section["Wants"].split())
-        self.assertIn("prusa-camera.target", section["Conflicts"].split())
+        self.assertIn("pibuddycam.target", section["Conflicts"].split())
         # AC-7: After= only, so the setup path survives a missing DATA partition.
         self.assertNotIn("Requires", section)
         # Started by the selector, never enabled.
         self.assertNotIn("Install", unit)
 
         service = unit["Service"]
-        self.assertEqual(service["User"], "prusa-cam")
+        self.assertEqual(service["User"], "pibuddycam")
         self.assertIn("ADMIN_MODE=setup", service["Environment"])
         self.assertIn("ADMIN_HOST=192.168.4.1", service["Environment"])
         self.assertIn("hotspot_ctl.py start", service["ExecStartPre"])
-        self.assertIn("/opt/prusa-cam/admin_app.py", service["ExecStart"])
+        self.assertIn("/opt/pibuddycam/admin_app.py", service["ExecStart"])
         self.assertIn("hotspot_ctl.py stop", service["ExecStopPost"])
 
     def test_boot_mode_unit_selects_at_multi_user(self):
-        unit = parse_unit(ASSET_SYSTEMD / "prusa-boot-mode.service")
+        unit = parse_unit(ASSET_SYSTEMD / "pibuddycam-boot-mode.service")
         section = unit["Unit"]
         self.assertIn("data-ready.target", section["After"].split())
         self.assertIn("data-ready.target", section["Wants"].split())
@@ -451,29 +451,29 @@ class ImageScaffoldingTests(unittest.TestCase):
         enable_block = text.split("systemctl enable", 1)[1].split("|| true", 1)[0]
         for enabled in (
             "data-ready.target",
-            "prusa-data-ready.service",
-            "prusa-data-grow.service",
+            "pibuddycam-data-ready.service",
+            "pibuddycam-data-grow.service",
             "pi-persist.service",
             "bootlog.service",
-            "prusa-boot-mode.service",
-            "prusa-updater.timer",
+            "pibuddycam-boot-mode.service",
+            "pibuddycam-updater.timer",
         ):
             self.assertIn(enabled, enable_block)
         for deferred in (
-            "prusa-camera.target",
-            "prusa-provisioning.service",
-            "prusa-admin.service",
+            "pibuddycam.target",
+            "pibuddycam-provisioning.service",
+            "pibuddycam-admin.service",
             "rpicam-source.service",
-            "prusa-rtsp.service",
-            "prusa-ha-rtsp.service",
-            "prusa-cam.service",
-            "prusa-updater-install.service",
+            "pibuddycam-rtsp.service",
+            "pibuddycam-ha-rtsp.service",
+            "pibuddycam.service",
+            "pibuddycam-updater-install.service",
         ):
             self.assertNotIn(deferred, enable_block)
 
     def test_installer_keeps_opt_root_owned(self):
         text = read_text(ASSETS / "install-factory-app.sh")
-        # B3: /opt/prusa-cam must be root:root so the root helper never executes
+        # B3: /opt/pibuddycam must be root:root so the root helper never executes
         # service-account-writable code.
         self.assertIn('chown -R root:root "$root$APP_ROOT"', text)
         self.assertNotIn('chown -R "$uid:$gid" "$root$APP_ROOT"', text)
@@ -482,17 +482,17 @@ class ImageScaffoldingTests(unittest.TestCase):
         # WP-R4c: the runtime units start through launcher.sh with their own
         # entry point so an installed signed release under DATA runs.
         expected = {
-            "prusa-cam.service": "main.py",
-            "prusa-rtsp.service": "rtsp_server.py",
-            "prusa-ha-rtsp.service": "rtsp_server.py",
-            "prusa-admin.service": "admin_app.py",
+            "pibuddycam.service": "main.py",
+            "pibuddycam-rtsp.service": "rtsp_server.py",
+            "pibuddycam-ha-rtsp.service": "rtsp_server.py",
+            "pibuddycam-admin.service": "admin_app.py",
             "rpicam-source.service": "camera_source.py",
         }
         for name, script in expected.items():
             with self.subTest(unit=name):
                 service = parse_unit(REPO_SYSTEMD / name)["Service"]
                 self.assertEqual(
-                    service["ExecStart"], f"/opt/prusa-cam/launcher.sh {script}"
+                    service["ExecStart"], f"/opt/pibuddycam/launcher.sh {script}"
                 )
 
     def test_launcher_prefers_release_venv_with_factory_fallback(self):
@@ -511,20 +511,20 @@ class ImageScaffoldingTests(unittest.TestCase):
 
     def test_installer_installs_helper_and_sudoers(self):
         text = read_text(ASSETS / "install-factory-app.sh")
-        self.assertIn('"$assets/prusa-priv"', text)
-        self.assertIn("/usr/libexec/prusa-cam/prusa-priv", text)
-        self.assertIn('"$assets/sudoers/prusa-cam"', text)
-        self.assertIn("/etc/sudoers.d/prusa-cam", text)
+        self.assertIn('"$assets/pibuddycam-priv"', text)
+        self.assertIn("/usr/libexec/pibuddycam/pibuddycam-priv", text)
+        self.assertIn('"$assets/sudoers/pibuddycam"', text)
+        self.assertIn("/etc/sudoers.d/pibuddycam", text)
         self.assertIn("visudo -cf", text)
 
-    def test_prusa_priv_asset_is_executable_and_valid(self):
-        self.assertTrue(PRUSA_PRIV.is_file())
-        self.assertTrue(os.access(PRUSA_PRIV, os.X_OK), "prusa-priv must be executable")
+    def test_pibuddycam_priv_asset_is_executable_and_valid(self):
+        self.assertTrue(PIBUDDYCAM_PRIV.is_file())
+        self.assertTrue(os.access(PIBUDDYCAM_PRIV, os.X_OK), "pibuddycam-priv must be executable")
         result = subprocess.run(
-            ["bash", "-n", str(PRUSA_PRIV)], capture_output=True, text=True
+            ["bash", "-n", str(PIBUDDYCAM_PRIV)], capture_output=True, text=True
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        text = read_text(PRUSA_PRIV)
+        text = read_text(PIBUDDYCAM_PRIV)
         for verb in (
             "start-camera",
             "stop-provisioning",
@@ -538,7 +538,7 @@ class ImageScaffoldingTests(unittest.TestCase):
             self.assertIn(verb, text)
         # Unknown verbs must exit 2 before any privileged command.
         unknown = subprocess.run(
-            ["bash", str(PRUSA_PRIV), "definitely-not-a-verb"],
+            ["bash", str(PIBUDDYCAM_PRIV), "definitely-not-a-verb"],
             capture_output=True, text=True,
         )
         self.assertEqual(unknown.returncode, 2, unknown.stderr)
@@ -546,7 +546,7 @@ class ImageScaffoldingTests(unittest.TestCase):
     def test_sudoers_asset_is_narrow_and_valid(self):
         text = read_text(SUDOERS)
         self.assertIn(
-            "prusa-cam ALL=(root) NOPASSWD: /usr/libexec/prusa-cam/prusa-priv",
+            "pibuddycam ALL=(root) NOPASSWD: /usr/libexec/pibuddycam/pibuddycam-priv",
             text,
         )
         # Only the fixed-verb helper is granted; no wildcard command.
@@ -569,9 +569,9 @@ class ImageScaffoldingTests(unittest.TestCase):
         self.assertNotIn("Requires", dropin["Unit"])
 
     def test_grow_script_is_interruption_safe(self):
-        text = read_text(ASSETS / "prusa-data-grow.sh")
+        text = read_text(ASSETS / "pibuddycam-data-grow.sh")
         self.assertIn("set -eu", text)
-        self.assertIn("MARKER=/data/.prusa-data-grow.done", text)
+        self.assertIn("MARKER=/data/.pibuddycam-data-grow.done", text)
         self.assertIn("EXPECTED_LABEL=PERSIST", text)
         self.assertIn("EXPECTED_PARTNUM=3", text)
         # Validates the label and the expected PARTUUID relationship. The MBR
@@ -600,7 +600,7 @@ class ImageScaffoldingTests(unittest.TestCase):
     def test_grow_partuuid_partition_number_is_compared_numerically(self):
         # The exact hardware failure: 'b33dcafe-03' must be accepted as
         # partition 3, 'b33dcafe-04' rejected, and a non-numeric suffix is an
-        # error. Mirrors the shell logic in prusa-data-grow.sh.
+        # error. Mirrors the shell logic in pibuddycam-data-grow.sh.
         script = (
             'p="$1"; EXPECTED_PARTNUM=3; '
             'n="${p##*-}"; '
@@ -620,24 +620,24 @@ class ImageScaffoldingTests(unittest.TestCase):
         self.assertEqual(rc("b33dcafe-xx"), 2)
 
     def test_installer_grants_camera_dma_heap_access(self):
-        # The camera stack runs as prusa-cam; /dev/dma_heap/* is root:root 0600,
+        # The camera stack runs as pibuddycam; /dev/dma_heap/* is root:root 0600,
         # so a udev rule must grant the video group access (hardware-found).
-        rule = read_text(ASSETS / "udev" / "50-prusa-cam-camera.rules")
+        rule = read_text(ASSETS / "udev" / "50-pibuddycam-camera.rules")
         self.assertIn('SUBSYSTEM=="dma_heap"', rule)
         self.assertIn('GROUP="video"', rule)
         self.assertIn('MODE="0660"', rule)
         installer = read_text(ASSETS / "install-factory-app.sh")
-        self.assertIn("50-prusa-cam-camera.rules", installer)
-        self.assertIn("etc/udev/rules.d/50-prusa-cam-camera.rules", installer)
+        self.assertIn("50-pibuddycam-camera.rules", installer)
+        self.assertIn("etc/udev/rules.d/50-pibuddycam-camera.rules", installer)
 
     def test_installer_disables_wifi_mac_randomization(self):
         # Scan-time MAC randomization flips the MAC-derived fingerprint and
         # breaks the Prusa Connect token binding.
-        conf = read_text(ASSETS / "networkmanager" / "10-prusa-mac.conf")
+        conf = read_text(ASSETS / "networkmanager" / "10-pibuddycam-mac.conf")
         self.assertIn("wifi.scan-rand-mac-address=no", conf)
         installer = read_text(ASSETS / "install-factory-app.sh")
-        self.assertIn("10-prusa-mac.conf", installer)
-        self.assertIn("etc/NetworkManager/conf.d/10-prusa-mac.conf", installer)
+        self.assertIn("10-pibuddycam-mac.conf", installer)
+        self.assertIn("etc/NetworkManager/conf.d/10-pibuddycam-mac.conf", installer)
 
     # --- AC-13/AC-14: build script + no secrets ----------------------------
 
@@ -664,10 +664,10 @@ class ImageScaffoldingTests(unittest.TestCase):
             LAYER_DIR / "setup.sh",
             LAYER_DIR / "pre-image.sh",
             LAYER_DIR / "post-build.sh",
-            LAYER_DIR / "bdebstrap" / "customize95-buddy3d-python",
-            ASSETS / "prusa-data-grow.sh",
+            LAYER_DIR / "bdebstrap" / "customize95-pibuddycam-python",
+            ASSETS / "pibuddycam-data-grow.sh",
             ASSETS / "install-factory-app.sh",
-            PRUSA_PRIV,
+            PIBUDDYCAM_PRIV,
         ]
         for path in shells:
             result = subprocess.run(
@@ -707,12 +707,12 @@ class ImageScaffoldingTests(unittest.TestCase):
 
         # The manifest is generated from dpkg inside the target root.
         self.assertIn("dpkg-query -W -f='${Package} ${Version}\\n'", text)
-        self.assertIn("/usr/share/prusa-buddy3d-camera/packages.txt", text)
+        self.assertIn("/usr/share/pibuddycam/packages.txt", text)
 
         # The in-image path is handed to the generator, so package_manifest is
         # a non-empty string rather than null.
         self.assertRegex(text, r'--package-manifest\s+"\$manifest_arg"')
-        self.assertRegex(text, r'MANIFEST_IMAGE_PATH=/usr/share/prusa-buddy3d-camera/packages\.txt')
+        self.assertRegex(text, r'MANIFEST_IMAGE_PATH=/usr/share/pibuddycam/packages\.txt')
 
     # --- WP-R3 / AC-14: hash-locked Python venv -----------------------------
 
@@ -767,7 +767,7 @@ class ImageScaffoldingTests(unittest.TestCase):
 
     def test_python_hook_is_noop_owned_by_installer(self):
         text = read_text(
-            LAYER_DIR / "bdebstrap" / "customize95-buddy3d-python"
+            LAYER_DIR / "bdebstrap" / "customize95-pibuddycam-python"
         )
         # It must document the ownership boundary and exit cleanly.
         self.assertIn("install-factory-app.sh", text)
@@ -780,7 +780,7 @@ class ImageScaffoldingTests(unittest.TestCase):
         self.assertNotIn("--require-hashes", body)
         self.assertNotIn("pip install", body)
         result = subprocess.run(
-            ["bash", "-n", str(LAYER_DIR / "bdebstrap" / "customize95-buddy3d-python")],
+            ["bash", "-n", str(LAYER_DIR / "bdebstrap" / "customize95-pibuddycam-python")],
             capture_output=True,
             text=True,
         )
@@ -803,7 +803,7 @@ class ImageScaffoldingTests(unittest.TestCase):
                     "--kernel-package",
                     "linux-image-rpi-v8",
                     "--package-manifest",
-                    "/usr/share/prusa-buddy3d-camera/packages.txt",
+                    "/usr/share/pibuddycam/packages.txt",
                     "--output",
                     str(output),
                 ],
@@ -814,7 +814,7 @@ class ImageScaffoldingTests(unittest.TestCase):
             doc = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(
                 doc["package_manifest"],
-                "/usr/share/prusa-buddy3d-camera/packages.txt",
+                "/usr/share/pibuddycam/packages.txt",
             )
 
     def _run_build_info(self, output, *extra, env=None):
@@ -845,7 +845,7 @@ class ImageScaffoldingTests(unittest.TestCase):
             self.assertEqual(doc["version"], "9.9.9")
 
     def test_build_info_generator_version_defaults(self):
-        env = {k: v for k, v in os.environ.items() if k != "PRUSA_IMAGE_VERSION"}
+        env = {k: v for k, v in os.environ.items() if k != "PIBUDDYCAM_IMAGE_VERSION"}
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "build-info.json"
             result = self._run_build_info(output, env=env)
@@ -854,7 +854,7 @@ class ImageScaffoldingTests(unittest.TestCase):
             self.assertEqual(doc["version"], "0.0.0+local")
 
     def test_build_info_generator_version_from_env(self):
-        env = dict(os.environ, PRUSA_IMAGE_VERSION="4.5.6")
+        env = dict(os.environ, PIBUDDYCAM_IMAGE_VERSION="4.5.6")
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "build-info.json"
             result = self._run_build_info(output, env=env)
@@ -909,7 +909,7 @@ class ImageScaffoldingTests(unittest.TestCase):
 
     @unittest.skipUnless(yaml is not None, "PyYAML not available")
     def test_layer_installs_minisign_and_zstd(self):
-        doc = yaml.safe_load(read_text(LAYER_DIR / "buddy3d-image.yaml"))
+        doc = yaml.safe_load(read_text(LAYER_DIR / "pibuddycam-image.yaml"))
         packages = set(doc["mmdebstrap"]["packages"])
         for name in ("minisign", "zstd"):
             self.assertIn(name, packages, name)
@@ -918,15 +918,15 @@ class ImageScaffoldingTests(unittest.TestCase):
         text = read_text(ASSETS / "install-factory-app.sh")
         # The committed public key is copied root:root 0644 to the documented
         # in-image path the updater trusts (never a private key).
-        self.assertIn("image/keys/buddy3d-release.pub", text)
+        self.assertIn("image/keys/pibuddycam-release.pub", text)
         self.assertIn(
-            "/usr/share/prusa-buddy3d-camera/buddy3d-release.pub", text
+            "/usr/share/pibuddycam/pibuddycam-release.pub", text
         )
         self.assertIn("-o root -g root -m 0644", text)
         self.assertNotIn("release-signing.key", text)
 
     def test_release_public_key_is_public_material(self):
-        key = REPO_ROOT / "image" / "keys" / "buddy3d-release.pub"
+        key = REPO_ROOT / "image" / "keys" / "pibuddycam-release.pub"
         self.assertTrue(key.is_file(), f"missing {key}")
         text = read_text(key)
         self.assertIn("minisign public key", text)
@@ -938,18 +938,18 @@ class ImageScaffoldingTests(unittest.TestCase):
 
     def test_installer_installs_and_enables_updater_units(self):
         text = read_text(ASSETS / "install-factory-app.sh")
-        self.assertIn("prusa-updater.service prusa-updater.timer", text)
+        self.assertIn("pibuddycam-updater.service pibuddycam-updater.timer", text)
         enable_block = text.split("systemctl enable", 1)[1].split("|| true", 1)[0]
-        self.assertIn("prusa-updater.timer", enable_block)
+        self.assertIn("pibuddycam-updater.timer", enable_block)
         # The oneshot service is triggered by the timer, never enabled directly.
-        self.assertNotIn("prusa-updater.service", enable_block)
+        self.assertNotIn("pibuddycam-updater.service", enable_block)
         # WP-R4c: the install oneshot is installed but never enabled (triggered
         # only through the fixed-verb root helper).
-        self.assertIn("prusa-updater-install.service", text)
-        self.assertNotIn("prusa-updater-install.service", enable_block)
+        self.assertIn("pibuddycam-updater-install.service", text)
+        self.assertNotIn("pibuddycam-updater-install.service", enable_block)
 
     def test_install_unit_is_oneshot_gated_and_never_enabled(self):
-        unit = parse_unit(REPO_SYSTEMD / "prusa-updater-install.service")
+        unit = parse_unit(REPO_SYSTEMD / "pibuddycam-updater-install.service")
         section = unit["Unit"]
         self.assertIn("data-ready.target", section["Requires"].split())
         self.assertIn("data-ready.target", section["After"].split())
@@ -959,19 +959,19 @@ class ImageScaffoldingTests(unittest.TestCase):
         self.assertIn("updater_install.py install", service["ExecStart"])
         self.assertIn("updater_install.py recover", service["ExecStartPre"])
         self.assertIn("PATH=", service["Environment"])
-        # Triggered only via ``prusa-priv install-update``: no [Install] section
+        # Triggered only via ``pibuddycam-priv install-update``: no [Install] section
         # and never enabled at multi-user.target.
         self.assertNotIn("Install", unit)
 
     def test_helper_routes_install_update_to_the_install_unit(self):
-        text = read_text(PRUSA_PRIV)
+        text = read_text(PIBUDDYCAM_PRIV)
         self.assertIn("install-update)", text)
         self.assertIn(
-            'exec "$SYSTEMCTL" start prusa-updater-install.service', text
+            'exec "$SYSTEMCTL" start pibuddycam-updater-install.service', text
         )
 
     def test_updater_units_are_reused_and_valid(self):
-        service = parse_unit(REPO_SYSTEMD / "prusa-updater.service")
+        service = parse_unit(REPO_SYSTEMD / "pibuddycam-updater.service")
         unit_section = service["Unit"]
         self.assertIn("data-ready.target", unit_section["Requires"].split())
         self.assertEqual(service["Service"]["Type"], "oneshot")
@@ -982,15 +982,15 @@ class ImageScaffoldingTests(unittest.TestCase):
         self.assertIn("PATH=", service["Service"]["Environment"])
         self.assertNotIn("Install", service)
 
-        timer = parse_unit(REPO_SYSTEMD / "prusa-updater.timer")
-        self.assertEqual(timer["Timer"]["Unit"], "prusa-updater.service")
+        timer = parse_unit(REPO_SYSTEMD / "pibuddycam-updater.timer")
+        self.assertEqual(timer["Timer"]["Unit"], "pibuddycam-updater.service")
         self.assertIn("24h", timer["Timer"]["OnUnitActiveSec"])
         self.assertIn(
             "multi-user.target", timer["Install"]["WantedBy"].split()
         )
 
     def test_icon_is_png(self):
-        data = (ASSETS / "icon" / "buddy3d-camera.png").read_bytes()
+        data = (ASSETS / "icon" / "pibuddycam.png").read_bytes()
         self.assertTrue(data.startswith(b"\x89PNG\r\n\x1a\n"))
 
     def test_no_secrets_or_personal_data(self):
@@ -1010,7 +1010,7 @@ class ImageScaffoldingTests(unittest.TestCase):
         )
         mac = re.compile(r"\b(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}\b")
         machine_id = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{32}(?![0-9a-fA-F])")
-        home_path = re.compile(r"/home/(?!prusa-cam\b|\$|\{)")
+        home_path = re.compile(r"/home/(?!pibuddycam\b|\$|\{)")
 
         for path in sorted(IMAGE.rglob("*")):
             if not path.is_file() or path.suffix == ".png":
@@ -1020,8 +1020,11 @@ class ImageScaffoldingTests(unittest.TestCase):
                 text = read_text(path)
             except UnicodeDecodeError:
                 self.fail(f"unexpected binary file in image/: {rel}")
+            # The public GitHub owner in the baked update URL is the one allowed
+            # occurrence of the personal username (see scan-secrets.sh).
+            scrubbed = re.sub(r"github\.com/[A-Za-z0-9-]+/", "github.com/", text)
             for needle in forbidden_substrings:
-                self.assertNotIn(needle, text, f"{needle!r} in {rel}")
+                self.assertNotIn(needle, scrubbed, f"{needle!r} in {rel}")
             self.assertIsNone(secret_assignment.search(text), f"secret assignment in {rel}")
             self.assertIsNone(mac.search(text), f"MAC address in {rel}")
             self.assertIsNone(machine_id.search(text), f"machine-id value in {rel}")

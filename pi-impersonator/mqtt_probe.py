@@ -37,7 +37,7 @@ import urllib.parse
 
 import mqtt_service
 
-log = logging.getLogger('prusa-cam.mqtt_probe')
+log = logging.getLogger('pibuddycam.mqtt_probe')
 
 #: Default per-step timeout, in seconds; clamped into a sane range.
 DEFAULT_TIMEOUT = 10.0
@@ -51,7 +51,7 @@ MAX_REASON_LENGTH = 200
 PROBE_QOS = 1
 
 #: Payload published to the temporary test topic (non-secret).
-PROBE_PAYLOAD = b'buddy3d-probe'
+PROBE_PAYLOAD = b'pibuddycam-probe'
 
 
 class ProbeStepError(Exception):
@@ -212,9 +212,9 @@ def _safe_reason(reason, config):
 
 def _probe_topic(config):
     """Return a temporary, non-retained test topic unique to this probe."""
-    prefix = getattr(config, 'topic_prefix', '') or 'buddy3d'
+    prefix = getattr(config, 'topic_prefix', '') or 'pibuddycam'
     if not isinstance(prefix, str) or not prefix:
-        prefix = 'buddy3d'
+        prefix = 'pibuddycam'
     return f'{prefix}/probe/{secrets.token_hex(8)}'
 
 
@@ -348,7 +348,7 @@ class PahoProbeBackend:
         self._connect_rc = None
 
     def _make_client(self):
-        client_id = f'buddy3d-probe-{secrets.token_hex(4)}'
+        client_id = f'pibuddycam-probe-{secrets.token_hex(4)}'
         api = getattr(self._mqtt, 'CallbackAPIVersion', None)
         try:
             if api is not None:
@@ -434,13 +434,13 @@ def _read_password(source):
                 return handle.read().rstrip('\r\n')
         except OSError:
             return ''
-    return os.environ.get('PRUSA_MQTT_PASSWORD', '')
+    return os.environ.get('PIBUDDYCAM_MQTT_PASSWORD', '')
 
 
 def main(argv=None):
     """Manual broker test CLI; prints ``ok``/``failed`` and a bounded reason.
 
-    The password is read from ``--password-file`` (or ``PRUSA_MQTT_PASSWORD``),
+    The password is read from ``--password-file`` (or ``PIBUDDYCAM_MQTT_PASSWORD``),
     never from argv; only the bounded reason (which never contains a credential)
     is printed.
     """
@@ -451,7 +451,7 @@ def main(argv=None):
     parser.add_argument(
         '--password-file',
         default='',
-        help='file containing the password (or set PRUSA_MQTT_PASSWORD)',
+        help='file containing the password (or set PIBUDDYCAM_MQTT_PASSWORD)',
     )
     parser.add_argument('--ca-file', default='')
     parser.add_argument('--timeout', type=float, default=DEFAULT_TIMEOUT)

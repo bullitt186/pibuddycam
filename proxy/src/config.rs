@@ -118,7 +118,7 @@ impl Config {
             mqtt_password: opt("MQTT_PASSWORD"),
             mqtt_client_id: opt("MQTT_CLIENT_ID"),
             mqtt_discovery_prefix: opt("MQTT_DISCOVERY_PREFIX").unwrap_or_else(|| "homeassistant".into()),
-            mqtt_topic_prefix: opt("MQTT_TOPIC_PREFIX").unwrap_or_else(|| "buddy3d-proxy".into()),
+            mqtt_topic_prefix: opt("MQTT_TOPIC_PREFIX").unwrap_or_else(|| "pibuddycam-proxy".into()),
             snapshot_interval: Duration::from_secs(parse_u64("SNAPSHOT_INTERVAL_SECONDS", 10)?),
             snapshot_max_width: parse_u32("SNAPSHOT_MAX_WIDTH", 1920)?,
             snapshot_jpeg_quality: parse_u8("SNAPSHOT_JPEG_QUALITY", 75)?,
@@ -196,7 +196,7 @@ mod tests {
             assert_eq!(cfg.token_store_path, PathBuf::from("/data/tokens.json"));
             assert!(cfg.mqtt_broker_url.is_none());
             assert_eq!(cfg.mqtt_discovery_prefix, "homeassistant");
-            assert_eq!(cfg.mqtt_topic_prefix, "buddy3d-proxy");
+            assert_eq!(cfg.mqtt_topic_prefix, "pibuddycam-proxy");
             assert_eq!(cfg.snapshot_interval, Duration::from_secs(10));
             assert_eq!(cfg.snapshot_max_width, 1920);
             assert_eq!(cfg.snapshot_jpeg_quality, 75);

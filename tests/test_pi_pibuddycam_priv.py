@@ -14,8 +14,8 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-PRUSA_PRIV = REPO / 'image' / 'assets' / 'prusa-priv'
-SUDOERS = REPO / 'image' / 'assets' / 'sudoers' / 'prusa-cam'
+PIBUDDYCAM_PRIV = REPO / 'image' / 'assets' / 'pibuddycam-priv'
+SUDOERS = REPO / 'image' / 'assets' / 'sudoers' / 'pibuddycam'
 
 
 def run_helper(args, stdin='', env=None, path_prepend=None):
@@ -24,7 +24,7 @@ def run_helper(args, stdin='', env=None, path_prepend=None):
         environ['PATH'] = f'{path_prepend}:{environ.get("PATH", "")}'
     environ.update(env or {})
     return subprocess.run(
-        ['bash', str(PRUSA_PRIV), *args],
+        ['bash', str(PIBUDDYCAM_PRIV), *args],
         input=stdin,
         capture_output=True,
         text=True,
@@ -34,17 +34,17 @@ def run_helper(args, stdin='', env=None, path_prepend=None):
 
 class PrusaPrivAssetTests(unittest.TestCase):
     def test_helper_exists_and_is_executable(self):
-        self.assertTrue(PRUSA_PRIV.is_file())
-        self.assertTrue(os.access(PRUSA_PRIV, os.X_OK))
+        self.assertTrue(PIBUDDYCAM_PRIV.is_file())
+        self.assertTrue(os.access(PIBUDDYCAM_PRIV, os.X_OK))
 
     def test_helper_passes_bash_n(self):
         result = subprocess.run(
-            ['bash', '-n', str(PRUSA_PRIV)], capture_output=True, text=True
+            ['bash', '-n', str(PIBUDDYCAM_PRIV)], capture_output=True, text=True
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_helper_declares_exactly_the_allowlisted_verbs(self):
-        text = PRUSA_PRIV.read_text(encoding='utf-8')
+        text = PIBUDDYCAM_PRIV.read_text(encoding='utf-8')
         for verb in (
             'start-camera',
             'stop-provisioning',
@@ -84,7 +84,7 @@ class PrusaPrivAssetTests(unittest.TestCase):
             result = run_helper(
                 ['wifi-station-apply', 'HomeNet'],
                 stdin='sup3rsecret',
-                env={'PRUSA_CAM_APP_ROOT': str(app_root)},
+                env={'PIBUDDYCAM_APP_ROOT': str(app_root)},
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             argv = args_out.read_text(encoding='utf-8')
@@ -103,19 +103,19 @@ class PrusaPrivAssetTests(unittest.TestCase):
         # command, so it pins the absolute systemctl path. (Executing the verb
         # here would run the host's real systemctl; the stub-path approach no
         # longer applies once the path is absolute.)
-        text = PRUSA_PRIV.read_text(encoding='utf-8')
+        text = PIBUDDYCAM_PRIV.read_text(encoding='utf-8')
         self.assertIn('SYSTEMCTL=/usr/bin/systemctl', text)
-        self.assertIn('exec "$SYSTEMCTL" --no-block start prusa-camera.target', text)
-        self.assertIn('exec "$SYSTEMCTL" stop prusa-provisioning.service', text)
-        self.assertIn('exec "$SYSTEMCTL" start prusa-updater-install.service', text)
-        self.assertIn('exec "$SYSTEMCTL" start prusa-updater.service', text)
+        self.assertIn('exec "$SYSTEMCTL" --no-block start pibuddycam.target', text)
+        self.assertIn('exec "$SYSTEMCTL" stop pibuddycam-provisioning.service', text)
+        self.assertIn('exec "$SYSTEMCTL" start pibuddycam-updater-install.service', text)
+        self.assertIn('exec "$SYSTEMCTL" start pibuddycam-updater.service', text)
         self.assertIn('exec "$SYSTEMCTL" reboot', text)
         self.assertIn(
-            '"$SYSTEMCTL" restart rpicam-source.service prusa-ha-rtsp.service',
+            '"$SYSTEMCTL" restart rpicam-source.service pibuddycam-ha-rtsp.service',
             text,
         )
         self.assertIn(
-            'exec "$SYSTEMCTL" try-restart prusa-rtsp.service', text
+            'exec "$SYSTEMCTL" try-restart pibuddycam-rtsp.service', text
         )
         self.assertNotIn('\n      exec systemctl', text)
 
@@ -123,20 +123,20 @@ class PrusaPrivAssetTests(unittest.TestCase):
 class UpdaterUnitBoundaryTests(unittest.TestCase):
     """WP-UI7/AC-15: the helper invokes the authoritative existing units.
 
-    The repository's ``prusa-updater.service`` (``check``) and
-    ``prusa-updater-install.service`` (``install``) are the fixed signed-update
+    The repository's ``pibuddycam-updater.service`` (``check``) and
+    ``pibuddycam-updater-install.service`` (``install``) are the fixed signed-update
     path; the helper must never invent a different unit or command.
     """
 
     def setUp(self):
-        self.helper = PRUSA_PRIV.read_text(encoding='utf-8')
+        self.helper = PIBUDDYCAM_PRIV.read_text(encoding='utf-8')
         self.systemd = REPO / 'pi-impersonator' / 'systemd'
 
     def test_check_update_starts_the_report_only_check_unit(self):
         block = self.helper.split('check-update)', 1)[1].split(';;', 1)[0]
-        self.assertIn('start prusa-updater.service', block)
-        self.assertNotIn('prusa-updater-install', block)
-        unit = (self.systemd / 'prusa-updater.service').read_text(encoding='utf-8')
+        self.assertIn('start pibuddycam-updater.service', block)
+        self.assertNotIn('pibuddycam-updater-install', block)
+        unit = (self.systemd / 'pibuddycam-updater.service').read_text(encoding='utf-8')
         exec_lines = [
             line for line in unit.splitlines() if line.startswith('ExecStart=')
         ]
@@ -145,8 +145,8 @@ class UpdaterUnitBoundaryTests(unittest.TestCase):
 
     def test_install_update_starts_the_signed_install_unit(self):
         block = self.helper.split('install-update)', 1)[1].split(';;', 1)[0]
-        self.assertIn('start prusa-updater-install.service', block)
-        unit = (self.systemd / 'prusa-updater-install.service').read_text(
+        self.assertIn('start pibuddycam-updater-install.service', block)
+        unit = (self.systemd / 'pibuddycam-updater-install.service').read_text(
             encoding='utf-8')
         exec_lines = [
             line for line in unit.splitlines() if line.startswith('ExecStart=')
@@ -163,7 +163,7 @@ class SudoersAssetTests(unittest.TestCase):
     def test_rule_grants_only_the_helper(self):
         text = SUDOERS.read_text(encoding='utf-8')
         self.assertIn(
-            'prusa-cam ALL=(root) NOPASSWD: /usr/libexec/prusa-cam/prusa-priv',
+            'pibuddycam ALL=(root) NOPASSWD: /usr/libexec/pibuddycam/pibuddycam-priv',
             text,
         )
         grant = text.split('NOPASSWD:', 1)[1]
@@ -172,10 +172,10 @@ class SudoersAssetTests(unittest.TestCase):
 
     def test_rule_pins_env_reset_and_secure_path(self):
         # The privilege boundary must not depend on the base image's global sudo
-        # defaults: env_reset blocks PRUSA_CAM_APP_ROOT/PATH injection.
+        # defaults: env_reset blocks PIBUDDYCAM_APP_ROOT/PATH injection.
         text = SUDOERS.read_text(encoding='utf-8')
-        self.assertIn('Defaults:prusa-cam env_reset', text)
-        self.assertIn('Defaults:prusa-cam secure_path=', text)
+        self.assertIn('Defaults:pibuddycam env_reset', text)
+        self.assertIn('Defaults:pibuddycam secure_path=', text)
 
     def test_visudo_accepts_the_file(self):
         visudo = shutil.which('visudo')
@@ -191,7 +191,7 @@ class SudoersAssetTests(unittest.TestCase):
             encoding='utf-8'
         )
         self.assertIn('-o root -g root -m 0440', installer)
-        self.assertIn('/etc/sudoers.d/prusa-cam', installer)
+        self.assertIn('/etc/sudoers.d/pibuddycam', installer)
         self.assertIn('visudo -cf', installer)
 
 

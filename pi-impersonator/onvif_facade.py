@@ -66,7 +66,7 @@ class OnvifContext:
     serial: str
     firmware: str
     manufacturer: str = 'Niceboy'
-    model: str = 'Buddy3D-C1'
+    model: str = 'PiBuddyCam'
     http_port: int = 80
     rtsp_port: int = 8555
     frame_rate: int = 30
@@ -75,8 +75,8 @@ class OnvifContext:
     @classmethod
     def create(cls, state, ipv4, mac, firmware, stable_seed=''):
         normalized = normalize_mac(mac)
-        seed = normalized or str(stable_seed) or 'prusa-camera-fallback'
-        endpoint_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f'prusa-camera:{seed}')
+        seed = normalized or str(stable_seed) or 'pibuddycamera-fallback'
+        endpoint_uuid = uuid.uuid5(uuid.NAMESPACE_URL, f'pibuddycam:{seed}')
         exposed_mac = normalized or _pseudo_mac(endpoint_uuid)
         serial = normalized.replace(':', '') if normalized else endpoint_uuid.hex
         return cls(state, ipv4, exposed_mac, endpoint_uuid, serial, firmware)

@@ -31,12 +31,12 @@ persisted provisioning state and on the live libcamera owner:
 * probing is allowed only in the pre-runtime states
   ``factory``, ``storage_ready``, ``camera_validated``, ``unclaimed`` and
   ``claimed``;
-* probing is denied while ``rpicam-source``/``prusa-cam`` are running
+* probing is denied while ``rpicam-source``/``pibuddycam`` are running
   (``camera_running``), because libcamera has a single consumer and a second
   ``rpicam-vid`` owner would corrupt the stream.
 
 The setup service must stop and release libcamera *before*
-``prusa-camera.target`` starts ``rpicam-source.service``. No feature may create
+``pibuddycam.target`` starts ``rpicam-source.service``. No feature may create
 a second ``rpicam-vid`` process while the source service is active.
 
 Secret hygiene
@@ -50,7 +50,7 @@ import logging
 import re
 import subprocess
 
-log = logging.getLogger('prusa-cam.camera_probe')
+log = logging.getLogger('pibuddycam.camera_probe')
 
 #: Bounded wall-clock timeouts for every command this module runs.
 LIST_TIMEOUT_SECONDS = 10.0
@@ -333,7 +333,7 @@ def sensor_handoff_allowed(state, camera_running):
 
     Returns ``(allowed, reason)``. Probing is allowed only in a pre-runtime
     provisioning state *and* while no live libcamera owner is running. The
-    setup service must stop before ``prusa-camera.target`` starts
+    setup service must stop before ``pibuddycam.target`` starts
     ``rpicam-source.service``; no second ``rpicam-vid`` may run concurrently.
     """
     if state not in PRE_RUNTIME_STATES:

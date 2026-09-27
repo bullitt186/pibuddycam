@@ -92,15 +92,15 @@ class ResolveServerTlsTests(unittest.TestCase):
 
 class NamingTests(unittest.TestCase):
     def test_san_entries_cover_canonical_and_local(self):
-        entries = admin_tls._san_entries(['buddy3d-abc123'])
-        self.assertIn('DNS:buddy3d-abc123', entries)
-        self.assertIn('DNS:buddy3d-abc123.local', entries)
+        entries = admin_tls._san_entries(['pibuddycam-abc123'])
+        self.assertIn('DNS:pibuddycam-abc123', entries)
+        self.assertIn('DNS:pibuddycam-abc123.local', entries)
         self.assertIn('DNS:localhost', entries)
         self.assertIn('IP:127.0.0.1', entries)
 
     def test_common_name_falls_back_to_localhost(self):
-        self.assertEqual(admin_tls._common_name(['buddy3d-abc123']),
-                         'buddy3d-abc123.local')
+        self.assertEqual(admin_tls._common_name(['pibuddycam-abc123']),
+                         'pibuddycam-abc123.local')
         self.assertEqual(admin_tls._common_name([]), 'localhost')
 
     def test_label_sanitizes_shell_metacharacters(self):
@@ -122,7 +122,7 @@ class NamingTests(unittest.TestCase):
             candidates = admin_tls.hostname_candidates(str(device))
         self.assertIn('mycamera', candidates)
         self.assertTrue(
-            any(name.startswith('buddy3d-') for name in candidates), candidates)
+            any(name.startswith('pibuddycam-') for name in candidates), candidates)
 
 
 class EnsureMockTests(unittest.TestCase):
@@ -149,10 +149,10 @@ class EnsureMockTests(unittest.TestCase):
         calls = []
         chowns = []
         admin_tls.ensure(
-            'prusa-cam',
+            'pibuddycam',
             tls_dir=self.tls_dir,
             env_path=self.env_path,
-            hostnames=['buddy3d-abc123'],
+            hostnames=['pibuddycam-abc123'],
             openssl='/usr/bin/openssl',
             runner=self._fake_runner(calls),
             chown=lambda p, uid, gid: chowns.append((p, uid, gid)),
@@ -165,7 +165,7 @@ class EnsureMockTests(unittest.TestCase):
         self.assertIn('-addext', cmd)
         san = cmd[cmd.index('-addext') + 1]
         self.assertIn('subjectAltName=', san)
-        self.assertIn('DNS:buddy3d-abc123.local', san)
+        self.assertIn('DNS:pibuddycam-abc123.local', san)
 
         key = os.path.join(self.tls_dir, 'admin.key')
         cert = os.path.join(self.tls_dir, 'admin.crt')
@@ -181,14 +181,14 @@ class EnsureMockTests(unittest.TestCase):
     def test_tls_dir_is_chowned_to_service_on_generation(self):
         # Review-blocking defect: pi-persist runs as root, so the durable TLS
         # directory it creates must be handed to the service account or
-        # prusa-admin cannot traverse it.
+        # pibuddycam-admin cannot traverse it.
         calls = []
         chowns = []
         admin_tls.ensure(
-            'prusa-cam',
+            'pibuddycam',
             tls_dir=self.tls_dir,
             env_path=self.env_path,
-            hostnames=['buddy3d-abc123'],
+            hostnames=['pibuddycam-abc123'],
             openssl='/usr/bin/openssl',
             runner=self._fake_runner(calls),
             chown=lambda p, uid, gid: chowns.append((p, uid, gid)),
@@ -206,10 +206,10 @@ class EnsureMockTests(unittest.TestCase):
         chowns = []
         with patch.object(admin_tls, '_keypair_reusable', return_value=True):
             admin_tls.ensure(
-                'prusa-cam',
+                'pibuddycam',
                 tls_dir=self.tls_dir,
                 env_path=self.env_path,
-                hostnames=['buddy3d-abc123'],
+                hostnames=['pibuddycam-abc123'],
                 openssl='/usr/bin/openssl',
                 runner=self._fake_runner(calls),
                 chown=lambda p, uid, gid: chowns.append((p, uid, gid)),
@@ -228,10 +228,10 @@ class EnsureMockTests(unittest.TestCase):
         chowns = []
         with patch.object(admin_tls, '_keypair_reusable', return_value=True):
             admin_tls.ensure(
-                'prusa-cam',
+                'pibuddycam',
                 tls_dir=self.tls_dir,
                 env_path=self.env_path,
-                hostnames=['buddy3d-abc123'],
+                hostnames=['pibuddycam-abc123'],
                 openssl='/usr/bin/openssl',
                 runner=self._fake_runner([]),
                 chown=lambda p, uid, gid: chowns.append((p, uid, gid)),
@@ -243,7 +243,7 @@ class EnsureMockTests(unittest.TestCase):
     def test_hostile_hostname_cannot_break_out_of_argv(self):
         calls = []
         admin_tls.ensure(
-            'prusa-cam',
+            'pibuddycam',
             tls_dir=self.tls_dir,
             env_path=self.env_path,
             hostnames=['evil;touch /tmp/pwned'],
@@ -261,10 +261,10 @@ class EnsureMockTests(unittest.TestCase):
     def test_missing_openssl_raises_and_writes_nothing(self):
         with self.assertRaises(admin_tls.TlsError):
             admin_tls.ensure(
-                'prusa-cam',
+                'pibuddycam',
                 tls_dir=self.tls_dir,
                 env_path=self.env_path,
-                hostnames=['buddy3d-abc'],
+                hostnames=['pibuddycam-abc'],
                 openssl=None,
                 which=lambda name: None,
                 chown=lambda p, uid, gid: None,
@@ -275,10 +275,10 @@ class EnsureMockTests(unittest.TestCase):
     def test_openssl_failure_raises_and_writes_nothing(self):
         with self.assertRaises(admin_tls.TlsError):
             admin_tls.ensure(
-                'prusa-cam',
+                'pibuddycam',
                 tls_dir=self.tls_dir,
                 env_path=self.env_path,
-                hostnames=['buddy3d-abc'],
+                hostnames=['pibuddycam-abc'],
                 openssl='/usr/bin/openssl',
                 runner=self._fake_runner([], returncode=1),
                 chown=lambda p, uid, gid: None,
@@ -296,7 +296,7 @@ class EnsureMockTests(unittest.TestCase):
             admin_tls._keypair_reusable(
                 os.path.join(self.tls_dir, 'admin.crt'),
                 os.path.join(self.tls_dir, 'admin.key'),
-                ['buddy3d-abc'],
+                ['pibuddycam-abc'],
                 '/usr/bin/openssl',
                 lambda *a, **k: subprocess.CompletedProcess([], 0, '', ''),
             )
@@ -315,7 +315,7 @@ class EnsureRealOpensslTests(unittest.TestCase):
 
     def _ensure(self, hostnames):
         return admin_tls.ensure(
-            'prusa-cam',
+            'pibuddycam',
             tls_dir=self.tls_dir,
             env_path=self.env_path,
             hostnames=hostnames,
@@ -325,7 +325,7 @@ class EnsureRealOpensslTests(unittest.TestCase):
         )
 
     def test_generates_valid_self_signed_cert_with_san(self):
-        self.assertTrue(self._ensure(['buddy3d-abc123']))
+        self.assertTrue(self._ensure(['pibuddycam-abc123']))
         cert = os.path.join(self.tls_dir, 'admin.crt')
         key = os.path.join(self.tls_dir, 'admin.key')
         self.assertEqual(_mode(key), 0o600)
@@ -333,33 +333,33 @@ class EnsureRealOpensslTests(unittest.TestCase):
         self.assertEqual(_mode(self.env_path), 0o640)
         check = subprocess.run(
             [shutil.which('openssl'), 'x509', '-in', cert, '-noout',
-             '-checkhost', 'buddy3d-abc123.local'],
+             '-checkhost', 'pibuddycam-abc123.local'],
             capture_output=True, text=True,
         )
         self.assertEqual(check.returncode, 0, check.stderr)
 
     def test_second_boot_reuses_the_same_keypair(self):
-        self._ensure(['buddy3d-abc123'])
+        self._ensure(['pibuddycam-abc123'])
         cert = os.path.join(self.tls_dir, 'admin.crt')
         key = os.path.join(self.tls_dir, 'admin.key')
         first_cert = Path(cert).read_bytes()
         first_key = Path(key).read_bytes()
-        self._ensure(['buddy3d-abc123'])
+        self._ensure(['pibuddycam-abc123'])
         self.assertEqual(Path(cert).read_bytes(), first_cert)
         self.assertEqual(Path(key).read_bytes(), first_key)
 
     def test_lan_ip_change_does_not_regenerate(self):
         # Requirement 4: the SAN is hostname-based, so an IP change must reuse.
-        self._ensure(['buddy3d-abc123'])
+        self._ensure(['pibuddycam-abc123'])
         cert = os.path.join(self.tls_dir, 'admin.crt')
         first = Path(cert).read_bytes()
-        self._ensure(['buddy3d-abc123'])
+        self._ensure(['pibuddycam-abc123'])
         self.assertEqual(Path(cert).read_bytes(), first)
 
     def test_repair_restores_dir_and_preserves_existing_keypair(self):
         # Acceptance 2/3: a mis-moded directory is repaired on the next ensure
         # while a valid keypair is reused byte-for-byte, never regenerated.
-        self._ensure(['buddy3d-abc123'])
+        self._ensure(['pibuddycam-abc123'])
         cert = os.path.join(self.tls_dir, 'admin.crt')
         key = os.path.join(self.tls_dir, 'admin.key')
         first_cert = Path(cert).read_bytes()
@@ -367,10 +367,10 @@ class EnsureRealOpensslTests(unittest.TestCase):
         os.chmod(self.tls_dir, 0o700)
         chowns = []
         admin_tls.ensure(
-            'prusa-cam',
+            'pibuddycam',
             tls_dir=self.tls_dir,
             env_path=self.env_path,
-            hostnames=['buddy3d-abc123'],
+            hostnames=['pibuddycam-abc123'],
             openssl=shutil.which('openssl'),
             chown=lambda p, uid, gid: chowns.append((p, uid, gid)),
             service_ids=(1234, 1234),
@@ -381,20 +381,20 @@ class EnsureRealOpensslTests(unittest.TestCase):
         self.assertEqual(Path(key).read_bytes(), first_key)
 
     def test_hostname_change_regenerates(self):
-        self._ensure(['buddy3d-aaa111'])
+        self._ensure(['pibuddycam-aaa111'])
         cert = os.path.join(self.tls_dir, 'admin.crt')
         first = Path(cert).read_bytes()
-        self._ensure(['buddy3d-bbb222'])
+        self._ensure(['pibuddycam-bbb222'])
         self.assertNotEqual(Path(cert).read_bytes(), first)
         check = subprocess.run(
             [shutil.which('openssl'), 'x509', '-in', cert, '-noout',
-             '-checkhost', 'buddy3d-bbb222.local'],
+             '-checkhost', 'pibuddycam-bbb222.local'],
             capture_output=True, text=True,
         )
         self.assertEqual(check.returncode, 0, check.stderr)
 
     def test_admin_env_points_at_the_durable_keypair(self):
-        self._ensure(['buddy3d-abc123'])
+        self._ensure(['pibuddycam-abc123'])
         text = Path(self.env_path).read_text(encoding='utf-8')
         self.assertEqual(
             text,
@@ -421,7 +421,7 @@ class AdminAppFailClosedWiringTests(unittest.TestCase):
 
     def test_admin_module_has_no_optional_tls_wording(self):
         # The unit comment must not claim TLS is optional in admin mode.
-        unit = (PI_DIR / 'systemd' / 'prusa-admin.service').read_text(
+        unit = (PI_DIR / 'systemd' / 'pibuddycam-admin.service').read_text(
             encoding='utf-8')
         self.assertIn('TLS is mandatory', unit)
         self.assertNotIn('TLS is optional', unit)
@@ -436,7 +436,7 @@ class PersistProvisioningTests(unittest.TestCase):
             side_effect=admin_tls.TlsError('no openssl'),
         ):
             # Must not raise: the camera stack is not held hostage to admin TLS.
-            self.assertIsNone(persist_restore._provision_admin_tls('prusa-cam'))
+            self.assertIsNone(persist_restore._provision_admin_tls('pibuddycam'))
 
     def test_provision_calls_ensure_with_service_user(self):
         with patch.object(persist_restore.admin_tls, 'ensure') as ensure:

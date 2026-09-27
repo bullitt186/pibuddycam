@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline validator for the Buddy3D appliance image (AC-13).
+# Offline validator for the PiBuddyCam appliance image (AC-13).
 #
 # Usage:
 #   validate-image.sh --image <file> [--mount-root <dir>] [--root-image <root.ext4>]
@@ -11,7 +11,7 @@
 #
 #   A. Partition-table checks (no root): `sfdisk --json` reads the image file
 #      directly and asserts the documented MBR layout from
-#      image/layer/genimage.cfg.in.ext4 / image/config/buddy3d-pi-zero2w.yaml:
+#      image/layer/genimage.cfg.in.ext4 / image/config/pibuddycam-pi-zero2w.yaml:
 #      exactly 3 partitions BOOT (0xC, bootable) + ROOT (0x83) + PERSIST
 #      (0x83, last), sizes within an 8 MiB alignment tolerance of
 #      512 MiB / 4 GiB / 512 MiB, and (with --disksig) the configured MBR disk
@@ -35,7 +35,7 @@
 #        --boot-image <boot.vfat>     read cmdline.txt via mtools (mtype/mdir)
 #                                     and assert overlayroot= is set;
 #        --persist-image <persist.ext4> list the seeded /data layout via
-#                                     debugfs and assert the prusa-cam uid/gid.
+#                                     debugfs and assert the pibuddycam uid/gid.
 #      When either image is absent the corresponding checks SKIP (they are
 #      optional inputs; see --strict below).
 #
@@ -82,7 +82,7 @@ WARN=0
 
 usage() {
    cat <<'EOF'
-Offline Buddy3D appliance image validator (AC-13).
+Offline PiBuddyCam appliance image validator (AC-13).
 
 Options:
   --image <file>             uncompressed or .xz image to inspect (required)
@@ -287,12 +287,12 @@ else
       required_units+=("$1")
    }
    for unit in \
-      rpicam-source.service prusa-rtsp.service prusa-ha-rtsp.service \
-      prusa-cam.service pi-persist.service prusa-data-ready.service \
-      data-ready.target bootlog.service prusa-data-grow.service \
-      prusa-camera.target prusa-boot-mode.service \
-      prusa-updater.service prusa-updater.timer \
-      prusa-updater-install.service; do
+      rpicam-source.service pibuddycam-rtsp.service pibuddycam-ha-rtsp.service \
+      pibuddycam.service pi-persist.service pibuddycam-data-ready.service \
+      data-ready.target bootlog.service pibuddycam-data-grow.service \
+      pibuddycam.target pibuddycam-boot-mode.service \
+      pibuddycam-updater.service pibuddycam-updater.timer \
+      pibuddycam-updater-install.service; do
       add_unit "$unit"
    done
    if [ -d "$REPO_UNITS" ]; then
@@ -320,7 +320,7 @@ else
       unit_values "$1" "$2" | tr ' ' '\n' | grep -qxF "$3"
    }
 
-   for unit in rpicam-source.service prusa-cam.service prusa-rtsp.service prusa-ha-rtsp.service; do
+   for unit in rpicam-source.service pibuddycam.service pibuddycam-rtsp.service pibuddycam-ha-rtsp.service; do
       file="$SYSTEMD_DIR/$unit"
       [ -f "$file" ] || continue
       if unit_has "$file" After data-ready.target && unit_has "$file" Requires data-ready.target; then
@@ -333,326 +333,326 @@ else
    persist_file="$SYSTEMD_DIR/pi-persist.service"
    if [ -f "$persist_file" ]; then
       persist_ok=1
-      for token in data-ready.target rpicam-source.service prusa-cam.service \
-                   prusa-rtsp.service prusa-ha-rtsp.service prusa-admin.service; do
+      for token in data-ready.target rpicam-source.service pibuddycam.service \
+                   pibuddycam-rtsp.service pibuddycam-ha-rtsp.service pibuddycam-admin.service; do
          unit_has "$persist_file" Before "$token" || persist_ok=0
       done
       if [ "$persist_ok" = 1 ]; then
          report ok "pi-persist.service is Before= the data-ready gate, camera and admin units"
       else
-         report fail "pi-persist.service must be Before= data-ready.target, the camera units and prusa-admin.service"
+         report fail "pi-persist.service must be Before= data-ready.target, the camera units and pibuddycam-admin.service"
       fi
    fi
 
-   grow_file="$SYSTEMD_DIR/prusa-data-grow.service"
+   grow_file="$SYSTEMD_DIR/pibuddycam-data-grow.service"
    if [ -f "$grow_file" ]; then
       if unit_has "$grow_file" Before data-ready.target; then
-         report ok "prusa-data-grow.service is Before= data-ready.target"
+         report ok "pibuddycam-data-grow.service is Before= data-ready.target"
       else
-         report fail "prusa-data-grow.service must be Before= data-ready.target"
+         report fail "pibuddycam-data-grow.service must be Before= data-ready.target"
       fi
    fi
 
-    target_file="$SYSTEMD_DIR/prusa-camera.target"
+    target_file="$SYSTEMD_DIR/pibuddycam.target"
     if [ -f "$target_file" ]; then
        if unit_has "$target_file" After data-ready.target \
           && unit_has "$target_file" Requires data-ready.target; then
-          report ok "prusa-camera.target is After= and Requires= data-ready.target"
+          report ok "pibuddycam.target is After= and Requires= data-ready.target"
        else
-          report fail "prusa-camera.target must be After= and Requires= data-ready.target"
+          report fail "pibuddycam.target must be After= and Requires= data-ready.target"
        fi
     fi
 
     # --- boot-mode gating: unclaimed must not start the camera (AC-12/AC-17) -
-    # prusa-boot-mode.service is the only enabled runtime selector; it starts
-    # prusa-provisioning.service while unclaimed and prusa-camera.target after
+    # pibuddycam-boot-mode.service is the only enabled runtime selector; it starts
+    # pibuddycam-provisioning.service while unclaimed and pibuddycam.target after
     # claim. Enabling the camera units or the target directly would start the
     # camera pipeline before the device is claimed.
-    boot_unit="$SYSTEMD_DIR/prusa-boot-mode.service"
+    boot_unit="$SYSTEMD_DIR/pibuddycam-boot-mode.service"
     if [ -f "$boot_unit" ]; then
-       report ok "prusa-boot-mode.service is installed"
+       report ok "pibuddycam-boot-mode.service is installed"
        if grep -q 'boot_mode.py' "$boot_unit"; then
-          report ok "prusa-boot-mode.service runs boot_mode.py"
+          report ok "pibuddycam-boot-mode.service runs boot_mode.py"
        else
-          report fail "prusa-boot-mode.service must run boot_mode.py"
+          report fail "pibuddycam-boot-mode.service must run boot_mode.py"
        fi
        if unit_has "$boot_unit" After data-ready.target; then
-          report ok "prusa-boot-mode.service is After= data-ready.target"
+          report ok "pibuddycam-boot-mode.service is After= data-ready.target"
        else
-          report fail "prusa-boot-mode.service must be After= data-ready.target"
+          report fail "pibuddycam-boot-mode.service must be After= data-ready.target"
        fi
     else
-       report fail "prusa-boot-mode.service is missing"
+       report fail "pibuddycam-boot-mode.service is missing"
     fi
 
     wants_dir="$SYSTEMD_DIR/multi-user.target.wants"
-    camera_wants_dir="$SYSTEMD_DIR/prusa-camera.target.wants"
+    camera_wants_dir="$SYSTEMD_DIR/pibuddycam.target.wants"
 
-    if [ -L "$wants_dir/prusa-boot-mode.service" ]; then
-       report ok "prusa-boot-mode.service is enabled at multi-user.target"
+    if [ -L "$wants_dir/pibuddycam-boot-mode.service" ]; then
+       report ok "pibuddycam-boot-mode.service is enabled at multi-user.target"
     else
-       report fail "prusa-boot-mode.service must be enabled at multi-user.target"
+       report fail "pibuddycam-boot-mode.service must be enabled at multi-user.target"
     fi
 
-    if [ -f "$SYSTEMD_DIR/prusa-provisioning.service" ]; then
-       report ok "prusa-provisioning.service is installed"
-       if unit_has "$SYSTEMD_DIR/prusa-provisioning.service" Conflicts prusa-camera.target; then
-          report ok "prusa-provisioning.service Conflicts= prusa-camera.target"
+    if [ -f "$SYSTEMD_DIR/pibuddycam-provisioning.service" ]; then
+       report ok "pibuddycam-provisioning.service is installed"
+       if unit_has "$SYSTEMD_DIR/pibuddycam-provisioning.service" Conflicts pibuddycam.target; then
+          report ok "pibuddycam-provisioning.service Conflicts= pibuddycam.target"
        else
-          report fail "prusa-provisioning.service must Conflicts= prusa-camera.target"
+          report fail "pibuddycam-provisioning.service must Conflicts= pibuddycam.target"
        fi
     else
-       report fail "prusa-provisioning.service is missing"
+       report fail "pibuddycam-provisioning.service is missing"
     fi
-    if [ -L "$wants_dir/prusa-provisioning.service" ]; then
-       report fail "prusa-provisioning.service must NOT be enabled (started by boot_mode)"
+    if [ -L "$wants_dir/pibuddycam-provisioning.service" ]; then
+       report fail "pibuddycam-provisioning.service must NOT be enabled (started by boot_mode)"
     else
-       report ok "prusa-provisioning.service is not enabled"
+       report ok "pibuddycam-provisioning.service is not enabled"
     fi
 
-    if [ -L "$wants_dir/prusa-camera.target" ]; then
-       report fail "prusa-camera.target must NOT be enabled (started by boot_mode)"
+    if [ -L "$wants_dir/pibuddycam.target" ]; then
+       report fail "pibuddycam.target must NOT be enabled (started by boot_mode)"
     else
-       report ok "prusa-camera.target is not enabled"
+       report ok "pibuddycam.target is not enabled"
     fi
 
     # WP-R4b: the updater timer is enabled at multi-user.target; its oneshot
     # service is installed and triggered by the timer (no [Install] section), so
     # it must NOT be separately enabled. The updater must never be Requires=
     # pulled into camera startup (AC-27 isolation).
-    if [ -L "$wants_dir/prusa-updater.timer" ]; then
-       report ok "prusa-updater.timer is enabled at multi-user.target"
+    if [ -L "$wants_dir/pibuddycam-updater.timer" ]; then
+       report ok "pibuddycam-updater.timer is enabled at multi-user.target"
     else
-       report fail "prusa-updater.timer must be enabled at multi-user.target"
+       report fail "pibuddycam-updater.timer must be enabled at multi-user.target"
     fi
-    if [ -L "$wants_dir/prusa-updater.service" ]; then
-       report fail "prusa-updater.service must not be enabled (triggered by the timer)"
+    if [ -L "$wants_dir/pibuddycam-updater.service" ]; then
+       report fail "pibuddycam-updater.service must not be enabled (triggered by the timer)"
     else
-       report ok "prusa-updater.service is not separately enabled"
+       report ok "pibuddycam-updater.service is not separately enabled"
     fi
-    if [ -f "$SYSTEMD_DIR/prusa-updater.service" ]; then
-       if grep -q 'updater_install.py' "$SYSTEMD_DIR/prusa-updater.service"; then
-          report ok "prusa-updater.service runs updater_install.py"
+    if [ -f "$SYSTEMD_DIR/pibuddycam-updater.service" ]; then
+       if grep -q 'updater_install.py' "$SYSTEMD_DIR/pibuddycam-updater.service"; then
+          report ok "pibuddycam-updater.service runs updater_install.py"
        else
-          report fail "prusa-updater.service must run updater_install.py"
+          report fail "pibuddycam-updater.service must run updater_install.py"
        fi
-       if unit_has "$SYSTEMD_DIR/prusa-updater.service" Requires data-ready.target; then
-          report ok "prusa-updater.service Requires= data-ready.target"
+       if unit_has "$SYSTEMD_DIR/pibuddycam-updater.service" Requires data-ready.target; then
+          report ok "pibuddycam-updater.service Requires= data-ready.target"
        else
-          report fail "prusa-updater.service must Require= data-ready.target"
+          report fail "pibuddycam-updater.service must Require= data-ready.target"
        fi
        # AC-32: the trust anchor is fixed and the manifest source must not come
-       # from a service-writable path. The updater reads /etc/prusa-updater.conf
-       # (root:root 0644); /etc/prusa-cam is writable by prusa-cam and is never a
+       # from a service-writable path. The updater reads /etc/pibuddycam-updater.conf
+       # (root:root 0644); /etc/pibuddycam is writable by pibuddycam and is never a
        # legitimate EnvironmentFile.
-       if grep -q 'PRUSA_UPDATE_PUBLIC_KEY' "$SYSTEMD_DIR/prusa-updater.service"; then
-          report fail "prusa-updater.service must not allow a public-key env override"
+       if grep -q 'PIBUDDYCAM_UPDATE_PUBLIC_KEY' "$SYSTEMD_DIR/pibuddycam-updater.service"; then
+          report fail "pibuddycam-updater.service must not allow a public-key env override"
        else
-          report ok "prusa-updater.service has no public-key env override"
+          report ok "pibuddycam-updater.service has no public-key env override"
        fi
-       if grep -Eq 'EnvironmentFile=.*(/etc/prusa-cam/|updater\.env)' \
-             "$SYSTEMD_DIR/prusa-updater.service"; then
-          report fail "prusa-updater.service must not read a service-writable EnvironmentFile"
+       if grep -Eq 'EnvironmentFile=.*(/etc/pibuddycam/|updater\.env)' \
+             "$SYSTEMD_DIR/pibuddycam-updater.service"; then
+          report fail "pibuddycam-updater.service must not read a service-writable EnvironmentFile"
        else
-          report ok "prusa-updater.service has no service-writable EnvironmentFile"
+          report ok "pibuddycam-updater.service has no service-writable EnvironmentFile"
        fi
-       if grep -q 'updater_install.py recover' "$SYSTEMD_DIR/prusa-updater.service"; then
-          report ok "prusa-updater.service recovers interrupted state before check"
+       if grep -q 'updater_install.py recover' "$SYSTEMD_DIR/pibuddycam-updater.service"; then
+          report ok "pibuddycam-updater.service recovers interrupted state before check"
        else
-          report fail "prusa-updater.service must run 'updater_install.py recover' before check"
+          report fail "pibuddycam-updater.service must run 'updater_install.py recover' before check"
        fi
     else
-       report fail "prusa-updater.service is missing"
+       report fail "pibuddycam-updater.service is missing"
     fi
-    if [ -f "$SYSTEMD_DIR/prusa-updater.timer" ]; then
-       if unit_has "$SYSTEMD_DIR/prusa-updater.timer" Unit prusa-updater.service; then
-          report ok "prusa-updater.timer triggers prusa-updater.service"
+    if [ -f "$SYSTEMD_DIR/pibuddycam-updater.timer" ]; then
+       if unit_has "$SYSTEMD_DIR/pibuddycam-updater.timer" Unit pibuddycam-updater.service; then
+          report ok "pibuddycam-updater.timer triggers pibuddycam-updater.service"
        else
-          report fail "prusa-updater.timer must trigger prusa-updater.service"
+          report fail "pibuddycam-updater.timer must trigger pibuddycam-updater.service"
        fi
     else
-       report fail "prusa-updater.timer is missing"
+       report fail "pibuddycam-updater.timer is missing"
     fi
 
     # WP-R4c/AC-31: the install oneshot runs the full signed install, is gated on
     # data-ready.target, and is triggered ONLY via the fixed-verb helper
-    # (``prusa-priv install-update``). It must never be enabled: no [Install]
-    # section and no enable symlink at multi-user.target or prusa-camera.target.
-    install_unit="$SYSTEMD_DIR/prusa-updater-install.service"
+    # (``pibuddycam-priv install-update``). It must never be enabled: no [Install]
+    # section and no enable symlink at multi-user.target or pibuddycam.target.
+    install_unit="$SYSTEMD_DIR/pibuddycam-updater-install.service"
     if [ -f "$install_unit" ]; then
-       report ok "prusa-updater-install.service is installed"
+       report ok "pibuddycam-updater-install.service is installed"
        if grep -q 'updater_install.py install' "$install_unit"; then
-          report ok "prusa-updater-install.service runs updater_install.py install"
+          report ok "pibuddycam-updater-install.service runs updater_install.py install"
        else
-          report fail "prusa-updater-install.service must run 'updater_install.py install'"
+          report fail "pibuddycam-updater-install.service must run 'updater_install.py install'"
        fi
        if grep -q 'updater_install.py recover' "$install_unit"; then
-          report ok "prusa-updater-install.service recovers interrupted state before install"
+          report ok "pibuddycam-updater-install.service recovers interrupted state before install"
        else
-          report fail "prusa-updater-install.service must run 'updater_install.py recover' before install"
+          report fail "pibuddycam-updater-install.service must run 'updater_install.py recover' before install"
        fi
        if unit_has "$install_unit" Requires data-ready.target \
           && unit_has "$install_unit" After data-ready.target; then
-          report ok "prusa-updater-install.service is After= and Requires= data-ready.target"
+          report ok "pibuddycam-updater-install.service is After= and Requires= data-ready.target"
        else
-          report fail "prusa-updater-install.service must be After= and Requires= data-ready.target"
+          report fail "pibuddycam-updater-install.service must be After= and Requires= data-ready.target"
        fi
-       if [ -L "$wants_dir/prusa-updater-install.service" ] \
-          || [ -L "$camera_wants_dir/prusa-updater-install.service" ]; then
-          report fail "prusa-updater-install.service must not be enabled (triggered only via the helper)"
+       if [ -L "$wants_dir/pibuddycam-updater-install.service" ] \
+          || [ -L "$camera_wants_dir/pibuddycam-updater-install.service" ]; then
+          report fail "pibuddycam-updater-install.service must not be enabled (triggered only via the helper)"
        else
-          report ok "prusa-updater-install.service is not enabled"
+          report ok "pibuddycam-updater-install.service is not enabled"
        fi
        if [ -f "$target_file" ]; then
-          if unit_has "$target_file" Wants prusa-updater-install.service \
-             || unit_has "$target_file" Requires prusa-updater-install.service; then
-             report fail "prusa-camera.target must not pull prusa-updater-install.service"
+          if unit_has "$target_file" Wants pibuddycam-updater-install.service \
+             || unit_has "$target_file" Requires pibuddycam-updater-install.service; then
+             report fail "pibuddycam.target must not pull pibuddycam-updater-install.service"
           else
-             report ok "prusa-camera.target does not pull prusa-updater-install.service"
+             report ok "pibuddycam.target does not pull pibuddycam-updater-install.service"
           fi
        fi
-       # AC-32, same standard as prusa-updater.service: no public-key env
+       # AC-32, same standard as pibuddycam-updater.service: no public-key env
        # override and no service-writable EnvironmentFile (the root-owned
-       # /etc/prusa-updater.conf is the only config source).
-       if grep -q 'PRUSA_UPDATE_PUBLIC_KEY' "$install_unit"; then
-          report fail "prusa-updater-install.service must not allow a public-key env override"
+       # /etc/pibuddycam-updater.conf is the only config source).
+       if grep -q 'PIBUDDYCAM_UPDATE_PUBLIC_KEY' "$install_unit"; then
+          report fail "pibuddycam-updater-install.service must not allow a public-key env override"
        else
-          report ok "prusa-updater-install.service has no public-key env override"
+          report ok "pibuddycam-updater-install.service has no public-key env override"
        fi
-       if grep -q 'EnvironmentFile=.*/etc/prusa-cam' "$install_unit"; then
-          report fail "prusa-updater-install.service must not read a service-writable EnvironmentFile"
+       if grep -q 'EnvironmentFile=.*/etc/pibuddycam/' "$install_unit"; then
+          report fail "pibuddycam-updater-install.service must not read a service-writable EnvironmentFile"
        else
-          report ok "prusa-updater-install.service has no service-writable EnvironmentFile"
+          report ok "pibuddycam-updater-install.service has no service-writable EnvironmentFile"
        fi
     else
-       report fail "prusa-updater-install.service is missing"
+       report fail "pibuddycam-updater-install.service is missing"
     fi
 
-    # prusa-admin.service is bound to the camera runtime, never to
-    # multi-user.target: it is either enabled under prusa-camera.target.wants or
+    # pibuddycam-admin.service is bound to the camera runtime, never to
+    # multi-user.target: it is either enabled under pibuddycam.target.wants or
     # (because the installer does not enable it directly) carries
-    # [Install] WantedBy=prusa-camera.target. Either way it starts only after
-    # claim, when prusa-camera.target is selected.
-    admin_unit="$SYSTEMD_DIR/prusa-admin.service"
-    if [ -L "$wants_dir/prusa-admin.service" ]; then
-       report fail "prusa-admin.service must not be enabled at multi-user.target"
-    elif [ -L "$camera_wants_dir/prusa-admin.service" ] \
-         || unit_has "$admin_unit" WantedBy prusa-camera.target; then
-       report ok "prusa-admin.service is enabled under prusa-camera.target.wants"
+    # [Install] WantedBy=pibuddycam.target. Either way it starts only after
+    # claim, when pibuddycam.target is selected.
+    admin_unit="$SYSTEMD_DIR/pibuddycam-admin.service"
+    if [ -L "$wants_dir/pibuddycam-admin.service" ]; then
+       report fail "pibuddycam-admin.service must not be enabled at multi-user.target"
+    elif [ -L "$camera_wants_dir/pibuddycam-admin.service" ] \
+         || unit_has "$admin_unit" WantedBy pibuddycam.target; then
+       report ok "pibuddycam-admin.service is enabled under pibuddycam.target.wants"
     else
-       report fail "prusa-admin.service must be enabled under prusa-camera.target.wants"
+       report fail "pibuddycam-admin.service must be enabled under pibuddycam.target.wants"
     fi
 
     # H3: the admin UI must be pulled by the camera target directly (not only
     # via its own [Install] section), so it starts exactly when the camera
     # runtime is selected after claim.
-    if [ -f "$target_file" ] && unit_has "$target_file" Wants prusa-admin.service; then
-       report ok "prusa-camera.target Wants= prusa-admin.service"
+    if [ -f "$target_file" ] && unit_has "$target_file" Wants pibuddycam-admin.service; then
+       report ok "pibuddycam.target Wants= pibuddycam-admin.service"
     else
-       report fail "prusa-camera.target must Wants= prusa-admin.service"
+       report fail "pibuddycam.target must Wants= pibuddycam-admin.service"
     fi
 
     # Admin TLS (appliance image/security defect): the claimed console must read
     # the boot-provisioned env file for ADMIN_TLS_CERT/ADMIN_TLS_KEY. The setup
     # portal must stay plain HTTP on the hotspot address and never take TLS env.
     if [ -f "$admin_unit" ] \
-       && grep -q 'EnvironmentFile=-/etc/prusa-cam/admin.env' "$admin_unit"; then
-       report ok "prusa-admin.service reads the boot-provisioned /etc/prusa-cam/admin.env"
+       && grep -q 'EnvironmentFile=-/etc/pibuddycam/admin.env' "$admin_unit"; then
+       report ok "pibuddycam-admin.service reads the boot-provisioned /etc/pibuddycam/admin.env"
     else
-       report fail "prusa-admin.service must read /etc/prusa-cam/admin.env for ADMIN_TLS_*"
+       report fail "pibuddycam-admin.service must read /etc/pibuddycam/admin.env for ADMIN_TLS_*"
     fi
-    prov_unit="$SYSTEMD_DIR/prusa-provisioning.service"
+    prov_unit="$SYSTEMD_DIR/pibuddycam-provisioning.service"
     if [ -f "$prov_unit" ] \
        && grep -q 'ADMIN_MODE=setup' "$prov_unit" \
        && grep -q 'ADMIN_HOST=192.168.4.1' "$prov_unit" \
        && ! grep -q 'ADMIN_TLS_' "$prov_unit"; then
-       report ok "prusa-provisioning.service keeps the setup portal plain HTTP on 192.168.4.1"
+       report ok "pibuddycam-provisioning.service keeps the setup portal plain HTTP on 192.168.4.1"
     else
-       report fail "prusa-provisioning.service must keep the setup portal HTTP on 192.168.4.1"
+       report fail "pibuddycam-provisioning.service must keep the setup portal HTTP on 192.168.4.1"
     fi
 
     # WP-R4b/AC-27: the updater timer is optional and isolated. The camera
     # target Wants= it (available after claim) but must never Requires= it, so
     # an update failure cannot stop camera startup.
-    if [ -f "$target_file" ] && unit_has "$target_file" Wants prusa-updater.timer; then
-       report ok "prusa-camera.target Wants= prusa-updater.timer"
+    if [ -f "$target_file" ] && unit_has "$target_file" Wants pibuddycam-updater.timer; then
+       report ok "pibuddycam.target Wants= pibuddycam-updater.timer"
     else
-       report fail "prusa-camera.target must Wants= prusa-updater.timer"
+       report fail "pibuddycam.target must Wants= pibuddycam-updater.timer"
     fi
-    if [ -f "$target_file" ] && unit_has "$target_file" Requires prusa-updater.timer; then
-       report fail "prusa-camera.target must not Require= prusa-updater.timer"
+    if [ -f "$target_file" ] && unit_has "$target_file" Requires pibuddycam-updater.timer; then
+       report fail "pibuddycam.target must not Require= pibuddycam-updater.timer"
     else
-       report ok "prusa-camera.target does not Require= prusa-updater.timer"
+       report ok "pibuddycam.target does not Require= pibuddycam-updater.timer"
     fi
 
     # --- privileged helper + sudoers (B3) ----------------------------------
     # A root helper must never execute code the service account can write:
-    # /opt/prusa-cam stays root:root, the helper is root-owned and not
+    # /opt/pibuddycam stays root:root, the helper is root-owned and not
     # group/world-writable, and the sudoers rule is root:root 0440.
     passwd_file="$MOUNT_ROOT/etc/passwd"
     root_uid="$(awk -F: '$1=="root"{print $3; exit}' "$passwd_file" 2>/dev/null || true)"
     root_gid="$(awk -F: '$1=="root"{print $4; exit}' "$passwd_file" 2>/dev/null || true)"
-    prusa_uid="$(awk -F: '$1=="prusa-cam"{print $3; exit}' "$passwd_file" 2>/dev/null || true)"
-    prusa_gid="$(awk -F: '$1=="prusa-cam"{print $4; exit}' "$passwd_file" 2>/dev/null || true)"
+    prusa_uid="$(awk -F: '$1=="pibuddycam"{print $3; exit}' "$passwd_file" 2>/dev/null || true)"
+    prusa_gid="$(awk -F: '$1=="pibuddycam"{print $4; exit}' "$passwd_file" 2>/dev/null || true)"
     root_uid="${root_uid:-0}"
     root_gid="${root_gid:-0}"
 
-    helper="$MOUNT_ROOT/usr/libexec/prusa-cam/prusa-priv"
+    helper="$MOUNT_ROOT/usr/libexec/pibuddycam/pibuddycam-priv"
     if [ -f "$helper" ]; then
        helper_owner="$(stat -c '%u:%g' "$helper" 2>/dev/null || true)"
        helper_mode="$(stat -c '%a' "$helper" 2>/dev/null || true)"
        if [ -n "$prusa_uid" ] && [ "$prusa_uid" != "$root_uid" ] \
           && [ "$helper_owner" = "$prusa_uid:$prusa_gid" ]; then
-          report fail "prusa-priv must not be owned by prusa-cam ($helper_owner)"
+          report fail "pibuddycam-priv must not be owned by pibuddycam ($helper_owner)"
        elif [ "$helper_owner" != "$root_uid:$root_gid" ]; then
-          report fail "prusa-priv must be root:root (found ${helper_owner:-missing})"
+          report fail "pibuddycam-priv must be root:root (found ${helper_owner:-missing})"
        elif [ -n "$helper_mode" ] && [ $(( 0$helper_mode & 022 )) -ne 0 ]; then
-          report fail "prusa-priv must not be group/world-writable (mode $helper_mode)"
+          report fail "pibuddycam-priv must not be group/world-writable (mode $helper_mode)"
        else
-          report ok "prusa-priv is root:root and not group/world-writable"
+          report ok "pibuddycam-priv is root:root and not group/world-writable"
        fi
     else
-       report fail "prusa-priv helper is missing at /usr/libexec/prusa-cam/prusa-priv"
+       report fail "pibuddycam-priv helper is missing at /usr/libexec/pibuddycam/pibuddycam-priv"
     fi
 
-    sudoers="$MOUNT_ROOT/etc/sudoers.d/prusa-cam"
+    sudoers="$MOUNT_ROOT/etc/sudoers.d/pibuddycam"
     if [ -f "$sudoers" ]; then
        sudoers_mode="$(stat -c '%a' "$sudoers" 2>/dev/null || true)"
        sudoers_owner="$(stat -c '%u:%g' "$sudoers" 2>/dev/null || true)"
        if [ "$sudoers_mode" = "440" ] && [ "$sudoers_owner" = "$root_uid:$root_gid" ]; then
-          report ok "/etc/sudoers.d/prusa-cam is root:root mode 0440"
+          report ok "/etc/sudoers.d/pibuddycam is root:root mode 0440"
        else
-          report fail "/etc/sudoers.d/prusa-cam must be root:root mode 0440 (found ${sudoers_owner:-?} ${sudoers_mode:-?})"
+          report fail "/etc/sudoers.d/pibuddycam must be root:root mode 0440 (found ${sudoers_owner:-?} ${sudoers_mode:-?})"
        fi
        # The privilege boundary must not depend on the base image's global sudo
-       # defaults: pin env_reset (blocks PRUSA_CAM_APP_ROOT/PATH injection) and
+       # defaults: pin env_reset (blocks PIBUDDYCAM_APP_ROOT/PATH injection) and
        # secure_path, and grant only the fixed-verb helper.
-       if grep -qE '^[[:space:]]*Defaults:prusa-cam[[:space:]]+env_reset([[:space:]]|$)' "$sudoers" \
-          && grep -qE '^[[:space:]]*Defaults:prusa-cam[[:space:]]+secure_path=' "$sudoers" \
-          && grep -qF '/usr/libexec/prusa-cam/prusa-priv' "$sudoers"; then
+       if grep -qE '^[[:space:]]*Defaults:pibuddycam[[:space:]]+env_reset([[:space:]]|$)' "$sudoers" \
+          && grep -qE '^[[:space:]]*Defaults:pibuddycam[[:space:]]+secure_path=' "$sudoers" \
+          && grep -qF '/usr/libexec/pibuddycam/pibuddycam-priv' "$sudoers"; then
           report ok "sudoers pins env_reset/secure_path and only the fixed-verb helper"
        else
-          report fail "sudoers must pin env_reset + secure_path and grant only /usr/libexec/prusa-cam/prusa-priv"
+          report fail "sudoers must pin env_reset + secure_path and grant only /usr/libexec/pibuddycam/pibuddycam-priv"
        fi
     else
-       report fail "/etc/sudoers.d/prusa-cam is missing"
+       report fail "/etc/sudoers.d/pibuddycam is missing"
     fi
 
-    app_root="$MOUNT_ROOT/opt/prusa-cam"
+    app_root="$MOUNT_ROOT/opt/pibuddycam"
     if [ -d "$app_root" ]; then
        opt_owner="$(stat -c '%u:%g' "$app_root" 2>/dev/null || true)"
        opt_mode="$(stat -c '%a' "$app_root" 2>/dev/null || true)"
        if [ -n "$prusa_uid" ] && [ "$opt_owner" = "$prusa_uid:$prusa_gid" ]; then
-          report fail "/opt/prusa-cam must not be owned by prusa-cam ($opt_owner)"
+          report fail "/opt/pibuddycam must not be owned by pibuddycam ($opt_owner)"
        elif [ -n "$opt_mode" ] && [ $(( 0$opt_mode & 022 )) -ne 0 ]; then
-          report fail "/opt/prusa-cam must not be group/world-writable (mode $opt_mode)"
+          report fail "/opt/pibuddycam must not be group/world-writable (mode $opt_mode)"
        else
-          report ok "/opt/prusa-cam is root-owned and not group/world-writable"
+          report ok "/opt/pibuddycam is root-owned and not group/world-writable"
        fi
     fi
 
     # --- hash-locked Python runtime venv + dependency lock (WP-R3/AC-14) ---
-    # The runtime units start through /opt/prusa-cam/launcher.sh (WP-R4c), which
+    # The runtime units start through /opt/pibuddycam/launcher.sh (WP-R4c), which
     # resolves the per-release or factory venv; the factory venv is the
     # immutable fallback and is built by install-factory-app.sh from the
     # committed hash-locked requirements.lock. A venv-less image is not
@@ -665,16 +665,16 @@ else
        venv_owner="$(stat -Lc '%u:%g' "$venv_python" 2>/dev/null || true)"
        venv_mode="$(stat -Lc '%a' "$venv_python" 2>/dev/null || true)"
        if [ -n "$prusa_uid" ] && [ "$venv_owner" = "$prusa_uid:$prusa_gid" ]; then
-          report fail "venv python must not be owned by prusa-cam ($venv_owner)"
+          report fail "venv python must not be owned by pibuddycam ($venv_owner)"
        elif [ "$venv_owner" != "$root_uid:$root_gid" ]; then
           report fail "venv python must be root:root (found ${venv_owner:-missing})"
        elif [ -n "$venv_mode" ] && [ $(( 0$venv_mode & 022 )) -ne 0 ]; then
           report fail "venv python must not be group/world-writable (mode $venv_mode)"
        else
-          report ok "/opt/prusa-cam/venv/bin/python is root-owned and not group/world-writable"
+          report ok "/opt/pibuddycam/venv/bin/python is root-owned and not group/world-writable"
        fi
     else
-       report fail "/opt/prusa-cam/venv/bin/python is missing (runtime venv not built)"
+       report fail "/opt/pibuddycam/venv/bin/python is missing (runtime venv not built)"
     fi
 
     lock_file="$app_root/requirements.lock"
@@ -682,9 +682,9 @@ else
        lock_owner="$(stat -c '%u:%g' "$lock_file" 2>/dev/null || true)"
        lock_mode="$(stat -c '%a' "$lock_file" 2>/dev/null || true)"
        if [ "$lock_mode" = "644" ] && [ "$lock_owner" = "$root_uid:$root_gid" ]; then
-          report ok "/opt/prusa-cam/requirements.lock is root:root mode 0644"
+          report ok "/opt/pibuddycam/requirements.lock is root:root mode 0644"
        else
-          report fail "/opt/prusa-cam/requirements.lock must be root:root mode 0644 (found ${lock_owner:-?} ${lock_mode:-?})"
+          report fail "/opt/pibuddycam/requirements.lock must be root:root mode 0644 (found ${lock_owner:-?} ${lock_mode:-?})"
        fi
        consume < <(python3 - "$lock_file" <<'PY'
 import sys
@@ -756,16 +756,16 @@ else:
 PY
 )
     else
-       report fail "/opt/prusa-cam/requirements.lock is missing"
+       report fail "/opt/pibuddycam/requirements.lock is missing"
     fi
 
     # The installed packages must actually be present in the venv (not just a
     # venv shell). Python-socketio installs the ``socketio`` module and
     # paho-mqtt the ``paho`` module; aiohttp is its own module.
     if [ -f "$venv_dir/pyvenv.cfg" ]; then
-       report ok "/opt/prusa-cam/venv/pyvenv.cfg present"
+       report ok "/opt/pibuddycam/venv/pyvenv.cfg present"
     else
-       report fail "/opt/prusa-cam/venv/pyvenv.cfg missing (not a virtualenv)"
+       report fail "/opt/pibuddycam/venv/pyvenv.cfg missing (not a virtualenv)"
     fi
     missing_modules=()
     for module in aiohttp socketio paho; do
@@ -807,8 +807,8 @@ PY
     fi
 
     camera_leaks=()
-    for unit in rpicam-source.service prusa-rtsp.service prusa-ha-rtsp.service \
-                prusa-cam.service; do
+    for unit in rpicam-source.service pibuddycam-rtsp.service pibuddycam-ha-rtsp.service \
+                pibuddycam.service; do
        if [ -L "$wants_dir/$unit" ]; then
           camera_leaks+=("$unit")
        fi
@@ -827,9 +827,9 @@ import sys
 
 root = sys.argv[1]
 
-ALLOWED_HOME_USERS = {"prusa-cam"}
+ALLOWED_HOME_USERS = {"pibuddycam"}
 ALLOWED_UNIT_USERS = {
-    "root", "prusa-cam", "daemon", "bin", "sys", "sync", "games", "man", "lp",
+    "root", "pibuddycam", "daemon", "bin", "sys", "sync", "games", "man", "lp",
     "mail", "news", "uucp", "proxy", "www-data", "backup", "list", "irc",
     "_apt", "nobody", "systemd-network", "systemd-timesync", "systemd-resolve",
     "messagebus", "sshd", "ntp", "nginx", "redis",
@@ -863,24 +863,24 @@ PLACEHOLDER_RE = re.compile(
 
 HOME_SCAN = [
     "etc/systemd/system",
-    "etc/prusa-cam",
+    "etc/pibuddycam",
     "etc/NetworkManager",
     "etc/fstab",
     "etc/overlayroot.conf",
     "etc/hostname",
     "etc/hosts",
-    "opt/prusa-cam",
-    "usr/share/prusa-buddy3d-camera",
+    "opt/pibuddycam",
+    "usr/share/pibuddycam",
 ]
 SECRET_SCAN = [
     "etc/systemd/system",
-    "etc/prusa-cam",
+    "etc/pibuddycam",
     "etc/NetworkManager",
     "etc/ssh",
     "data",
     "root",
     "home",
-    "usr/share/prusa-buddy3d-camera",
+    "usr/share/pibuddycam",
 ]
 
 
@@ -1078,15 +1078,15 @@ PY
 
    # The ROOT is read-only (power-off safe), so the volatile runtime state that
    # must be writable has to be mounted on tmpfs: /var (NetworkManager, systemd,
-   # Samba, journald) and /etc/prusa-cam (the app's ephemeral files). Without
+   # Samba, journald) and /etc/pibuddycam (the app's ephemeral files). Without
    # these, dnsmasq/NM cannot write and the setup hotspot never comes up.
    fstab="$MOUNT_ROOT/etc/fstab"
    if [ -f "$fstab" ] \
       && grep -qE '^tmpfs[[:space:]]+/var[[:space:]]' "$fstab" \
-      && grep -qE '^tmpfs[[:space:]]+/etc/prusa-cam[[:space:]]' "$fstab"; then
-      report ok "fstab mounts volatile /var and /etc/prusa-cam on tmpfs"
+      && grep -qE '^tmpfs[[:space:]]+/etc/pibuddycam[[:space:]]' "$fstab"; then
+      report ok "fstab mounts volatile /var and /etc/pibuddycam on tmpfs"
    else
-      report fail "fstab must mount /var and /etc/prusa-cam on tmpfs (read-only ROOT)"
+      report fail "fstab must mount /var and /etc/pibuddycam on tmpfs (read-only ROOT)"
    fi
 
    # --- volatile, size-limited journald -----------------------------------
@@ -1150,20 +1150,20 @@ PY
       report fail "no firewall backend (nftables/iptables) for NetworkManager shared-mode NAT"
    fi
 
-   # The camera stack runs as prusa-cam, but /dev/dma_heap/* is root:root 0600 by
+   # The camera stack runs as pibuddycam, but /dev/dma_heap/* is root:root 0600 by
    # default so rpicam reports "Could not open any dmaHeap device" and no camera.
-   camera_rule="$MOUNT_ROOT/etc/udev/rules.d/50-prusa-cam-camera.rules"
+   camera_rule="$MOUNT_ROOT/etc/udev/rules.d/50-pibuddycam-camera.rules"
    if [ -f "$camera_rule" ] \
       && grep -q 'SUBSYSTEM=="dma_heap"' "$camera_rule" \
       && grep -q 'GROUP="video"' "$camera_rule"; then
       report ok "dma_heap udev rule grants camera access to the video group"
    else
-      report fail "missing dma_heap udev rule (prusa-cam cannot open the camera)"
+      report fail "missing dma_heap udev rule (pibuddycam cannot open the camera)"
    fi
 
    # Stable Wi-Fi identity: NetworkManager randomizes the MAC during scans, and
    # the fingerprint is MAC-derived, so a scan would break the Connect binding.
-   mac_conf="$MOUNT_ROOT/etc/NetworkManager/conf.d/10-prusa-mac.conf"
+   mac_conf="$MOUNT_ROOT/etc/NetworkManager/conf.d/10-pibuddycam-mac.conf"
    if [ -f "$mac_conf" ] && grep -q 'scan-rand-mac-address=no' "$mac_conf"; then
       report ok "NetworkManager scan MAC randomization disabled (stable fingerprint)"
    else
@@ -1171,38 +1171,38 @@ PY
    fi
 
    # --- factory app + launcher fallback -----------------------------------
-   if [ -f "$MOUNT_ROOT/opt/prusa-cam/main.py" ]; then
-      report ok "factory application present under /opt/prusa-cam"
+   if [ -f "$MOUNT_ROOT/opt/pibuddycam/main.py" ]; then
+      report ok "factory application present under /opt/pibuddycam"
    else
-      report fail "factory application entry point /opt/prusa-cam/main.py missing"
+      report fail "factory application entry point /opt/pibuddycam/main.py missing"
    fi
 
    # WP-UI1/AC-2: the factory app tree ships the local admin shell and its
    # allowlisted assets; admin_http serves only those under /assets/<name>.
    # favicon.svg is allowlisted, so a shell missing it would 404 the icon.
-   if [ -f "$MOUNT_ROOT/opt/prusa-cam/web/index.html" ] \
-      && [ -f "$MOUNT_ROOT/opt/prusa-cam/web/app.css" ] \
-      && [ -f "$MOUNT_ROOT/opt/prusa-cam/web/app.js" ] \
-      && [ -f "$MOUNT_ROOT/opt/prusa-cam/web/favicon.svg" ]; then
-      report ok "local admin web assets present under /opt/prusa-cam/web"
+   if [ -f "$MOUNT_ROOT/opt/pibuddycam/web/index.html" ] \
+      && [ -f "$MOUNT_ROOT/opt/pibuddycam/web/app.css" ] \
+      && [ -f "$MOUNT_ROOT/opt/pibuddycam/web/app.js" ] \
+      && [ -f "$MOUNT_ROOT/opt/pibuddycam/web/favicon.svg" ]; then
+      report ok "local admin web assets present under /opt/pibuddycam/web"
    else
-      report fail "local admin web assets missing under /opt/prusa-cam/web"
+      report fail "local admin web assets missing under /opt/pibuddycam/web"
    fi
 
     # Admin TLS provisioning (appliance image/security defect): the boot-time
     # generator ships as admin_tls.py and shells out to openssl with an argv
     # list; admin_app.py must fail closed rather than serve :443 as plaintext.
-    if [ -f "$MOUNT_ROOT/opt/prusa-cam/admin_tls.py" ]; then
-       report ok "admin TLS provisioning module present (/opt/prusa-cam/admin_tls.py)"
+    if [ -f "$MOUNT_ROOT/opt/pibuddycam/admin_tls.py" ]; then
+       report ok "admin TLS provisioning module present (/opt/pibuddycam/admin_tls.py)"
     else
-       report fail "admin TLS provisioning module missing (/opt/prusa-cam/admin_tls.py)"
+       report fail "admin TLS provisioning module missing (/opt/pibuddycam/admin_tls.py)"
     fi
     if [ -x "$MOUNT_ROOT/usr/bin/openssl" ]; then
        report ok "openssl present for boot-time admin TLS provisioning"
     else
        report fail "openssl missing (admin TLS provisioning cannot generate a keypair)"
     fi
-    admin_transport="$MOUNT_ROOT/opt/prusa-cam/admin_app.py"
+    admin_transport="$MOUNT_ROOT/opt/pibuddycam/admin_app.py"
     if [ -f "$admin_transport" ] \
        && grep -q 'resolve_server_tls' "$admin_transport" \
        && grep -q 'TlsConfigurationError' "$admin_transport"; then
@@ -1213,15 +1213,15 @@ PY
 
     launcher=""
     for candidate in launcher.sh run.sh bin/launcher.sh; do
-      if [ -x "$MOUNT_ROOT/opt/prusa-cam/$candidate" ]; then
+      if [ -x "$MOUNT_ROOT/opt/pibuddycam/$candidate" ]; then
          launcher="$candidate"
          break
       fi
    done
    if [ -n "$launcher" ]; then
-      report ok "release launcher fallback present (/opt/prusa-cam/$launcher)"
+      report ok "release launcher fallback present (/opt/pibuddycam/$launcher)"
    else
-      report fail "release launcher fallback missing (/opt/prusa-cam/launcher.sh)"
+      report fail "release launcher fallback missing (/opt/pibuddycam/launcher.sh)"
    fi
 
    # --- runtime units execute through the launcher (WP-R4c) ----------------
@@ -1230,29 +1230,29 @@ PY
    # would pin the appliance to the immutable factory code forever. Each runtime
    # unit must exec the launcher with its own entry point.
     declare -A launcher_script=(
-       [prusa-cam.service]=main.py
-       [prusa-rtsp.service]=rtsp_server.py
-       [prusa-ha-rtsp.service]=rtsp_server.py
-       [prusa-admin.service]=admin_app.py
+       [pibuddycam.service]=main.py
+       [pibuddycam-rtsp.service]=rtsp_server.py
+       [pibuddycam-ha-rtsp.service]=rtsp_server.py
+       [pibuddycam-admin.service]=admin_app.py
        [rpicam-source.service]=camera_source.py
     )
-    for unit in prusa-cam.service prusa-rtsp.service prusa-ha-rtsp.service \
-                prusa-admin.service rpicam-source.service; do
+    for unit in pibuddycam.service pibuddycam-rtsp.service pibuddycam-ha-rtsp.service \
+                pibuddycam-admin.service rpicam-source.service; do
       file="$SYSTEMD_DIR/$unit"
       [ -f "$file" ] || continue
       want_script="${launcher_script[$unit]}"
-      if unit_has "$file" ExecStart /opt/prusa-cam/launcher.sh \
+      if unit_has "$file" ExecStart /opt/pibuddycam/launcher.sh \
          && unit_has "$file" ExecStart "$want_script"; then
-         report ok "$unit execs /opt/prusa-cam/launcher.sh $want_script"
+         report ok "$unit execs /opt/pibuddycam/launcher.sh $want_script"
       else
-         report fail "$unit must ExecStart=/opt/prusa-cam/launcher.sh $want_script"
+         report fail "$unit must ExecStart=/opt/pibuddycam/launcher.sh $want_script"
       fi
    done
 
    # The launcher must prefer a complete per-release venv under DATA and fall
    # back to the factory venv; the runtime-unit assertions above depend on it.
    if [ -n "$launcher" ]; then
-      launcher_path="$MOUNT_ROOT/opt/prusa-cam/$launcher"
+      launcher_path="$MOUNT_ROOT/opt/pibuddycam/$launcher"
       if grep -q 'current/venv/bin/python' "$launcher_path" \
          && grep -q 'APP_ROOT/venv/bin/python' "$launcher_path"; then
          report ok "launcher prefers the per-release venv with a factory fallback"
@@ -1263,16 +1263,16 @@ PY
 
    # WP-UI2/AC-4: the camera unit owns the runtime directory that holds the
    # bounded local control socket the admin process reads. Both units run as the
-   # service account, so systemd must create /run/prusa-cam for it.
-   cam_unit="$SYSTEMD_DIR/prusa-cam.service"
-   if [ -f "$cam_unit" ] && unit_has "$cam_unit" RuntimeDirectory prusa-cam; then
-      report ok "prusa-cam.service creates the service-owned runtime directory"
+   # service account, so systemd must create /run/pibuddycam for it.
+   cam_unit="$SYSTEMD_DIR/pibuddycam.service"
+   if [ -f "$cam_unit" ] && unit_has "$cam_unit" RuntimeDirectory pibuddycam; then
+      report ok "pibuddycam.service creates the service-owned runtime directory"
    else
-      report fail "prusa-cam.service must set RuntimeDirectory=prusa-cam"
+      report fail "pibuddycam.service must set RuntimeDirectory=pibuddycam"
    fi
 
    # --- build-info.json ---------------------------------------------------
-   build_info="$MOUNT_ROOT/usr/share/prusa-buddy3d-camera/build-info.json"
+   build_info="$MOUNT_ROOT/usr/share/pibuddycam/build-info.json"
    if [ -f "$build_info" ]; then
       consume < <(python3 - "$build_info" <<'PY'
 import json
@@ -1294,7 +1294,7 @@ else:
 PY
 )
    else
-      report fail "build-info.json missing at /usr/share/prusa-buddy3d-camera/build-info.json"
+      report fail "build-info.json missing at /usr/share/pibuddycam/build-info.json"
    fi
 
    # --- embedded release-signing public key (WP-R4b / AC-29) --------------
@@ -1302,26 +1302,26 @@ PY
    # root:root 0644, not service-account-owned, and public (no private key
    # material). The private key must never appear anywhere in the image; the
    # Python secret/key scan above asserts that.
-   pubkey="$MOUNT_ROOT/usr/share/prusa-buddy3d-camera/buddy3d-release.pub"
+   pubkey="$MOUNT_ROOT/usr/share/pibuddycam/pibuddycam-release.pub"
    if [ -f "$pubkey" ]; then
       key_owner="$(stat -c '%u:%g' "$pubkey" 2>/dev/null || true)"
       key_mode="$(stat -c '%a' "$pubkey" 2>/dev/null || true)"
       if [ -n "$prusa_uid" ] && [ "$key_owner" = "$prusa_uid:$prusa_gid" ]; then
-         report fail "buddy3d-release.pub must not be owned by prusa-cam ($key_owner)"
+         report fail "pibuddycam-release.pub must not be owned by pibuddycam ($key_owner)"
       elif [ "$key_owner" != "$root_uid:$root_gid" ]; then
-         report fail "buddy3d-release.pub must be root:root (found ${key_owner:-missing})"
+         report fail "pibuddycam-release.pub must be root:root (found ${key_owner:-missing})"
       elif [ "$key_mode" != "644" ]; then
-         report fail "buddy3d-release.pub must be mode 0644 (found ${key_mode:-?})"
+         report fail "pibuddycam-release.pub must be mode 0644 (found ${key_mode:-?})"
       else
-         report ok "buddy3d-release.pub is root:root mode 0644"
+         report ok "pibuddycam-release.pub is root:root mode 0644"
       fi
       if grep -q 'PRIVATE KEY' "$pubkey"; then
-         report fail "buddy3d-release.pub contains private key material"
+         report fail "pibuddycam-release.pub contains private key material"
       else
-         report ok "buddy3d-release.pub contains no private key material"
+         report ok "pibuddycam-release.pub contains no private key material"
       fi
    else
-      report fail "buddy3d-release.pub is missing at /usr/share/prusa-buddy3d-camera/"
+      report fail "pibuddycam-release.pub is missing at /usr/share/pibuddycam/"
    fi
 
    # --- ROOT /data is an empty mount point, no build-time identity --------
@@ -1361,15 +1361,15 @@ PY
    else
       report fail "smb.conf must include /etc/samba/smb-sdcard.conf"
    fi
-   tmpfiles_samba="$MOUNT_ROOT/etc/tmpfiles.d/buddy3d-samba.conf"
+   tmpfiles_samba="$MOUNT_ROOT/etc/tmpfiles.d/pibuddycam-samba.conf"
    if [ -f "$tmpfiles_samba" ]; then
       if grep -q '/var/lib/samba/private' "$tmpfiles_samba" 2>/dev/null; then
-         report ok "tmpfiles.d/buddy3d-samba.conf provisions volatile Samba state"
+         report ok "tmpfiles.d/pibuddycam-samba.conf provisions volatile Samba state"
       else
-         report fail "tmpfiles.d/buddy3d-samba.conf missing /var/lib/samba/private entry"
+         report fail "tmpfiles.d/pibuddycam-samba.conf missing /var/lib/samba/private entry"
       fi
    else
-      report fail "/etc/tmpfiles.d/buddy3d-samba.conf is missing (Samba needs volatile /var dirs)"
+      report fail "/etc/tmpfiles.d/pibuddycam-samba.conf is missing (Samba needs volatile /var dirs)"
    fi
 
    # --- console-setup masked (headless appliance, ro ROOT) -----------------
@@ -1435,7 +1435,7 @@ fi
 
 # --- PERSIST seeded layout --------------------------------------------------
 # List the ext4 PERSIST partition with debugfs (no mount, no root) and assert
-# the seeded /data layout from image/layer/setup.sh plus its prusa-cam uid/gid.
+# the seeded /data layout from image/layer/setup.sh plus its pibuddycam uid/gid.
 # Optional input: SKIPPED when --persist-image is absent.
 if [ -z "$PERSIST_IMAGE" ]; then
    report oskip "PERSIST seeded layout (no --persist-image)"
@@ -1451,10 +1451,10 @@ persist_image, mount_root = sys.argv[1], sys.argv[2]
 
 # (parent directory inside the image, child name) for every seeded path.
 REQUIRED = [
-    ("/", "prusa-cam"),
-    ("/prusa-cam", "config"),
-    ("/prusa-cam", "releases"),
-    ("/prusa-cam", "backups"),
+    ("/", "pibuddycam"),
+    ("/pibuddycam", "config"),
+    ("/pibuddycam", "releases"),
+    ("/pibuddycam", "backups"),
     ("/", "network"),
     ("/network", "system-connections"),
     ("/", "sdcard"),
@@ -1498,7 +1498,7 @@ owners = []
 # Durable directories the service account must NOT own: the root updater owns
 # the releases tree and NetworkManager owns the keyfile store (WP-R4b).
 ROOT_OWNED = {
-    "/prusa-cam/releases",
+    "/pibuddycam/releases",
     "/network",
     "/network/system-connections",
 }
@@ -1521,7 +1521,7 @@ if missing:
     sys.exit(0)
 out("ok", "PERSIST has the seeded /data layout")
 
-# Expected prusa-cam uid/gid comes from the same source setup.sh used: the ROOT
+# Expected pibuddycam uid/gid comes from the same source setup.sh used: the ROOT
 # /etc/passwd, available through --mount-root. Without it, fall back to
 # asserting every seeded directory shares one consistent non-root owner.
 expected = None
@@ -1530,7 +1530,7 @@ if mount_root:
         with open(os.path.join(mount_root, "etc", "passwd"), encoding="utf-8") as fh:
             for line in fh:
                 fields = line.rstrip("\n").split(":")
-                if len(fields) >= 4 and fields[0] == "prusa-cam":
+                if len(fields) >= 4 and fields[0] == "pibuddycam":
                     expected = (fields[2], fields[3])
                     break
     except OSError:
@@ -1545,14 +1545,14 @@ if expected is not None:
     if wrong:
         out(
             "fail",
-            "PERSIST ownership mismatch (expected prusa-cam "
+            "PERSIST ownership mismatch (expected pibuddycam "
             f"{expected[0]}:{expected[1]} and root:root for root-only dirs): "
             f"{', '.join(wrong)}",
         )
     else:
         out(
             "ok",
-            "PERSIST directories owned correctly (prusa-cam "
+            "PERSIST directories owned correctly (pibuddycam "
             f"{expected[0]}:{expected[1]}; root-only dirs 0:0)",
         )
 else:
@@ -1573,7 +1573,7 @@ else:
             "ok",
             "PERSIST directories consistently owned by "
             f"{owner[0]}:{owner[1]} with root-only dirs (pass --mount-root to "
-            "verify the prusa-cam id)",
+            "verify the pibuddycam id)",
         )
     else:
         out(

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# make-app-release.sh — assemble the signed Buddy3D application release bundle
+# make-app-release.sh — assemble the signed PiBuddyCam application release bundle
 # consumed by the on-device updater (WP-R5; master AC-29/AC-34, distribution
 # plan §7.1).
 #
@@ -13,9 +13,9 @@
 #       [--release-date YYYY-MM-DD] [--requirements-lock <file>]
 #
 # Produces:
-#   buddy3d-camera-app-<version>.tar.zst
-#   buddy3d-camera-app-<version>.tar.zst.sha256
-#   buddy3d-camera-app-<version>.tar.zst.minisig        (only with --key)
+#   pibuddycam-app-<version>.tar.zst
+#   pibuddycam-app-<version>.tar.zst.sha256
+#   pibuddycam-app-<version>.tar.zst.minisig        (only with --key)
 #   update-manifest.json
 #   update-manifest.json.minisig                        (only with --key)
 #
@@ -181,7 +181,7 @@ if [ -n "$KEY" ]; then
 fi
 
 if [ -z "$RELEASE_SUMMARY" ]; then
-   RELEASE_SUMMARY="Buddy3D camera application ${VERSION}"
+   RELEASE_SUMMARY="PiBuddyCam application ${VERSION}"
 fi
 
 # Every pinned requirement must have a matching wheel/sdist in --wheels, so a
@@ -251,7 +251,7 @@ fi
 printf '%s' "$MTIME_EPOCH" | grep -Eq '^[0-9]+$' || \
    die "SOURCE_DATE_EPOCH must be an integer: $MTIME_EPOCH"
 
-STAGING="$(mktemp -d "${TMPDIR:-/tmp}/buddy3d-app-release.XXXXXX")"
+STAGING="$(mktemp -d "${TMPDIR:-/tmp}/pibuddycam-app-release.XXXXXX")"
 VALIDATE_TAR=""
 cleanup() {
    rm -rf "$STAGING"
@@ -313,7 +313,7 @@ with open(os.environ["MR_RELEASE_METADATA"], "w", encoding="utf-8") as handle:
 PY
 
 # --- 3. Deterministic bundle ------------------------------------------------
-BASE="buddy3d-camera-app-${VERSION}"
+BASE="pibuddycam-app-${VERSION}"
 BUNDLE="$OUT_DIR/${BASE}.tar.zst"
 SHA_FILE="${BUNDLE}.sha256"
 MANIFEST="$OUT_DIR/update-manifest.json"
@@ -331,7 +331,7 @@ tar --sort=name --format=gnu --mtime="@$MTIME_EPOCH" \
 # The tar preserves source modes and links, so a setuid/setgid bit or an
 # absolute/escaping link would make the device reject the bundle. Validate the
 # exact members the updater will see before anything is hashed or signed.
-VALIDATE_TAR="$(mktemp "${TMPDIR:-/tmp}/buddy3d-bundle-validate.XXXXXX")"
+VALIDATE_TAR="$(mktemp "${TMPDIR:-/tmp}/pibuddycam-bundle-validate.XXXXXX")"
 zstd -dc "$BUNDLE" > "$VALIDATE_TAR"
 export MR_BUNDLE_TAR="$VALIDATE_TAR"
 export MR_UPDATER_DIR="$UPDATER_DIR"

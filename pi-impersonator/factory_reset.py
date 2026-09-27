@@ -15,12 +15,12 @@ removed only once a boot has successfully reached the ``claimed`` state.
 
 Durable layout (``data_root`` defaults to ``/data``)::
 
-    <data_root>/prusa-cam/config/device.toml
-    <data_root>/prusa-cam/config/secrets.toml
-    <data_root>/prusa-cam/state.json
-    <data_root>/prusa-cam/provisioning.json
-    <data_root>/prusa-cam/backups/factory-reset-<YYYYMMDD-HHMMSS>/
-    <data_root>/prusa-cam/pending-deletion.json
+    <data_root>/pibuddycam/config/device.toml
+    <data_root>/pibuddycam/config/secrets.toml
+    <data_root>/pibuddycam/state.json
+    <data_root>/pibuddycam/provisioning.json
+    <data_root>/pibuddycam/backups/factory-reset-<YYYYMMDD-HHMMSS>/
+    <data_root>/pibuddycam/pending-deletion.json
     <data_root>/sdcard/timelapse/
 
 Two-step confirmation
@@ -65,7 +65,7 @@ import shutil
 import stat
 from datetime import datetime, timezone
 
-log = logging.getLogger('prusa-cam.factory-reset')
+log = logging.getLogger('pibuddycam.factory-reset')
 
 # --------------------------------------------------------------------------- #
 # Durable layout
@@ -76,7 +76,7 @@ log = logging.getLogger('prusa-cam.factory-reset')
 DEFAULT_DURABLE_ROOT = '/data'
 DEFAULT_DATA_ROOT = '/data'
 
-PRUSA_CAM_DIRNAME = 'prusa-cam'
+PIBUDDYCAM_DIRNAME = 'pibuddycam'
 CONFIG_DIRNAME = 'config'
 BACKUPS_DIRNAME = 'backups'
 SDCARD_DIRNAME = 'sdcard'
@@ -186,7 +186,7 @@ class FactoryReset:
     ):
         self.data_root = data_root
         self.durable_root = durable_root
-        self.prusa_cam_dir = prusa_cam_dir or _join(data_root, PRUSA_CAM_DIRNAME)
+        self.prusa_cam_dir = prusa_cam_dir or _join(data_root, PIBUDDYCAM_DIRNAME)
         self.config_dir = config_dir or _join(self.prusa_cam_dir, CONFIG_DIRNAME)
         self.backups_dir = backups_dir or _join(self.prusa_cam_dir, BACKUPS_DIRNAME)
         self.timelapse_dir = timelapse_dir or _join(

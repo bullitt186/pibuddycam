@@ -137,7 +137,7 @@ class ScanSecretsTests(unittest.TestCase):
 
     @unittest.skipUnless(BASH, "bash not available")
     def test_allows_service_account_home(self):
-        fixture = self.write("service.txt", "config lives in /home/prusa-cam/app\n")
+        fixture = self.write("service.txt", "config lives in /home/pibuddycam/app\n")
         self.assertEqual(self.scan(fixture).returncode, 0)
 
     @unittest.skipUnless(BASH, "bash not available")
@@ -174,6 +174,21 @@ class ScanSecretsTests(unittest.TestCase):
                 result = self.scan(fixture, env=env)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("devperson", result.stdout)
+
+    def test_placeholder_token_value_is_not_flagged(self):
+        fixture = self.dir / "example.ini"
+        fixture.write_text("token = <REGISTRATION_TOKEN>\nPRUSA_TOKEN=<TOKEN>\n")
+        self.assertEqual(self.scan(fixture).returncode, 0)
+
+    def test_real_token_value_is_still_flagged(self):
+        fixture = self.dir / "leak.ini"
+        fixture.write_text("token = abcDEF123456\n")
+        self.assertNotEqual(self.scan(fixture).returncode, 0)
+
+    def test_trailing_punctuation_does_not_hide_an_allowed_home(self):
+        fixture = self.dir / "note.yaml"
+        fixture.write_text("# removes /home/pibuddycam.\n# see /home/root, then\n")
+        self.assertEqual(self.scan(fixture).returncode, 0)
 
     def test_directory_scan_and_missing_path(self):
         nested = self.dir / "tree"
@@ -256,10 +271,10 @@ class ScanSecretsTests(unittest.TestCase):
 
     @unittest.skipUnless(BASH, "bash not available")
     def test_line_with_personal_and_service_home_is_flagged(self):
-        # Per-match filtering: an allowed /home/prusa-cam on the same line must
+        # Per-match filtering: an allowed /home/pibuddycam on the same line must
         # not mask a personal /home/devperson path.
         fixture = self.write(
-            "mixed.txt", "cp /home/devperson/keys /home/prusa-cam/stolen\n"
+            "mixed.txt", "cp /home/devperson/keys /home/pibuddycam/stolen\n"
         )
         result = self.scan(fixture)
         self.assertNotEqual(result.returncode, 0)
@@ -324,7 +339,7 @@ class MakeReleaseTests(unittest.TestCase):
         return run(cmd, env=env)
 
     def base(self, version="1.2.3"):
-        return f"buddy3d-camera-pi-zero2w-{version}"
+        return f"pibuddycam-pi-zero2w-{version}"
 
     def read_json(self, name):
         return json.loads((self.out / name).read_text(encoding="utf-8"))
@@ -332,16 +347,16 @@ class MakeReleaseTests(unittest.TestCase):
     def test_default_icon_is_shipped_with_the_artifacts(self):
         result = self.make_release(icon=False)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        # The default icon URL is <url-base>/buddy3d-camera.png, so the icon
+        # The default icon URL is <url-base>/pibuddycam.png, so the icon
         # itself must be published next to the image or Imager gets a 404.
-        entry = self.read_json("buddy3d-camera-os-list.json")["os_list"][0]
-        self.assertEqual(entry["icon"], "https://example.org/releases/v1.2.3/buddy3d-camera.png")
-        self.assertTrue((self.out / "buddy3d-camera.png").read_bytes().startswith(b"\x89PNG"))
+        entry = self.read_json("pibuddycam-os-list.json")["os_list"][0]
+        self.assertEqual(entry["icon"], "https://example.org/releases/v1.2.3/pibuddycam.png")
+        self.assertTrue((self.out / "pibuddycam.png").read_bytes().startswith(b"\x89PNG"))
 
     def test_explicit_icon_url_is_not_copied(self):
         result = self.make_release()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertFalse((self.out / "buddy3d-camera.png").exists())
+        self.assertFalse((self.out / "pibuddycam.png").exists())
 
     def test_produces_required_artifacts(self):
         result = self.make_release(
@@ -357,7 +372,7 @@ class MakeReleaseTests(unittest.TestCase):
             f"{base}.img.xz.sha256",
             f"{base}.spdx.json",
             f"{base}.packages.txt",
-            "buddy3d-camera-os-list.json",
+            "pibuddycam-os-list.json",
         ):
             self.assertTrue((self.out / name).is_file(), f"missing {name}")
         # No key supplied: the artifact must remain unsigned, with a warning.
@@ -377,7 +392,7 @@ class MakeReleaseTests(unittest.TestCase):
     def test_os_list_matches_artifacts(self):
         result = self.make_release()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        doc = self.read_json("buddy3d-camera-os-list.json")
+        doc = self.read_json("pibuddycam-os-list.json")
         self.assertEqual(set(doc), {"os_list"})
         entry = doc["os_list"][0]
 
@@ -396,7 +411,7 @@ class MakeReleaseTests(unittest.TestCase):
         self.assertEqual(entry["init_format"], "systemd")
         self.assertIn("1.2.3", entry["name"])
         # Every token must have been rendered.
-        raw = (self.out / "buddy3d-camera-os-list.json").read_text(encoding="utf-8")
+        raw = (self.out / "pibuddycam-os-list.json").read_text(encoding="utf-8")
         self.assertNotIn("{{", raw)
 
     def test_spdx_is_valid_and_uses_real_package_data(self):

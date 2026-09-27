@@ -22,7 +22,7 @@ import shutil
 
 import network
 
-log = logging.getLogger('prusa-cam.metrics')
+log = logging.getLogger('pibuddycam.metrics')
 
 #: Default paths/mounts on the appliance.
 DEFAULT_STORAGE_MOUNT = '/data'

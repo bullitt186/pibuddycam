@@ -80,7 +80,7 @@ class FakeHotspot:
 
     def status(self):
         return SimpleNamespace(
-            ok=True, active=True, ssid='Buddy3D-Setup-abc123',
+            ok=True, active=True, ssid='PiBuddyCam-Setup-abc123',
             address='192.168.4.1', reason='',
         )
 
@@ -114,7 +114,7 @@ class AdminHttpTestBase(unittest.TestCase):
             device_path=str(self.root / 'device.toml'),
             secrets_path=str(self.root / 'secrets.toml'),
             provisioning_path=str(self.root / 'provisioning.json'),
-            recovery_path=str(self.root / 'buddy3d-recovery'),
+            recovery_path=str(self.root / 'pibuddycam-recovery'),
             ssh_runner=self.ssh_runner,
             clock=lambda: NOW,
         )
@@ -788,7 +788,7 @@ class ReauthTests(AdminHttpTestBase):
             headers=self.auth_headers(token, csrf=csrf),
         ))
         self.assertEqual(response.status, 200)
-        self.assertTrue((self.root / 'buddy3d-recovery').exists())
+        self.assertTrue((self.root / 'pibuddycam-recovery').exists())
 
 
 # --------------------------------------------------------------------------- #
@@ -827,7 +827,7 @@ class RedactionTests(AdminHttpTestBase):
         self.assertIn(admin_auth.REDACTED, body)
 
     def test_logs_contain_no_secret(self):
-        with self.assertLogs('prusa-cam.admin_http', level='DEBUG') as captured:
+        with self.assertLogs('pibuddycam.admin_http', level='DEBUG') as captured:
             self.app.handle(self.req(
                 'GET', '/api/status',
                 headers={'Authorization': 'Bearer topsecret-credential'},
@@ -839,7 +839,7 @@ class RedactionTests(AdminHttpTestBase):
         token = self.login()
         csrf = self.sessions.csrf_for(token)
         self.assertTrue(csrf)
-        with self.assertLogs('prusa-cam.admin_http', level='DEBUG') as captured:
+        with self.assertLogs('pibuddycam.admin_http', level='DEBUG') as captured:
             response = self.app.handle(self.req(
                 'POST', '/api/logout',
                 headers=self.auth_headers(token, csrf=csrf),
@@ -1691,7 +1691,7 @@ class SystemRouteTests(AdminHttpTestBase):
                 'os_suite': 'trixie', 'kernel_package': 'linux-image',
             },
             application_version_fn=lambda: '1.1.6',
-            hostname_fn=lambda: 'buddy3d-test',
+            hostname_fn=lambda: 'pibuddycam-test',
         )
         kwargs.update(overrides)
         return self._build_app(**kwargs)
@@ -1709,7 +1709,7 @@ class SystemRouteTests(AdminHttpTestBase):
         payload = json.loads(response.body)
         self.assertEqual(payload['version']['release'], '1.1.6')
         self.assertEqual(payload['version']['source_commit'], 'abc1234')
-        self.assertEqual(payload['network']['hostname'], 'buddy3d-test')
+        self.assertEqual(payload['network']['hostname'], 'pibuddycam-test')
         self.assertEqual(payload['provisioning']['state'], 'claimed')
         self.assertIn('enabled', payload['ssh'])
         self.assertNotIn('password', response.body.decode().lower())

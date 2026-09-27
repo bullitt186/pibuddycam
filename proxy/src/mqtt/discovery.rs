@@ -17,7 +17,7 @@ pub struct DeviceIdentity {
     pub camera_id: String,
     pub camera_name: String,
     pub sw_version: String,
-    pub topic_prefix: String,     // e.g. "buddy3d-proxy"
+    pub topic_prefix: String,     // e.g. "pibuddycam-proxy"
     pub discovery_prefix: String, // e.g. "homeassistant"
 }
 
@@ -25,7 +25,7 @@ impl DeviceIdentity {
     /// HA `device` block included in every entity's config payload.
     pub fn device_block(&self) -> Value {
         json!({
-            "identifiers": [format!("buddy3d-proxy-{}", self.camera_id)],
+            "identifiers": [format!("pibuddycam-proxy-{}", self.camera_id)],
             "name": self.camera_name,
             "manufacturer": "Prusa",
             "model": "Buddy3D Camera",
@@ -33,7 +33,7 @@ impl DeviceIdentity {
         })
     }
 
-    /// Per-camera MQTT topic root (e.g. "buddy3d-proxy/cam123").
+    /// Per-camera MQTT topic root (e.g. "pibuddycam-proxy/cam123").
     pub fn topic_root(&self) -> String {
         format!("{}/{}", self.topic_prefix, self.camera_id)
     }
@@ -41,7 +41,7 @@ impl DeviceIdentity {
     /// HA discovery topic for one entity (component, object_id).
     pub fn discovery_topic(&self, component: &str, object_id: &str) -> String {
         format!(
-            "{}/{}/buddy3d_proxy_{}/{}/config",
+            "{}/{}/pibuddycam_proxy_{}/{}/config",
             self.discovery_prefix, component, self.camera_id, object_id
         )
     }
@@ -52,7 +52,7 @@ pub fn camera(id: &DeviceIdentity) -> DiscoveryMessage {
         topic: id.discovery_topic("camera", "snapshot"),
         payload: json!({
             "name": "Snapshot",
-            "unique_id": format!("buddy3d_proxy_{}_camera", id.camera_id),
+            "unique_id": format!("pibuddycam_proxy_{}_camera", id.camera_id),
             "topic": format!("{}/snapshot", id.topic_root()),
             "availability_topic": format!("{}/availability", id.topic_root()),
             "device": id.device_block(),
@@ -65,7 +65,7 @@ pub fn state_sensor(id: &DeviceIdentity) -> DiscoveryMessage {
         topic: id.discovery_topic("sensor", "state"),
         payload: json!({
             "name": "State",
-            "unique_id": format!("buddy3d_proxy_{}_state", id.camera_id),
+            "unique_id": format!("pibuddycam_proxy_{}_state", id.camera_id),
             "state_topic": format!("{}/state", id.topic_root()),
             "availability_topic": format!("{}/availability", id.topic_root()),
             "icon": "mdi:cctv",
@@ -79,7 +79,7 @@ pub fn mode_select(id: &DeviceIdentity) -> DiscoveryMessage {
         topic: id.discovery_topic("select", "mode"),
         payload: json!({
             "name": "Mode",
-            "unique_id": format!("buddy3d_proxy_{}_mode", id.camera_id),
+            "unique_id": format!("pibuddycam_proxy_{}_mode", id.camera_id),
             "command_topic": format!("{}/mode/set", id.topic_root()),
             "state_topic": format!("{}/mode/state", id.topic_root()),
             "options": ["Auto", "Day", "Night"],
@@ -95,7 +95,7 @@ pub fn quality_select(id: &DeviceIdentity) -> DiscoveryMessage {
         topic: id.discovery_topic("select", "quality"),
         payload: json!({
             "name": "Quality",
-            "unique_id": format!("buddy3d_proxy_{}_quality", id.camera_id),
+            "unique_id": format!("pibuddycam_proxy_{}_quality", id.camera_id),
             "command_topic": format!("{}/quality/set", id.topic_root()),
             "state_topic": format!("{}/quality/state", id.topic_root()),
             "options": ["SD", "HD", "FHD"],
@@ -111,7 +111,7 @@ pub fn reboot_button(id: &DeviceIdentity) -> DiscoveryMessage {
         topic: id.discovery_topic("button", "reboot"),
         payload: json!({
             "name": "Reboot Camera",
-            "unique_id": format!("buddy3d_proxy_{}_reboot", id.camera_id),
+            "unique_id": format!("pibuddycam_proxy_{}_reboot", id.camera_id),
             "command_topic": format!("{}/reboot/press", id.topic_root()),
             "payload_press": "PRESS",
             "availability_topic": format!("{}/availability", id.topic_root()),
@@ -141,7 +141,7 @@ mod tests {
             camera_id: "cam123".into(),
             camera_name: "Living Room".into(),
             sw_version: "0.2.0".into(),
-            topic_prefix: "buddy3d-proxy".into(),
+            topic_prefix: "pibuddycam-proxy".into(),
             discovery_prefix: "homeassistant".into(),
         }
     }
@@ -152,12 +152,12 @@ mod tests {
         let msg = camera(&id);
         assert_eq!(
             msg.topic,
-            "homeassistant/camera/buddy3d_proxy_cam123/snapshot/config"
+            "homeassistant/camera/pibuddycam_proxy_cam123/snapshot/config"
         );
-        assert_eq!(msg.payload["unique_id"], "buddy3d_proxy_cam123_camera");
-        assert_eq!(msg.payload["topic"], "buddy3d-proxy/cam123/snapshot");
-        assert_eq!(msg.payload["availability_topic"], "buddy3d-proxy/cam123/availability");
-        assert_eq!(msg.payload["device"]["identifiers"][0], "buddy3d-proxy-cam123");
+        assert_eq!(msg.payload["unique_id"], "pibuddycam_proxy_cam123_camera");
+        assert_eq!(msg.payload["topic"], "pibuddycam-proxy/cam123/snapshot");
+        assert_eq!(msg.payload["availability_topic"], "pibuddycam-proxy/cam123/availability");
+        assert_eq!(msg.payload["device"]["identifiers"][0], "pibuddycam-proxy-cam123");
     }
 
     #[test]
@@ -165,8 +165,8 @@ mod tests {
         let id = fixture_identity();
         let msg = mode_select(&id);
         assert_eq!(msg.payload["options"], json!(["Auto", "Day", "Night"]));
-        assert_eq!(msg.payload["command_topic"], "buddy3d-proxy/cam123/mode/set");
-        assert_eq!(msg.payload["state_topic"], "buddy3d-proxy/cam123/mode/state");
+        assert_eq!(msg.payload["command_topic"], "pibuddycam-proxy/cam123/mode/set");
+        assert_eq!(msg.payload["state_topic"], "pibuddycam-proxy/cam123/mode/state");
     }
 
     #[test]
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn all_messages_share_same_device_identifier() {
         let id = fixture_identity();
-        let identifier = json!("buddy3d-proxy-cam123");
+        let identifier = json!("pibuddycam-proxy-cam123");
         for msg in all(&id) {
             assert_eq!(msg.payload["device"]["identifiers"][0], identifier);
         }

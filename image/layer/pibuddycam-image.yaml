@@ -1,7 +1,7 @@
 # METABEGIN
-# X-Env-Layer-Name: buddy3d-image
+# X-Env-Layer-Name: pibuddycam-image
 # X-Env-Layer-Category: image
-# X-Env-Layer-Desc: Buddy3D appliance MBR layout: BOOT (vfat, 512M) + ROOT
+# X-Env-Layer-Desc: PiBuddyCam appliance MBR layout: BOOT (vfat, 512M) + ROOT
 #  (ext4, 4G, immutable overlay lower) + PERSIST (ext4, 512M, last partition,
 #  mounted at /data and grown to the end of the device on first boot).
 #  genimage(1) supports an arbitrary number of MBR primary partitions, so the
@@ -48,7 +48,7 @@
 #
 # X-Env-Var-assetsdir: ${DIRECTORY}/../assets
 # X-Env-Var-assetsdir-Desc: Image-only assets installed into the rootfs by
-#  install-factory-app.sh (grow script/unit, prusa-camera.target, build-info).
+#  install-factory-app.sh (grow script/unit, pibuddycam.target, build-info).
 # X-Env-Var-assetsdir-Required: n
 # X-Env-Var-assetsdir-Valid: dir
 # X-Env-Var-assetsdir-Set: y
@@ -79,7 +79,7 @@ mmdebstrap:
     - dosfstools
     - e2fsprogs
     - initramfs-tools
-    # Appliance runtime (mirrors image/config/buddy3d-pi-zero2w.yaml).
+    # Appliance runtime (mirrors image/config/pibuddycam-pi-zero2w.yaml).
     - rpicam-apps
     - python3
     # Versioned venv package: trixie's python3-venv metapackage pins an exact
@@ -125,7 +125,7 @@ mmdebstrap:
     - sudo
     # Boot-time admin TLS provisioning (appliance image/security defect):
     # pi-persist runs admin_tls.ensure(), which generates the durable self-signed
-    # keypair and recreates /etc/prusa-cam/admin.env. openssl is invoked as an
+    # keypair and recreates /etc/pibuddycam/admin.env. openssl is invoked as an
     # argv list (never through a shell) and must be present explicitly.
     - openssl
   customize-hooks:

@@ -1,11 +1,11 @@
 """Bounded local runtime-control IPC (WP-UI2; plan AC-4/AC-17/AC-18).
 
-The admin UI (``prusa-admin``) and the camera runtime (``prusa-cam``) are
+The admin UI (``pibuddycam-admin``) and the camera runtime (``pibuddycam``) are
 separate processes, so the admin must never construct a second ``CameraState``
 or ``SettingsCoordinator``. This module is the single, bounded control boundary
 between them:
 
-* an ``AF_UNIX`` stream socket under ``/run/prusa-cam/`` owned by the service
+* an ``AF_UNIX`` stream socket under ``/run/pibuddycam/`` owned by the service
   account with an explicit mode;
 * newline-delimited JSON framing with a hard request/response size cap;
 * a fixed operation allowlist (read/status only in this slice);
@@ -36,11 +36,11 @@ import stat
 import threading
 import time
 
-log = logging.getLogger('prusa-cam.runtime_ipc')
+log = logging.getLogger('pibuddycam.runtime_ipc')
 
 #: Runtime directory the service account owns (created by systemd
-#: ``RuntimeDirectory=prusa-cam`` on ``prusa-cam.service``).
-DEFAULT_RUNTIME_DIR = '/run/prusa-cam'
+#: ``RuntimeDirectory=pibuddycam`` on ``pibuddycam.service``).
+DEFAULT_RUNTIME_DIR = '/run/pibuddycam'
 
 #: Socket basename inside the runtime directory.
 DEFAULT_SOCKET_NAME = 'control.sock'

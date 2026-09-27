@@ -30,7 +30,7 @@ class FactoryResetTestCase(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = os.path.join(self._tmp.name, 'data')
-        self.prusa_cam = os.path.join(self.root, 'prusa-cam')
+        self.prusa_cam = os.path.join(self.root, 'pibuddycam')
         self.config_dir = os.path.join(self.prusa_cam, 'config')
         self.backups_dir = os.path.join(self.prusa_cam, 'backups')
         self.timelapse_dir = os.path.join(self.root, 'sdcard', 'timelapse')

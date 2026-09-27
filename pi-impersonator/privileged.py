@@ -1,17 +1,17 @@
 """Fixed-verb privileged operations for the appliance (WP-R1, AC-17).
 
-The admin/provisioning UI runs as the unprivileged ``prusa-cam`` service account,
+The admin/provisioning UI runs as the unprivileged ``pibuddycam`` service account,
 but the wizard's finish path must stop the provisioning unit, stop the setup AP,
 activate station networking, and start the camera target — all root-only actions.
 Rather than granting broad ``sudo`` rights, the image installs a single
-fixed-verb root helper (``/usr/libexec/prusa-cam/prusa-priv``) and a sudoers rule
+fixed-verb root helper (``/usr/libexec/pibuddycam/pibuddycam-priv``) and a sudoers rule
 that allows only that helper. This module is the unprivileged client of it.
 
 Security contract
 -----------------
 * The verb allowlist lives here *and* in the helper; an unknown verb is rejected
   before any process is started.
-* The helper is invoked as ``sudo -n /usr/libexec/prusa-cam/prusa-priv <verb>``.
+* The helper is invoked as ``sudo -n /usr/libexec/pibuddycam/pibuddycam-priv <verb>``.
   The sudoers entry lists the helper without arguments, which (per sudoers
   semantics) permits any arguments — so the helper itself validates the verb.
 * The Wi-Fi PSK is passed to ``wifi-station-apply`` on **stdin** and never
@@ -29,10 +29,10 @@ import subprocess
 
 import hotspot
 
-log = logging.getLogger('prusa-cam.privileged')
+log = logging.getLogger('pibuddycam.privileged')
 
 #: The fixed-verb root helper installed by ``image/assets/install-factory-app.sh``.
-PRIVILEGED_HELPER = '/usr/libexec/prusa-cam/prusa-priv'
+PRIVILEGED_HELPER = '/usr/libexec/pibuddycam/pibuddycam-priv'
 
 #: The privilege-escalation command. ``-n`` fails instead of prompting, which is
 #: essential for a non-interactive service.
@@ -156,7 +156,7 @@ def _invoke(verb, *extra, input=None, runner=None, timeout=None):
 # --------------------------------------------------------------------------- #
 
 def start_camera(runner=None, poll_timeout=30):
-    """Start ``prusa-camera.target`` as root; returns a plain ``bool``.
+    """Start ``pibuddycam.target`` as root; returns a plain ``bool``.
 
     The helper issues ``systemctl --no-block start`` (the target conflicts with
     provisioning, so a blocking start deadlocks when called from within the
@@ -174,7 +174,7 @@ def start_camera(runner=None, poll_timeout=30):
     while time.monotonic() < deadline:
         try:
             probe = run(
-                ['systemctl', 'is-active', '--quiet', 'prusa-camera.target'],
+                ['systemctl', 'is-active', '--quiet', 'pibuddycam.target'],
                 timeout=5,
             )
             if _returncode(probe) == 0:
@@ -182,18 +182,18 @@ def start_camera(runner=None, poll_timeout=30):
         except Exception:
             pass
         time.sleep(2)
-    log.warning('privileged: prusa-camera.target did not reach active within '
+    log.warning('privileged: pibuddycam.target did not reach active within '
                 f'{poll_timeout}s after --no-block start')
     return False
 
 
 def stop_provisioning(runner=None):
-    """Stop ``prusa-provisioning.service`` as root."""
+    """Stop ``pibuddycam-provisioning.service`` as root."""
     return _invoke('stop-provisioning', runner=runner)
 
 
 def install_update(runner=None):
-    """Trigger ``prusa-updater-install.service`` as root.
+    """Trigger ``pibuddycam-updater-install.service`` as root.
 
     The helper starts the root oneshot unit, which runs the signed install
     (``updater_install.py install``); the MQTT trigger never performs the install
@@ -205,7 +205,7 @@ def install_update(runner=None):
 def check_update(runner=None):
     """Trigger the report-only signed-update check as root (WP-UI7; AC-15).
 
-    Starts the existing ``prusa-updater.service`` oneshot through the fixed-verb
+    Starts the existing ``pibuddycam-updater.service`` oneshot through the fixed-verb
     helper. That unit runs ``updater_install.py check`` against the root-owned
     manifest URL and never installs anything. The caller (the admin
     :class:`update_control.UpdateManager`) runs this on a background thread and
@@ -225,9 +225,9 @@ def reboot(runner=None):
 
 
 def rtsp_start(runner=None):
-    """Start ``prusa-rtsp.service`` as root.
+    """Start ``pibuddycam-rtsp.service`` as root.
 
-    The appliance's ``prusa-cam`` account cannot call ``systemctl`` directly
+    The appliance's ``pibuddycam`` account cannot call ``systemctl`` directly
     (only the fixed-verb helper is in sudoers), so runtime RTSP toggles go
     through the helper. Returns a :class:`PrivilegedResult`.
     """
@@ -235,7 +235,7 @@ def rtsp_start(runner=None):
 
 
 def rtsp_stop(runner=None):
-    """Stop ``prusa-rtsp.service`` as root (see :func:`rtsp_start`)."""
+    """Stop ``pibuddycam-rtsp.service`` as root (see :func:`rtsp_start`)."""
     return _invoke('rtsp-stop', runner=runner)
 
 

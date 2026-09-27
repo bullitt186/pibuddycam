@@ -52,7 +52,7 @@ import mqtt_state
 import mqtt_topics
 import settings_dispatch
 
-log = logging.getLogger('prusa-cam.mqtt')
+log = logging.getLogger('pibuddycam.mqtt')
 
 # --------------------------------------------------------------------------- #
 # Bounds and constants
@@ -252,7 +252,7 @@ class MqttConfig:
         """Return the configured client id, or a stable device-derived default."""
         if self.client_id.strip():
             return self.client_id.strip()
-        return f'buddy3d-{self.device_id}' if self.device_id else 'buddy3d-camera'
+        return f'pibuddycam-{self.device_id}' if self.device_id else 'pibuddycam'
 
 
 def _valid_uri(uri):

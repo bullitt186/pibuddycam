@@ -315,7 +315,7 @@ Incoming SDP offers/ICE candidates from server. See Section 10 for full field ta
 10. On "webrtc" offer: emit("webrtc", WebRTCMessage{request_id, "answer", sdp, ...})
 ```
 
-### Viewer/client side (buddy3d-proxy / mobile app)
+### Viewer/client side (pibuddycam-proxy / mobile app)
 
 ```
 1. Connect WebSocket to wss://camera-signaling.prusa3d.com

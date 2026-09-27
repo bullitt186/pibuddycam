@@ -5,13 +5,13 @@ RequiresMountsFor=/data
 # would be "failed (dependency failed)" at every boot pre-partition.
 ConditionPathIsMountPoint=/data
 # Run before the readiness gate and every camera/app unit so the durable layout
-# exists before it is verified or used (AC-2, AC-7). prusa-admin.service is
+# exists before it is verified or used (AC-2, AC-7). pibuddycam-admin.service is
 # listed explicitly: this unit provisions the durable admin keypair and recreates
-# /etc/prusa-cam/admin.env, and the admin transport fails closed without it.
-Before=prusa-data-ready.service data-ready.target rpicam-source.service prusa-cam.service prusa-rtsp.service prusa-ha-rtsp.service prusa-admin.service
+# /etc/pibuddycam/admin.env, and the admin transport fails closed without it.
+Before=pibuddycam-data-ready.service data-ready.target rpicam-source.service pibuddycam.service pibuddycam-rtsp.service pibuddycam-ha-rtsp.service pibuddycam-admin.service
 [Service]
 Type=oneshot
-Environment=SERVICE_USER=prusa-cam
-ExecStart=/opt/prusa-cam/launcher.sh persist_restore.py
+Environment=SERVICE_USER=pibuddycam
+ExecStart=/opt/pibuddycam/launcher.sh persist_restore.py
 [Install]
 WantedBy=multi-user.target

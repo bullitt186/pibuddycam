@@ -16,7 +16,7 @@ import logging
 
 from proto import decode_message
 
-log = logging.getLogger('prusa-cam.webrtc')
+log = logging.getLogger('pibuddycam.webrtc')
 
 WEBRTC_DISABLED = 0
 WEBRTC_ENABLED = 1

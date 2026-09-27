@@ -16,9 +16,9 @@ RUN cargo chef prepare --recipe-path recipe.json
 # ── Stage 3: builder — cook deps (cached layer), then build our source ─────
 FROM chef AS builder
 COPY --from=planner /build/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json --bin buddy3d-proxy
+RUN cargo chef cook --release --recipe-path recipe.json --bin pibuddycam-proxy
 COPY . .
-RUN cargo build --release --bin buddy3d-proxy
+RUN cargo build --release --bin pibuddycam-proxy
 
 # ── Stage 4: runtime — minimal Debian + ca-certs + the binary ──────────────
 FROM debian:bookworm-slim AS runtime
@@ -29,9 +29,9 @@ RUN apt-get update \
 RUN groupadd -r app && useradd -r -g app -u 10001 -d /data -s /usr/sbin/nologin app \
     && chown -R app:app /data
 USER app
-COPY --from=builder /build/target/release/buddy3d-proxy /usr/local/bin/buddy3d-proxy
+COPY --from=builder /build/target/release/pibuddycam-proxy /usr/local/bin/pibuddycam-proxy
 EXPOSE 8554 8080
 VOLUME ["/data"]
 ENV TOKEN_STORE_PATH=/data/tokens.json
-ENTRYPOINT ["/usr/local/bin/buddy3d-proxy"]
+ENTRYPOINT ["/usr/local/bin/pibuddycam-proxy"]
 CMD ["serve"]

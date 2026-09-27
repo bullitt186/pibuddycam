@@ -36,7 +36,7 @@ import os
 import admin_auth
 import config_schema
 
-log = logging.getLogger('prusa-cam.expert_config')
+log = logging.getLogger('pibuddycam.expert_config')
 
 #: Maximum length of a rejection reason.
 _REASON_MAX = 200

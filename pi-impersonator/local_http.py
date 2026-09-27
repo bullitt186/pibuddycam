@@ -2,7 +2,7 @@ import logging
 from aiohttp import web
 from onvif_facade import soap_response
 
-log = logging.getLogger('prusa-cam.http')
+log = logging.getLogger('pibuddycam.http')
 
 # Populated by main.py's snapshot loop; served instantly to avoid slow on-demand capture.
 last_jpeg: bytes = b''
@@ -23,7 +23,7 @@ async def handle_snapshot(request):
     return web.Response(body=jpeg, content_type='image/jpeg')
 
 async def handle_root(request):
-    return web.Response(text='Buddy3D Camera', content_type='text/plain')
+    return web.Response(text='PiBuddyCam', content_type='text/plain')
 
 async def handle_onvif(request):
     context = request.app['onvif_context']

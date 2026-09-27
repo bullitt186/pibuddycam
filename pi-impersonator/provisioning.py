@@ -42,15 +42,15 @@ import config_schema
 import identity
 import settings_store
 
-log = logging.getLogger('prusa-cam.provisioning')
+log = logging.getLogger('pibuddycam.provisioning')
 
 PROVISIONING_SCHEMA_VERSION = 1
-PROVISIONING_PATH = '/data/prusa-cam/provisioning.json'
+PROVISIONING_PATH = '/data/pibuddycam/provisioning.json'
 
 #: Durable fallback seed location. The appliance root is a read-only overlay, so
 #: /etc is volatile across reboots; the random identity seed must live under the
 #: durable PERSIST partition to keep the setup SSID stable (H2).
-IDENTITY_FALLBACK_PATH = '/data/prusa-cam/identity.fallback'
+IDENTITY_FALLBACK_PATH = '/data/pibuddycam/identity.fallback'
 
 #: The documented forward-only chain. ``recovery`` is deliberately kept out of
 #: this tuple (it is not a forward milestone) and exposed as :data:`RECOVERY`.
@@ -89,7 +89,7 @@ def derive_device_id(seed):
     """Return the stable lowercase hex device id for ``seed``.
 
     Mirrors ``onvif_facade.OnvifContext.create`` exactly: the endpoint UUID is
-    ``uuid5(NAMESPACE_URL, 'prusa-camera:<seed>')``. Using the same derivation
+    ``uuid5(NAMESPACE_URL, 'pibuddycam:<seed>')``. Using the same derivation
     for the setup SSID suffix and the ONVIF endpoint keeps a device's identity
     consistent across the wizard, mDNS name, and ONVIF discovery.
 
@@ -98,7 +98,7 @@ def derive_device_id(seed):
     """
     if not isinstance(seed, str) or not seed.strip():
         raise ValueError('device seed must be a non-empty string')
-    return uuid.uuid5(uuid.NAMESPACE_URL, f'prusa-camera:{seed}').hex
+    return uuid.uuid5(uuid.NAMESPACE_URL, f'pibuddycam:{seed}').hex
 
 
 def _sanitize_device_id(device_id):
@@ -127,7 +127,7 @@ def setup_ssid_suffix(device_id):
 
 
 def setup_ssid(device_id):
-    """Unclaimed setup hotspot name ``Buddy3D-Setup-<last6>`` (source §4.3).
+    """Unclaimed setup hotspot name ``PiBuddyCam-Setup-<last6>`` (source §4.3).
 
     Returns ``''`` when no suffix can be derived, so the caller treats the
     hotspot name as unavailable rather than emitting an invalid SSID.
@@ -135,11 +135,11 @@ def setup_ssid(device_id):
     suffix = setup_ssid_suffix(device_id)
     if not suffix:
         return ''
-    return f'Buddy3D-Setup-{suffix}'
+    return f'PiBuddyCam-Setup-{suffix}'
 
 
 def admin_hostname(device_id):
-    """Post-claim mDNS hostname ``buddy3d-<last6>`` (``https://…local``).
+    """Post-claim mDNS hostname ``pibuddycam-<last6>`` (``https://…local``).
 
     A valid DNS label (lowercase, alnum, hyphen) and at most 63 characters.
     Returns ``''`` when no suffix can be derived.
@@ -147,7 +147,7 @@ def admin_hostname(device_id):
     suffix = setup_ssid_suffix(device_id)
     if not suffix:
         return ''
-    return f'buddy3d-{suffix}'
+    return f'pibuddycam-{suffix}'
 
 
 def resolve_device_id(device_path=None, mac_path='/sys/class/net/wlan0/address',

@@ -67,7 +67,7 @@ import mqtt_service
 import provisioning
 import settings_store
 
-log = logging.getLogger('prusa-cam.setup_wizard')
+log = logging.getLogger('pibuddycam.setup_wizard')
 
 #: The AC-17 wizard steps, in order. Index + 1 is the UI step number.
 STEP_ORDER = (
@@ -143,7 +143,7 @@ class WizardSession:
     * ``mqtt_tester`` optionally runs a live broker connection test for step 7
       (WP-R2); it receives a ``mqtt_service.MqttConfig`` and returns
       ``(ok, reason)``. When ``None`` step 7 stays validation-only.
-    * ``start_camera`` starts ``prusa-camera.target``.
+    * ``start_camera`` starts ``pibuddycam.target``.
     * ``activate_station`` creates/activates the Wi-Fi station profile after the
       hotspot is stopped and before the camera target starts; when it fails the
       hotspot is restarted and the device stays in setup (B2). It is optional:

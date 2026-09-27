@@ -245,7 +245,7 @@ class Action:
 
 
 def device_doc(enabled=True, uri='mqtts://broker.example:8883', fingerprint=DEVICE_SEED,
-               discovery_prefix='homeassistant', topic_prefix='buddy3d', ca_file=''):
+               discovery_prefix='homeassistant', topic_prefix='pibuddycam', ca_file=''):
     device = config_schema.default_device()
     device['fingerprint'] = fingerprint
     device['mqtt'].update({
@@ -359,7 +359,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.username, 'operator')
         self.assertEqual(config.password, BROKER_SECRET)
         self.assertEqual(config.discovery_prefix, 'homeassistant')
-        self.assertEqual(config.topic_prefix, 'buddy3d')
+        self.assertEqual(config.topic_prefix, 'pibuddycam')
 
     def test_accepts_plain_mqtt_and_ipv6_and_dns(self):
         for uri in ('mqtt://broker.example:1883', 'mqtt://[::1]:1883',
@@ -388,7 +388,7 @@ class ConfigTests(unittest.TestCase):
 
     def test_effective_client_id_default(self):
         config = valid_config()
-        self.assertEqual(config.effective_client_id, f'buddy3d-{DEVICE_ID}')
+        self.assertEqual(config.effective_client_id, f'pibuddycam-{DEVICE_ID}')
 
 
 # --------------------------------------------------------------------------- #
@@ -451,7 +451,7 @@ class StartupTests(ServiceTestCase):
         config = valid_config(device=device_doc(
             uri='mqtt://broker.example:1883', ca_file='/data/ca.pem'))
         service, _, _, _, _ = self.make(config=config)
-        with self.assertLogs('prusa-cam.mqtt', level='WARNING') as captured:
+        with self.assertLogs('pibuddycam.mqtt', level='WARNING') as captured:
             service.start()
         blob = '\n'.join(captured.output)
         self.assertIn('TLS is not in use', blob)
@@ -523,7 +523,7 @@ class CommandMappingTests(ServiceTestCase):
         service, coordinator, backend, _, _ = self.make()
         service.start()
         backend.calls.clear()
-        self.assertIsNone(service.handle_command('buddy3d/other/command/quality', b'HD'))
+        self.assertIsNone(service.handle_command('pibuddycam/other/command/quality', b'HD'))
         self.assertIsNone(service.handle_command(service.state_topic, b'x'))
         self.assertEqual(coordinator.calls, [])
         self.assertEqual(backend.calls, [])
@@ -1018,7 +1018,7 @@ class SecretHygieneTests(ServiceTestCase):
                 raise RuntimeError(f'broker rejected {BROKER_SECRET}')
 
         service, _, _, _, _ = self.make(backend=LeakyBackend())
-        with self.assertLogs('prusa-cam.mqtt', level='WARNING') as captured:
+        with self.assertLogs('pibuddycam.mqtt', level='WARNING') as captured:
             service.publish_state()
         blob = '\n'.join(captured.output)
         self.assertNotIn(BROKER_SECRET, blob)

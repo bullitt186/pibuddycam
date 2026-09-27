@@ -30,10 +30,10 @@ before touching the image layer, units, camera path, or NetworkManager config.
 ### Current appliance baseline (2026-09-25)
 
 - The accepted hardware is a Pi Zero 2 W + OV5647 running application release `1.0.4`.
-- The launcher prefers `/data/prusa-cam/releases/current`; `/opt/prusa-cam` is the immutable
-  factory fallback. Editing `/opt/prusa-cam/*.py` does **not** change a running release.
+- The launcher prefers `/data/pibuddycam/releases/current`; `/opt/pibuddycam` is the immutable
+  factory fallback. Editing `/opt/pibuddycam/*.py` does **not** change a running release.
 - ROOT is a directly mounted read-only ext4 filesystem. `overlayroot` is configured but did not
-  activate on the appliance. `/var` and `/etc/prusa-cam` provide the required volatile state on
+  activate on the appliance. `/var` and `/etc/pibuddycam` provide the required volatile state on
   tmpfs; durable configuration, state, media, and application releases live under `/data`.
 - Signed application install and rollback are live-accepted. The latest field record is
   [`docs/hardware-bring-up-lessons.md`](docs/hardware-bring-up-lessons.md).
@@ -44,7 +44,7 @@ before touching the image layer, units, camera path, or NetworkManager config.
 |---|---|---|
 | Python application/static application asset | Build and install a signed application release; do not patch `/opt` | `pi-impersonator/` + signed bundle |
 | Image-owned helper, unit, udev/NM rule, package, boot config | Patch ROOT only for an explicitly authorized hardware test, then add the identical change to `image/`; validate with a fresh image when required | `image/` and reused `pi-impersonator/systemd/` assets |
-| Device configuration/state | Write through the application/admin path where possible | `/data/prusa-cam/` |
+| Device configuration/state | Write through the application/admin path where possible | `/data/pibuddycam/` |
 | Kernel, boot firmware, partitioning, base packages | New image + user-performed flash | `image/` |
 
 The legacy `pi-impersonator/deploy.sh` overlay maintenance flow is for the older developer install,
@@ -57,16 +57,16 @@ not the current appliance image.
    source commit.
 3. For an application-only change, build a signed application release with
    `image/scripts/make-app-release.sh` (a published release instead comes from a `vX.Y.Z` tag on
-   the arm64 release runner; see `docs/releasing.md`) and install it through `prusa-priv install-update` using the
+   the arm64 release runner; see `docs/releasing.md`) and install it through `pibuddycam-priv install-update` using the
    private runbook. For an image-owned file needed in the same authorized session, remount ROOT,
    install the exact repo file with root ownership/mode, then remount ROOT read-only:
    ```sh
    mount -o remount,rw /
    install -o root -g root -m <mode> /tmp/<file> <exact-image-owned-destination>
    mount -o remount,ro /
-   systemctl restart <unit>         # e.g. prusa-cam prusa-admin prusa-rtsp rpicam-source
+   systemctl restart <unit>         # e.g. pibuddycam pibuddycam-admin pibuddycam-rtsp rpicam-source
    ```
-   Config files under `/data/prusa-cam/config/` **must stay `prusa-cam`-owned**
+   Config files under `/data/pibuddycam/config/` **must stay `pibuddycam`-owned**
    (`0640` `device.toml`, `0600` `secrets.toml`). Prefer the app/admin writer. If an authorized
    diagnostic root write is unavoidable, restore each file's exact owner and mode explicitly; a
    root-owned secrets document makes the app read an empty token and Connect rejects everything.
@@ -84,7 +84,7 @@ not the current appliance image.
 - A remounted-rw ROOT write is persistent, which makes it a drift risk. Never leave a device-only
   fix behind; correctness must also come from the image. ROOT's mount mode returns to read-only on
   reboot, but the bytes written while it was writable remain.
-- An OTA bundle cannot replace image-owned files such as `/usr/libexec/prusa-cam/prusa-priv`, base
+- An OTA bundle cannot replace image-owned files such as `/usr/libexec/pibuddycam/pibuddycam-priv`, base
   units, packages, or boot configuration.
 
 ### Build + flash (only when the change must persist / be validated on a fresh card)
@@ -103,7 +103,7 @@ not the current appliance image.
 - `bootlog.sh` persists unit states, `nmcli`, camera detection (`vcgencmd
   get_camera`, `rpicam-hello --list-cameras`), `/data` state and the relevant
   journals to `/boot/firmware/bootlog.txt` (FAT — readable on any PC). It is also
-  `WantedBy=prusa-camera.target`, so the claim→runtime boot is captured.
+  `WantedBy=pibuddycam.target`, so the claim→runtime boot is captured.
 - The journal is volatile; capture it live or via `bootlog.txt`.
 
 ### Hardware lessons (highlights — full list in the lessons doc)
@@ -114,7 +114,7 @@ not the current appliance image.
 - The image installs without recommends: NM's `dnsmasq-base` (setup hotspot) and
   `nftables`/`iptables` (shared NAT) must be added explicitly.
 - `overlayroot` did not activate; ROOT stays read-only and volatile state lives on
-  tmpfs (`/var`, `/etc/prusa-cam`).
+  tmpfs (`/var`, `/etc/pibuddycam`).
 - libcamera is single-consumer: probe only pre-runtime; snapshots come from the
   `stream_mux` TCP fan-out, never a second `rpicam` capture while the source runs.
 - MBR PARTUUIDs are zero-padded (`b33dcafe-03`), so compare numerically.
@@ -125,7 +125,7 @@ not the current appliance image.
   received ACK 0 and successfully relayed nested configuration. The current end-to-end WebRTC
   result is therefore “UI/backend enrollment blocked,” not “all signaling rejected.”
 - Nested Connect configuration delivery is working. Release `1.0.4` live-verified quality changes
-  FHD→HD→FHD after routing the restart through `prusa-priv quality-restart`. The Connect UI may
+  FHD→HD→FHD after routing the restart through `pibuddycam-priv quality-restart`. The Connect UI may
   still hide those controls while the camera is classified under “Other cameras.”
 
 ### Authorization during a hardware session

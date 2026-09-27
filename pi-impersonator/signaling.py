@@ -12,7 +12,7 @@ from status import build_status_message
 from timelapse import storage_status
 from features import PROTOCOL_VERSION, FEATURES, FIRMWARE_VERSION, MODEL, MANUFACTURER, HW_VERSION
 
-log = logging.getLogger('prusa-cam.signaling')
+log = logging.getLogger('pibuddycam.signaling')
 
 # The Socket.IO handshake (10 s) is followed by camera_authentication (10 s).
 # Keep the whole initial attempt bounded so main can always start the supervisor

@@ -3,7 +3,7 @@
 Pi-local setting (no firmware equivalent): an absolute clockwise rotation of the
 sensor image in degrees. The chosen value is written to an EnvironmentFile that
 the ``rpicam-source`` unit reads on (re)start, alongside ``quality.env``, so a
-quality change never resets the rotation. ``/etc/prusa-cam`` is tmpfs; the
+quality change never resets the rotation. ``/etc/pibuddycam`` is tmpfs; the
 durable copy is ``state.json`` (``rotation`` key), materialized again at boot by
 ``persist_restore``.
 
@@ -14,7 +14,7 @@ import os
 ROTATIONS = (0, 90, 180, 270)
 DEFAULT_ROTATION = 0
 
-ROTATION_ENV = os.environ.get('PRUSA_ROTATION_ENV', '/etc/prusa-cam/rotation.env')
+ROTATION_ENV = os.environ.get('PIBUDDYCAM_ROTATION_ENV', '/etc/pibuddycam/rotation.env')
 
 
 def valid_rotation(value):

@@ -37,7 +37,7 @@ from gi.repository import Gst, GstWebRTC, GstSdp, GLib
 import webrtc_lifecycle
 
 Gst.init(None)
-log = logging.getLogger('prusa-cam.local_webrtc')
+log = logging.getLogger('pibuddycam.local_webrtc')
 
 #: The mux's verbatim (unpatched) H.264 stream; see module docstring.
 MUX_PORT = 8888

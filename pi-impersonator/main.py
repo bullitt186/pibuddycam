@@ -43,6 +43,7 @@ from proto import (
     find_webrtc_candidate,
 )
 import device_control
+import image_guard
 import quality
 import quality_control
 import rotation
@@ -74,7 +75,7 @@ logging.basicConfig(
     datefmt='%H:%M:%S',
     handlers=[logging.StreamHandler(sys.stdout)],
 )
-log = logging.getLogger('prusa-cam')
+log = logging.getLogger('pibuddycam')
 
 # One shared runtime state object: command handlers mutate it, and status,
 # /c/info, snapshots and the encoder all read the same values (GAP-QUALITY-03,
@@ -178,7 +179,7 @@ def load_config():
         # Appliance: the durable device.toml/secrets.toml replace config.ini.
         # Bridge them into the legacy cfg shape this module consumes, otherwise
         # startup dies with KeyError: 'identity' on a freshly claimed device
-        # (hardware-found: prusa-cam crash-looped and the camera target failed).
+        # (hardware-found: pibuddycam crash-looped and the camera target failed).
         device, secrets, errors = config_schema.load_appliance_config()
         for path, error in errors:
             # A missing file is not in `errors` (see load_appliance_config); this
@@ -248,16 +249,16 @@ def reboot_device():
 
 
 def rtsp_service_start():
-    # Appliance: prusa-cam may only run the fixed-verb root helper, not
+    # Appliance: pibuddycam may only run the fixed-verb root helper, not
     # systemctl directly (hardware-found: "command not allowed"). Dev Pi: the
     # helper is absent, so fall back to sudo systemctl.
     if not privileged.rtsp_start().ok:
-        subprocess.run(['sudo', 'systemctl', 'start', 'prusa-rtsp.service'], capture_output=True)
+        subprocess.run(['sudo', 'systemctl', 'start', 'pibuddycam-rtsp.service'], capture_output=True)
 
 
 def rtsp_service_stop():
     if not privileged.rtsp_stop().ok:
-        subprocess.run(['sudo', 'systemctl', 'stop', 'prusa-rtsp.service'], capture_output=True)
+        subprocess.run(['sudo', 'systemctl', 'stop', 'pibuddycam-rtsp.service'], capture_output=True)
 
 
 def rtsp_service_active():
@@ -268,7 +269,7 @@ def rtsp_service_active():
     """
     try:
         show = subprocess.run(
-            ['systemctl', 'show', 'prusa-rtsp.service', '--property=LoadState', '--value'],
+            ['systemctl', 'show', 'pibuddycam-rtsp.service', '--property=LoadState', '--value'],
             capture_output=True, text=True,
         )
     except OSError:
@@ -277,7 +278,7 @@ def rtsp_service_active():
         return None
     try:
         result = subprocess.run(
-            ['systemctl', 'is-active', 'prusa-rtsp.service'], capture_output=True, text=True
+            ['systemctl', 'is-active', 'pibuddycam-rtsp.service'], capture_output=True, text=True
         )
     except OSError:
         return None
@@ -646,7 +647,7 @@ async def main():
         log.info(f'Loaded snapshot interval {state.snapshot_interval}s from config')
 
     # GAP-RTSP-02: load the configured mode and make boot behavior follow it.
-    # The mode is persisted at /etc/prusa-cam/rtsp.mode (overlay: durable only
+    # The mode is persisted at /etc/pibuddycam/rtsp.mode (overlay: durable only
     # once deployed); at startup we read it and reconcile the real unit state.
     configured_rtsp_mode = rtsp_control.read_mode()
     rtsp_control.apply_mode(
@@ -662,7 +663,7 @@ async def main():
 
     # GAP-PERSIST-01: overlay persisted settings (from /data) on top of the
     # file-based seeds above. quality_tier/rtsp_mode are also materialized into
-    # /etc/prusa-cam by pi-persist.service, so the existing file reads stay.
+    # /etc/pibuddycam by pi-persist.service, so the existing file reads stay.
     # WP-1: restore routes through the coordinator and never rewrites state.json.
     persisted = settings_store.load()
     if persisted:
@@ -734,9 +735,9 @@ async def main():
                 loop=loop,
                 secrets=(token,),
                 # AC-31: the HA update entity's retained state is read from the
-                # root-written /data/prusa-cam/update-state.json; the install
+                # root-written /data/pibuddycam/update-state.json; the install
                 # trigger routes through the fixed-verb privileged helper (which
-                # starts prusa-updater-install.service), never in-process.
+                # starts pibuddycam-updater-install.service), never in-process.
                 update_state_provider=lambda: updater_install.read_update_state(),
                 update_install=privileged.install_update,
             )
@@ -1271,4 +1272,5 @@ async def main():
         await session.close()
 
 if __name__ == '__main__':
+    image_guard.exit_if_legacy_image()
     asyncio.run(main())

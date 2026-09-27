@@ -2,21 +2,21 @@
 # Pulls from the rpicam-source TCP stream. main.py starts/stops this on demand.
 # data-ready.target gates this unit on a real, writable PERSIST /data mount (AC-7).
 [Unit]
-Description=Local RTSP server for Prusa camera
+Description=Local RTSP server for PiBuddyCam
 After=network.target data-ready.target rpicam-source.service
 Requires=rpicam-source.service data-ready.target
 
 [Service]
 Type=simple
-User=prusa-cam
-# GStreamer/fontconfig need a writable cache; HOME (/opt/prusa-cam) is
+User=pibuddycam
+# GStreamer/fontconfig need a writable cache; HOME (/opt/pibuddycam) is
 # read-only on the appliance, which spammed "Fontconfig error: No writable
 # cache directories".
-Environment=XDG_CACHE_HOME=/tmp/prusa-cam
-WorkingDirectory=/opt/prusa-cam
+Environment=XDG_CACHE_HOME=/tmp/pibuddycam
+WorkingDirectory=/opt/pibuddycam
 # WP-R4c: start through the launcher so an installed signed release under DATA
 # (and its per-release venv) runs; the launcher falls back to the factory app.
-ExecStart=/opt/prusa-cam/launcher.sh rtsp_server.py
+ExecStart=/opt/pibuddycam/launcher.sh rtsp_server.py
 Restart=always
 RestartSec=2
 

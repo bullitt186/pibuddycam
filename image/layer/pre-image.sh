@@ -1,5 +1,5 @@
 #!/bin/bash
-# pre-image hook for the Buddy3D image layer.
+# pre-image hook for the PiBuddyCam image layer.
 #
 # rpi-image-gen v2.8.0 resolves IMAGE_ASSET pre-image hooks as
 # `<assetdir>/pre-image.sh` (docs/execution/index.adoc, "single" hooks) and

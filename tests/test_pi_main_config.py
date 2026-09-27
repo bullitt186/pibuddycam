@@ -1,8 +1,8 @@
 """main.load_config must bridge the appliance documents (hardware-found).
 
-The appliance stores configuration in /data/prusa-cam/config/device.toml and
+The appliance stores configuration in /data/pibuddycam/config/device.toml and
 secrets.toml, not the dev-Pi config.ini. Before the fix, main.py died with
-``KeyError: 'identity'`` on a freshly claimed device, so prusa-cam crash-looped
+``KeyError: 'identity'`` on a freshly claimed device, so pibuddycam crash-looped
 and the camera target failed. These tests pin the bridge using AST only, since
 main.py cannot be imported on the host (it needs aiohttp/socketio).
 """

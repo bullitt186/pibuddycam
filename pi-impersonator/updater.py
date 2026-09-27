@@ -46,7 +46,7 @@ import tarfile
 import tempfile
 import urllib.parse
 
-log = logging.getLogger('prusa-cam.updater')
+log = logging.getLogger('pibuddycam.updater')
 
 # --------------------------------------------------------------------------- #
 # Documented limits (the "configured" caps the plan refers to)
@@ -60,7 +60,7 @@ SUPPORTED_SCHEMA_VERSIONS = frozenset({1})
 CHANNELS = ('stable', 'alpha')
 
 #: Default in-image minisign public key (embedded by WP-R4b). Not secret.
-DEFAULT_PUBLIC_KEY_PATH = '/usr/share/prusa-buddy3d-camera/buddy3d-release.pub'
+DEFAULT_PUBLIC_KEY_PATH = '/usr/share/pibuddycam/pibuddycam-release.pub'
 
 #: Default signature suffix when ``signature_path`` is not supplied.
 DEFAULT_SIGNATURE_SUFFIX = '.minisig'
@@ -775,7 +775,7 @@ def _extract_bundle(archive_path, dest, *, expected_sha256, runner):
     runner = runner or _default_zstd_runner
     tmp_dir = None
     try:
-        tmp_dir = tempfile.mkdtemp(prefix='buddy3d-update-')
+        tmp_dir = tempfile.mkdtemp(prefix='pibuddycam-update-')
         tar_path = os.path.join(tmp_dir, 'bundle.tar')
         ok, reason = _decompress(archive_path, tar_path, runner)
         if not ok:

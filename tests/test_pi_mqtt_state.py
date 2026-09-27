@@ -235,17 +235,17 @@ class DiscoveryDocumentTests(unittest.TestCase):
         self.assertEqual(
             mqtt_topics.discovery_device_topic(
                 mqtt_topics.DEFAULT_DISCOVERY_PREFIX, DEVICE_ID),
-            f'homeassistant/device/buddy3d_{DEVICE_ID}/config')
+            f'homeassistant/device/pibuddycam_{DEVICE_ID}/config')
 
     def test_required_origin_device_and_availability(self):
         document = self.build()
-        self.assertEqual(document['o']['name'], 'prusa-buddy3d-camera')
+        self.assertEqual(document['o']['name'], 'pibuddycam')
         self.assertEqual(document['o']['sw'], '1.0.0')
         device = document['dev']
         self.assertEqual(device['ids'], DEVICE_ID)
         self.assertEqual(device['name'], 'Printer Camera Controls')
-        self.assertEqual(device['mf'], 'Prusa Community')
-        self.assertEqual(device['mdl'], 'Buddy3D Raspberry Pi Camera')
+        self.assertEqual(device['mf'], 'PiBuddyCam community')
+        self.assertEqual(device['mdl'], 'PiBuddyCam')
         self.assertEqual(device['sw'], '1.0.0')
         self.assertEqual(device['sn'], DEVICE_ID)
         self.assertEqual(device['cns'], [['mac', NORMALIZED_MAC]])
@@ -378,7 +378,7 @@ class DiscoveryDocumentTests(unittest.TestCase):
             f'site-a/{DEVICE_ID}/command/quality')
         self.assertEqual(
             mqtt_topics.discovery_device_topic('hass', DEVICE_ID),
-            f'hass/device/buddy3d_{DEVICE_ID}/config')
+            f'hass/device/pibuddycam_{DEVICE_ID}/config')
 
     def test_component_unique_id_rejects_unknown_key(self):
         with self.assertRaises(ValueError):
@@ -386,7 +386,7 @@ class DiscoveryDocumentTests(unittest.TestCase):
 
     def test_blank_camera_name_falls_back(self):
         document = mqtt_state.build_discovery(DEVICE_ID, '   ')
-        self.assertEqual(document['dev']['name'], 'Buddy3D Camera Controls')
+        self.assertEqual(document['dev']['name'], 'PiBuddyCam Controls')
 
     def test_invalid_mac_rejected(self):
         with self.assertRaises(ValueError):

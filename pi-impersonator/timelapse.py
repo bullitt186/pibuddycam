@@ -3,7 +3,7 @@
 Firmware 3.1.6 controls timelapse enable/interval/FPS, stores frames, creates
 MJPEG output, indexes files and emits progress/error ``client_trigger`` messages.
 The owner decision (2026-09-19) is a Pi storage-backed equivalent rooted at
-``/var/lib/prusa-cam/timelapse``.
+``/var/lib/pibuddycam/timelapse``.
 
 Stdlib-only and side-effect free on import so the logic is host-testable.
 """

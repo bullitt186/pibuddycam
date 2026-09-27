@@ -18,26 +18,26 @@ DEVICE_ID = mqtt_topics.device_id(DEVICE_SEED)
 
 #: Exact §6.3 topics for the fixed synthetic device id.
 EXPECTED_TOPICS = {
-    'availability': f'buddy3d/{DEVICE_ID}/availability',
-    'state': f'buddy3d/{DEVICE_ID}/state',
-    'quality': f'buddy3d/{DEVICE_ID}/command/quality',
-    'snapshot_upload': f'buddy3d/{DEVICE_ID}/command/snapshot_upload',
-    'snapshot_interval': f'buddy3d/{DEVICE_ID}/command/snapshot_interval',
-    'timelapse_enabled': f'buddy3d/{DEVICE_ID}/command/timelapse_enabled',
-    'timelapse_interval': f'buddy3d/{DEVICE_ID}/command/timelapse_interval',
-    'timelapse_fps': f'buddy3d/{DEVICE_ID}/command/timelapse_fps',
-    'timelapse_build': f'buddy3d/{DEVICE_ID}/command/timelapse_build',
-    'prusa_rtsp': f'buddy3d/{DEVICE_ID}/command/prusa_rtsp',
-    'webrtc': f'buddy3d/{DEVICE_ID}/command/webrtc',
-    'restart': f'buddy3d/{DEVICE_ID}/command/restart',
-    'update_state': f'buddy3d/{DEVICE_ID}/update/state',
-    'update_install': f'buddy3d/{DEVICE_ID}/update/install',
+    'availability': f'pibuddycam/{DEVICE_ID}/availability',
+    'state': f'pibuddycam/{DEVICE_ID}/state',
+    'quality': f'pibuddycam/{DEVICE_ID}/command/quality',
+    'snapshot_upload': f'pibuddycam/{DEVICE_ID}/command/snapshot_upload',
+    'snapshot_interval': f'pibuddycam/{DEVICE_ID}/command/snapshot_interval',
+    'timelapse_enabled': f'pibuddycam/{DEVICE_ID}/command/timelapse_enabled',
+    'timelapse_interval': f'pibuddycam/{DEVICE_ID}/command/timelapse_interval',
+    'timelapse_fps': f'pibuddycam/{DEVICE_ID}/command/timelapse_fps',
+    'timelapse_build': f'pibuddycam/{DEVICE_ID}/command/timelapse_build',
+    'prusa_rtsp': f'pibuddycam/{DEVICE_ID}/command/prusa_rtsp',
+    'webrtc': f'pibuddycam/{DEVICE_ID}/command/webrtc',
+    'restart': f'pibuddycam/{DEVICE_ID}/command/restart',
+    'update_state': f'pibuddycam/{DEVICE_ID}/update/state',
+    'update_install': f'pibuddycam/{DEVICE_ID}/update/install',
 }
 
 
 class ContractConstantsTests(unittest.TestCase):
     def test_default_prefixes_and_status_topic(self):
-        self.assertEqual(mqtt_topics.DEFAULT_BASE_PREFIX, 'buddy3d')
+        self.assertEqual(mqtt_topics.DEFAULT_BASE_PREFIX, 'pibuddycam')
         self.assertEqual(mqtt_topics.DEFAULT_DISCOVERY_PREFIX, 'homeassistant')
         self.assertEqual(mqtt_topics.HA_STATUS_TOPIC, 'homeassistant/status')
 
@@ -93,10 +93,10 @@ class ExactTopicTests(unittest.TestCase):
         self.assertEqual(
             mqtt_topics.discovery_device_topic(
                 mqtt_topics.DEFAULT_DISCOVERY_PREFIX, DEVICE_ID),
-            f'homeassistant/device/buddy3d_{DEVICE_ID}/config')
+            f'homeassistant/device/pibuddycam_{DEVICE_ID}/config')
         self.assertEqual(
             mqtt_topics.discovery_device_topic('ha_discovery', DEVICE_ID),
-            f'ha_discovery/device/buddy3d_{DEVICE_ID}/config')
+            f'ha_discovery/device/pibuddycam_{DEVICE_ID}/config')
 
     def test_base_prefix_is_configurable(self):
         self.assertEqual(
@@ -126,7 +126,7 @@ class DeviceIdTests(unittest.TestCase):
             self.assertEqual(derived, mqtt_topics.device_id(seed))
 
     def test_device_id_accepts_uuid_objects(self):
-        value = uuid.uuid5(uuid.NAMESPACE_URL, 'prusa-camera:seed')
+        value = uuid.uuid5(uuid.NAMESPACE_URL, 'pibuddycam:seed')
         self.assertEqual(mqtt_topics.device_id(value), mqtt_topics.device_id(value.hex))
 
     def test_device_id_rejects_empty_and_non_string(self):
@@ -148,11 +148,11 @@ class DeviceIdTests(unittest.TestCase):
 
 class PrefixValidationTests(unittest.TestCase):
     def test_valid_prefixes(self):
-        for prefix in ('buddy3d', 'homeassistant', 'site-a', 'a/b/c', 'A_b-1'):
+        for prefix in ('pibuddycam', 'homeassistant', 'site-a', 'a/b/c', 'A_b-1'):
             self.assertEqual(mqtt_topics.validate_prefix(prefix), prefix)
 
     def test_unsafe_prefixes_rejected(self):
-        for bad in ('', '  ', '#', 'buddy3d/#', '+', 'a b', '/leading',
+        for bad in ('', '  ', '#', 'pibuddycam/#', '+', 'a b', '/leading',
                     'trailing/', 'a//b', 'null\x00byte', 'semi;colon', None, 5):
             with self.assertRaises(ValueError, msg=f'{bad!r} should be rejected'):
                 mqtt_topics.validate_prefix(bad)
@@ -183,7 +183,7 @@ class CommandRoundTripTests(unittest.TestCase):
             'restart')
 
     def test_unknown_command_topic_rejected(self):
-        unknown = f'buddy3d/{DEVICE_ID}/command/not_a_command'
+        unknown = f'pibuddycam/{DEVICE_ID}/command/not_a_command'
         with self.assertRaises(ValueError):
             mqtt_topics.command_from_topic(unknown, DEVICE_ID)
 
@@ -194,7 +194,7 @@ class CommandRoundTripTests(unittest.TestCase):
             mqtt_topics.update_state(DEVICE_ID),
             mqtt_topics.update_install(DEVICE_ID),
             mqtt_topics.command('otherdevice', 'quality'),
-            'buddy3d',
+            'pibuddycam',
             '',
             None,
             5,

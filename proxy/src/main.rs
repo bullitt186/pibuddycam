@@ -2,21 +2,21 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use buddy3d_proxy::config::Config;
-use buddy3d_proxy::init_tracing;
-use buddy3d_proxy::prusa::api::{fetch_webrtc_config, list_cameras, list_printers};
-use buddy3d_proxy::prusa::auth::{AuthEndpoints, AuthOrchestrator};
-use buddy3d_proxy::prusa::client::PrusaClient;
-use buddy3d_proxy::prusa::commands::{encode_camera_trigger, encode_set_mode, encode_set_quality};
-use buddy3d_proxy::prusa::signaling::PrusaSignaling;
-use buddy3d_proxy::rate_limit::RateLimiter;
-use buddy3d_proxy::token_store::TokenStore;
-use buddy3d_proxy::webrtc_session::{run_session, WebRtcSession};
+use pibuddycam_proxy::config::Config;
+use pibuddycam_proxy::init_tracing;
+use pibuddycam_proxy::prusa::api::{fetch_webrtc_config, list_cameras, list_printers};
+use pibuddycam_proxy::prusa::auth::{AuthEndpoints, AuthOrchestrator};
+use pibuddycam_proxy::prusa::client::PrusaClient;
+use pibuddycam_proxy::prusa::commands::{encode_camera_trigger, encode_set_mode, encode_set_quality};
+use pibuddycam_proxy::prusa::signaling::PrusaSignaling;
+use pibuddycam_proxy::rate_limit::RateLimiter;
+use pibuddycam_proxy::token_store::TokenStore;
+use pibuddycam_proxy::webrtc_session::{run_session, WebRtcSession};
 use clap::{Parser, Subcommand};
 use tokio::sync::mpsc;
 
 #[derive(Parser)]
-#[command(name = "buddy3d-proxy")]
+#[command(name = "pibuddycam-proxy")]
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
@@ -250,9 +250,9 @@ async fn main() -> anyhow::Result<()> {
             counter.abort();
         }
         Cmd::Serve => {
-            use buddy3d_proxy::rtsp::Server;
-            use buddy3d_proxy::supervisor::webrtc_factory::WebRtcFactory;
-            use buddy3d_proxy::supervisor::Supervisor;
+            use pibuddycam_proxy::rtsp::Server;
+            use pibuddycam_proxy::supervisor::webrtc_factory::WebRtcFactory;
+            use pibuddycam_proxy::supervisor::Supervisor;
 
             let token = orch.access_token().await.context("acquire access token")?;
             let printers = list_printers(&prusa, &endpoints.connect_base, &token)
@@ -269,7 +269,7 @@ async fn main() -> anyhow::Result<()> {
                 .context("no cameras visible on this printer")?
                 .clone();
 
-            let camera_name = camera.name.clone().unwrap_or_else(|| "buddy3d".into());
+            let camera_name = camera.name.clone().unwrap_or_else(|| "pibuddycam".into());
             let rtsp_path = cfg.rtsp_path.clone().unwrap_or_else(|| slugify(&camera_name));
             tracing::info!(
                 camera.id = camera.id,
@@ -278,8 +278,8 @@ async fn main() -> anyhow::Result<()> {
                 "selected camera"
             );
 
-            let live_outbound = buddy3d_proxy::live_outbound::empty();
-            let camera_status = buddy3d_proxy::live_outbound::camera_status_watch();
+            let live_outbound = pibuddycam_proxy::live_outbound::empty();
+            let camera_status = pibuddycam_proxy::live_outbound::camera_status_watch();
             let factory = Arc::new(WebRtcFactory {
                 orch: orch.clone(),
                 prusa: prusa.clone(),
@@ -305,7 +305,7 @@ async fn main() -> anyhow::Result<()> {
                     cfg.health_port,
                 );
                 tokio::spawn(async move {
-                    if let Err(e) = buddy3d_proxy::health::serve(health_addr, failed_rx).await {
+                    if let Err(e) = pibuddycam_proxy::health::serve(health_addr, failed_rx).await {
                         tracing::error!(error = %e, "health server exited");
                     }
                 });
@@ -318,7 +318,7 @@ async fn main() -> anyhow::Result<()> {
                 let camera_name_for_metrics = camera_name.clone();
                 let interval = cfg.metrics_interval;
                 tokio::spawn(async move {
-                    buddy3d_proxy::metrics::run(
+                    pibuddycam_proxy::metrics::run(
                         camera_name_for_metrics,
                         supervisor_for_metrics,
                         limiter_for_metrics,
@@ -329,11 +329,11 @@ async fn main() -> anyhow::Result<()> {
 
             // MQTT subsystem (opt-in).
             if let Some(broker_url) = cfg.mqtt_broker_url.clone() {
-                use buddy3d_proxy::mqtt::commands::Dispatcher;
-                use buddy3d_proxy::mqtt::discovery::DeviceIdentity;
-                use buddy3d_proxy::mqtt::transient::TransientSignaler;
-                use buddy3d_proxy::mqtt::{state as mqtt_state, Hub, HubConfig};
-                use buddy3d_proxy::snapshot;
+                use pibuddycam_proxy::mqtt::commands::Dispatcher;
+                use pibuddycam_proxy::mqtt::discovery::DeviceIdentity;
+                use pibuddycam_proxy::mqtt::transient::TransientSignaler;
+                use pibuddycam_proxy::mqtt::{state as mqtt_state, Hub, HubConfig};
+                use pibuddycam_proxy::snapshot;
                 use std::sync::Arc;
 
                 let camera_id_str = factory.camera.id.to_string();
@@ -349,7 +349,7 @@ async fn main() -> anyhow::Result<()> {
                     username: cfg.mqtt_username.clone(),
                     password: cfg.mqtt_password.clone(),
                     client_id: cfg.mqtt_client_id.clone().unwrap_or_else(|| {
-                        format!("buddy3d-proxy-{camera_id_str}")
+                        format!("pibuddycam-proxy-{camera_id_str}")
                     }),
                     identity: identity.clone(),
                 };
@@ -491,7 +491,7 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("ctrl+c received; shutting down");
         }
         Cmd::RestartCamera { field } => {
-            let camera = buddy3d_proxy::mqtt::transient::lookup_camera(&orch, &prusa, &endpoints)
+            let camera = pibuddycam_proxy::mqtt::transient::lookup_camera(&orch, &prusa, &endpoints)
                 .await
                 .context("lookup camera")?;
             tracing::info!(
@@ -500,7 +500,7 @@ async fn main() -> anyhow::Result<()> {
                 field,
                 "sending restart trigger to camera"
             );
-            let signaler = buddy3d_proxy::mqtt::transient::TransientSignaler {
+            let signaler = pibuddycam_proxy::mqtt::transient::TransientSignaler {
                 orch: orch.clone(),
                 prusa: prusa.clone(),
                 endpoints: endpoints.clone(),
@@ -518,10 +518,10 @@ async fn main() -> anyhow::Result<()> {
                 (1..=3).contains(&mode),
                 "mode must be 1 (Auto), 2 (Day), or 3 (Night)"
             );
-            let camera = buddy3d_proxy::mqtt::transient::lookup_camera(&orch, &prusa, &endpoints)
+            let camera = pibuddycam_proxy::mqtt::transient::lookup_camera(&orch, &prusa, &endpoints)
                 .await
                 .context("lookup camera")?;
-            let signaler = buddy3d_proxy::mqtt::transient::TransientSignaler {
+            let signaler = pibuddycam_proxy::mqtt::transient::TransientSignaler {
                 orch: orch.clone(),
                 prusa: prusa.clone(),
                 endpoints: endpoints.clone(),
@@ -538,10 +538,10 @@ async fn main() -> anyhow::Result<()> {
                 (1..=3).contains(&quality),
                 "quality must be 1 (SD), 2 (HD), or 3 (FHD)"
             );
-            let camera = buddy3d_proxy::mqtt::transient::lookup_camera(&orch, &prusa, &endpoints)
+            let camera = pibuddycam_proxy::mqtt::transient::lookup_camera(&orch, &prusa, &endpoints)
                 .await
                 .context("lookup camera")?;
-            let signaler = buddy3d_proxy::mqtt::transient::TransientSignaler {
+            let signaler = pibuddycam_proxy::mqtt::transient::TransientSignaler {
                 orch: orch.clone(),
                 prusa: prusa.clone(),
                 endpoints: endpoints.clone(),

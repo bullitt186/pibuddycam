@@ -41,7 +41,7 @@ The implementation must satisfy two independent requirements:
   not an ONVIF certification claim.
 - `rpicam-source.service` remains the only camera-sensor owner. RTSP, WebRTC, and JPEG capture must
   consume its existing `stream_mux.py` fan-out.
-- Prusa's `prusa-rtsp.service` remains controlled exclusively by Prusa's RTSP mode on port 8554.
+- Prusa's `pibuddycam-rtsp.service` remains controlled exclusively by Prusa's RTSP mode on port 8554.
 - The Home Assistant stream must not depend on Prusa's RTSP mode, app viewer state, or cloud
   connectivity.
 - The Prusa token and fingerprint must never be returned by ONVIF, discovery, HTTP, logs, or scopes.
@@ -53,9 +53,9 @@ The implementation must satisfy two independent requirements:
 ## Architecture
 
 ```text
-                              +--> prusa-rtsp.service :8554/live
+                              +--> pibuddycam-rtsp.service :8554/live
 CSI camera -> rpicam-source -> stream_mux.py          (Prusa mode-controlled)
-                              +--> prusa-ha-rtsp.service :8555/live
+                              +--> pibuddycam-ha-rtsp.service :8555/live
                               |                        (always on)
                               +--> JPEG capture -> /snapshot.jpg + Connect uploads
                               +--> WebRTC pipeline -> Prusa app/site
@@ -81,14 +81,14 @@ fan-out; it does not start a second encoder.
   - Reject invalid ports and mount paths before GStreamer starts.
 - `pi-impersonator/rtsp_server.py`
   - Consume the validated configuration without changing the existing pipeline/factory semantics.
-- `pi-impersonator/systemd/prusa-ha-rtsp.service`
+- `pi-impersonator/systemd/pibuddycam-ha-rtsp.service`
   - Run the same server on `8555/live`.
   - Require and start after `rpicam-source.service`.
   - Enable at boot and restart on failure.
   - Do not make it part of `rtsp_control.apply_mode()`.
 - `pi-impersonator/quality_control.py`
   - Restart the shared source and HA RTSP endpoint after an accepted resolution change.
-  - Use `systemctl try-restart prusa-rtsp.service`, so a disabled Prusa endpoint is not accidentally
+  - Use `systemctl try-restart pibuddycam-rtsp.service`, so a disabled Prusa endpoint is not accidentally
     started.
   - Keep the existing TURN/scoped-quality lock before any restart or state write.
 - `bootstrap.sh` and `deploy.sh`
@@ -193,7 +193,7 @@ Coverage expectations:
    and service states.
 2. On the appliance, deploy committed application changes through a signed release. Use
    `deploy.sh` only for the explicitly legacy developer installation.
-3. Confirm `rpicam-source`, `prusa-ha-rtsp`, and `prusa-cam` are active. `prusa-rtsp` may correctly
+3. Confirm `rpicam-source`, `pibuddycam-ha-rtsp`, and `pibuddycam` are active. `pibuddycam-rtsp` may correctly
    be inactive when its Prusa mode is disabled.
 4. Verify `ffprobe` or VLC can open `rtsp://<pi>:8555/live` for at least five minutes.
 5. Toggle Prusa RTSP off/on and verify port 8555 remains available while port 8554 follows Prusa.
@@ -228,7 +228,7 @@ Coverage expectations:
 Source-level acceptance:
 
 - All commands under “Host unit tests” pass.
-- Existing default `prusa-rtsp.service` behavior and URL are unchanged.
+- Existing default `pibuddycam-rtsp.service` behavior and URL are unchanged.
 - HA uses the independent `:8555` endpoint.
 - No additional `rpicam-vid`/libcamera process is introduced.
 - No cloud credential or fingerprint is exposed over LAN interfaces.
@@ -264,5 +264,5 @@ For a code rollback, revert the ONVIF/HA-specific files and changes listed above
 snapshot streaming guards, and run the complete regression suite. For an authorized appliance
 rollback, use the signed updater's retained `previous` release for application code; an image-owned
 unit rollback requires an image change (or an explicitly authorized, repo-matched ROOT patch for
-testing). Then verify `rpicam-source`, `prusa-cam`, optional `prusa-rtsp`, Connect snapshots, and
+testing). Then verify `rpicam-source`, `pibuddycam`, optional `pibuddycam-rtsp`, Connect snapshots, and
 WebRTC. Do not modify the token or persistent data as part of this rollback.

@@ -219,7 +219,7 @@ jobs:
             --key "$MINISIGN_KEY" \
             --source-commit "$GITHUB_SHA" \
             --min-image-version "${{ steps.meta.outputs.version }}" \
-            --release-summary "Buddy3D camera application ${{ steps.meta.outputs.version }} (${{ steps.meta.outputs.channel }})" \
+            --release-summary "PiBuddyCam application ${{ steps.meta.outputs.version }} (${{ steps.meta.outputs.channel }})" \
             --release-url "${{ steps.meta.outputs.release_url }}" \
             --release-date "$(date -u +%Y-%m-%d)"
 
@@ -240,7 +240,7 @@ jobs:
               manifest = updater.parse_manifest(handle.read())
 
           bundle = os.path.join(
-              dist, "buddy3d-camera-app-%s.tar.zst" % manifest.version)
+              dist, "pibuddycam-app-%s.tar.zst" % manifest.version)
           if not os.path.isfile(bundle):
               raise SystemExit("bundle is missing: %s" % bundle)
           with open(bundle, "rb") as handle:
@@ -250,7 +250,7 @@ jobs:
           if os.path.getsize(bundle) != manifest.bundle_size:
               raise SystemExit("bundle size does not match the manifest")
 
-          public_key = "image/keys/buddy3d-release.pub"
+          public_key = "image/keys/pibuddycam-release.pub"
           for path in (bundle, manifest_path):
               ok, reason = updater.verify_file(path, public_key_path=public_key)
               if not ok:
@@ -273,7 +273,7 @@ jobs:
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: buddy3d-release-${{ steps.meta.outputs.release_tag }}
+          name: pibuddycam-release-${{ steps.meta.outputs.release_tag }}
           path: dist/
           if-no-files-found: error
           retention-days: 30
@@ -317,7 +317,7 @@ jobs:
                   "Authorization": "Bearer %s" % bearer,
                   "Accept": "application/vnd.github+json",
                   "X-GitHub-Api-Version": "2022-11-28",
-                  "User-Agent": "buddy3d-release",
+                  "User-Agent": "pibuddycam-release",
               },
           )
           with urllib.request.urlopen(request, timeout=30) as response:

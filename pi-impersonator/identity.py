@@ -6,7 +6,7 @@ import secrets
 import string
 
 
-log = logging.getLogger('prusa-cam.identity')
+log = logging.getLogger('pibuddycam.identity')
 
 _MAC_RE = re.compile(r'^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$')
 
@@ -22,7 +22,7 @@ FALLBACK_SEED_ALPHABET = string.ascii_letters + string.digits
 # reaches the lower filesystem via deploy.sh; until then the seed is stable for
 # the running session and a restart regenerates it (with a warning).
 IDENTITY_FALLBACK_FILE = os.environ.get(
-    'PRUSA_IDENTITY_FALLBACK', '/etc/prusa-cam/identity.fallback'
+    'PIBUDDYCAM_IDENTITY_FALLBACK', '/etc/pibuddycam/identity.fallback'
 )
 
 

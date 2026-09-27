@@ -1,4 +1,4 @@
-# Agent instructions — Prusa Buddy3D Camera RE
+# Agent instructions — PiBuddyCam
 
 Reverse engineering of the Prusa Buddy3D Camera cloud protocol (firmware through `3.1.6`)
 plus two working reimplementations. Full orientation is in
@@ -110,11 +110,11 @@ action. Read-only inspection is still subject to the redaction rules above.
 ## Developing against the appliance
 
 The current image does **not** run an overlay root. Hardware acceptance found that `overlayroot`
-never activated; `/` is the real ext4 ROOT mounted read-only. `/var` and `/etc/prusa-cam` are tmpfs,
+never activated; `/` is the real ext4 ROOT mounted read-only. `/var` and `/etc/pibuddycam` are tmpfs,
 while `/data` is the durable PERSIST partition. Do not reuse the older overlay-development model:
 
-- The active application is `/data/prusa-cam/releases/current`, selected by `launcher.sh`.
-  `/opt/prusa-cam` is only the factory fallback. Application changes should be committed, packaged
+- The active application is `/data/pibuddycam/releases/current`, selected by `launcher.sh`.
+  `/opt/pibuddycam` is only the factory fallback. Application changes should be committed, packaged
   by `image/scripts/make-app-release.sh`, and installed through the signed updater.
 - A signed application bundle cannot update image-owned helpers, units, packages, udev/NM rules,
   or boot configuration. Those changes belong in `image/`; an explicitly authorized live test may
@@ -122,8 +122,8 @@ while `/data` is the durable PERSIST partition. Do not reuse the older overlay-d
 - Writes made while ROOT is remounted rw persist. This is not a disposable overlay, so a live-only
   patch creates drift and is forbidden unless the identical change lands in the repo/image in the
   same session.
-- Durable configuration is `/data/prusa-cam/config/{device,secrets}.toml`. Keep both owned by
-  `prusa-cam`; a root-owned secrets file makes the service read an empty token.
+- Durable configuration is `/data/pibuddycam/config/{device,secrets}.toml`. Keep both owned by
+  `pibuddycam`; a root-owned secrets file makes the service read an empty token.
 - `pi-impersonator/deploy.sh` remains a legacy developer-install tool. Do not use it on the
   appliance release layout.
 - After live work verify the active release, service health, ROOT ro state, updater configuration,

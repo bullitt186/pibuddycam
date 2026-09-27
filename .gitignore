@@ -36,7 +36,7 @@ api/
 *.jpg
 *.jpeg
 # The image's placeholder icon is a synthetic asset the build and tests require.
-!image/assets/icon/buddy3d-camera.png
+!image/assets/icon/pibuddycam.png
 
 # ── Playwright failure diagnostics (synthetic fixture only) ───────────────
 tests/e2e/.artifacts/

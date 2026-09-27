@@ -79,7 +79,7 @@ class AllowlistTests(unittest.TestCase):
             Path(__file__).resolve().parent.parent
             / 'image'
             / 'assets'
-            / 'prusa-priv'
+            / 'pibuddycam-priv'
         ).read_text(encoding='utf-8')
         for verb in ('rtsp-start', 'rtsp-stop', 'quality-restart',
                      'check-update', 'reboot'):
@@ -98,7 +98,7 @@ class WrapperTests(unittest.TestCase):
         self.assertTrue(privileged.start_camera(runner=runner))
         self.assertEqual(
             runner.calls[0][0],
-            ['sudo', '-n', '/usr/libexec/prusa-cam/prusa-priv', 'start-camera'],
+            ['sudo', '-n', '/usr/libexec/pibuddycam/pibuddycam-priv', 'start-camera'],
         )
 
     def test_stop_provisioning_and_hotspot_verbs(self):
@@ -117,7 +117,7 @@ class WrapperTests(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(
             runner.calls[0][0],
-            ['sudo', '-n', '/usr/libexec/prusa-cam/prusa-priv', 'install-update'],
+            ['sudo', '-n', '/usr/libexec/pibuddycam/pibuddycam-priv', 'install-update'],
         )
 
     def test_install_update_failure_is_bounded(self):
@@ -132,7 +132,7 @@ class WrapperTests(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(
             runner.calls[0][0],
-            ['sudo', '-n', '/usr/libexec/prusa-cam/prusa-priv',
+            ['sudo', '-n', '/usr/libexec/pibuddycam/pibuddycam-priv',
              'check-update'],
         )
         self.assertEqual(runner.calls[0][1], privileged.CHECK_TIMEOUT_SECONDS)
@@ -149,7 +149,7 @@ class WrapperTests(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(
             runner.calls[0][0],
-            ['sudo', '-n', '/usr/libexec/prusa-cam/prusa-priv', 'reboot'],
+            ['sudo', '-n', '/usr/libexec/pibuddycam/pibuddycam-priv', 'reboot'],
         )
 
     def test_reboot_failure_is_bounded(self):
@@ -164,7 +164,7 @@ class WrapperTests(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(
             runner.calls[0][0],
-            ['sudo', '-n', '/usr/libexec/prusa-cam/prusa-priv',
+            ['sudo', '-n', '/usr/libexec/pibuddycam/pibuddycam-priv',
              'quality-restart'],
         )
 
@@ -179,7 +179,7 @@ class WrapperTests(unittest.TestCase):
         args = runner.calls[0][0]
         self.assertEqual(
             args[:4],
-            ['sudo', '-n', '/usr/libexec/prusa-cam/prusa-priv',
+            ['sudo', '-n', '/usr/libexec/pibuddycam/pibuddycam-priv',
              'wifi-station-apply'],
         )
         self.assertEqual(args[4], 'HomeNet')
@@ -238,7 +238,7 @@ class PrivilegedHotspotTests(unittest.TestCase):
         controller = privileged.PrivilegedHotspot()
         with patch.object(privileged, 'hotspot_start', side_effect=fake_start), \
                 patch.object(privileged, 'hotspot_stop', side_effect=fake_stop):
-            self.assertTrue(controller.start('Buddy3D-Setup-abc123'))
+            self.assertTrue(controller.start('PiBuddyCam-Setup-abc123'))
             self.assertTrue(controller.stop())
         self.assertEqual(calls, ['start', 'stop'])
 

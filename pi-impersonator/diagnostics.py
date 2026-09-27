@@ -28,23 +28,23 @@ import time
 
 import admin_auth
 
-log = logging.getLogger('prusa-cam.diagnostics')
+log = logging.getLogger('pibuddycam.diagnostics')
 
 #: The fixed appliance units whose current-boot journal is collected. Adding a
 #: unit here is a code change reviewed like any other; a request cannot extend it.
 FIXED_UNITS = (
     'data-ready.target',
-    'prusa-boot-mode.service',
-    'prusa-provisioning.service',
+    'pibuddycam-boot-mode.service',
+    'pibuddycam-provisioning.service',
     'NetworkManager.service',
-    'prusa-camera.target',
+    'pibuddycam.target',
     'rpicam-source.service',
-    'prusa-cam.service',
-    'prusa-admin.service',
-    'prusa-rtsp.service',
-    'prusa-ha-rtsp.service',
-    'prusa-updater.service',
-    'prusa-updater-install.service',
+    'pibuddycam.service',
+    'pibuddycam-admin.service',
+    'pibuddycam-rtsp.service',
+    'pibuddycam-ha-rtsp.service',
+    'pibuddycam-updater.service',
+    'pibuddycam-updater-install.service',
 )
 
 #: Hard caps for one collection.
@@ -174,7 +174,7 @@ def collect_diagnostics(runner=None, secrets=(), clock=time.time):
         runner, journal_args, JOURNAL_TIMEOUT_SECONDS)
 
     sections = [
-        f'=== Buddy3D camera diagnostics (generated {time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(generated_at))}Z) ===',
+        f'=== PiBuddyCam diagnostics (generated {time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(generated_at))}Z) ===',
         '--- failed units ---',
         failed_text.strip() if failed_ok else '(failed-unit query unavailable)',
         '--- current-boot journal (fixed units) ---',

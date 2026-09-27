@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deterministic Buddy3D appliance image build entry point (AC-13/AC-14).
+# Deterministic PiBuddyCam appliance image build entry point (AC-13/AC-14).
 #
 # Usage:
 #   RPI_IMAGE_GEN_DIR=/path/to/rpi-image-gen image/scripts/build-image.sh
@@ -10,7 +10,7 @@
 #      capabilities this config relies on (-S source dir, custom image layers).
 #   2. Set SOURCE_DATE_EPOCH from the source commit timestamp.
 #   3. Run the pinned builder with the composition in
-#      image/config/buddy3d-pi-zero2w.yaml.
+#      image/config/pibuddycam-pi-zero2w.yaml.
 #   4. Fail if the populated ROOT filesystem exceeds 75% of its 4 GiB capacity,
 #      or if the extracted image exceeds an 8 GB card budget.
 #
@@ -20,7 +20,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 IMAGE_DIR="$REPO_ROOT/image"
 LOCK="$IMAGE_DIR/rpi-image-gen.lock"
-CONFIG="$IMAGE_DIR/config/buddy3d-pi-zero2w.yaml"
+CONFIG="$IMAGE_DIR/config/pibuddycam-pi-zero2w.yaml"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -79,7 +79,7 @@ echo "workroot:  $WORKROOT"
    -c "$CONFIG" \
    -B "$WORKROOT" \
    -- "IGconf_artefact_version=$VERSION" \
-      "PRUSA_SOURCE_COMMIT=$SOURCE_COMMIT" \
+      "PIBUDDYCAM_SOURCE_COMMIT=$SOURCE_COMMIT" \
       "RPI_IMAGE_GEN_REVISION=$LOCK_COMMIT"
 
 # --- 4a. ROOT utilisation must stay below 75% of 4 GiB (AC-13) --------------

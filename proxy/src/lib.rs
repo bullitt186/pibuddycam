@@ -23,7 +23,7 @@ pub mod webrtc_session;
 /// - **Non-TTY (piped, redirected, Docker, systemd)**: structured JSON.
 ///
 /// Override the level filter via `RUST_LOG`. Default is
-/// `info,buddy3d_proxy=debug,webrtc_srtp::session=warn` — that last entry
+/// `info,pibuddycam_proxy=debug,webrtc_srtp::session=warn` — that last entry
 /// silences the per-packet `srtp ssrc=N index=M: duplicated` INFO spam
 /// emitted while a session sits in the warm-idle window after the last
 /// viewer disconnects.
@@ -31,7 +31,7 @@ pub fn init_tracing() {
     use std::io::IsTerminal;
     use tracing_subscriber::{fmt, EnvFilter};
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new("info,buddy3d_proxy=debug,webrtc_srtp::session=warn")
+        EnvFilter::new("info,pibuddycam_proxy=debug,webrtc_srtp::session=warn")
     });
     if std::io::stdout().is_terminal() {
         fmt()

@@ -4,9 +4,9 @@ Migrates the legacy, scattered configuration into the versioned TOML documents
 owned by :mod:`config_schema`:
 
     pi-impersonator/config.ini            identity token/fingerprint, upload server/interval
-    /data/prusa-cam/state.json            persisted runtime settings (settings_store)
-    /etc/prusa-cam/quality.env            video-quality tier when state.json lacks it
-    /etc/prusa-cam/rtsp.mode              configured RTSP mode when state.json lacks it
+    /data/pibuddycam/state.json            persisted runtime settings (settings_store)
+    /etc/pibuddycam/quality.env            video-quality tier when state.json lacks it
+    /etc/pibuddycam/rtsp.mode              configured RTSP mode when state.json lacks it
     /data/sdcard/timelapse                timelapse frames (reported only, never moved)
 
 Safety properties:
@@ -36,12 +36,12 @@ import quality
 import rtsp_control
 import settings_store
 
-log = logging.getLogger('prusa-cam.legacy_import')
+log = logging.getLogger('pibuddycam.legacy_import')
 
 APP_VERSION = '0.0.0-dev'
 
 SOURCE_SCHEMA = 'legacy-config.ini+state.json'
-DEFAULT_BACKUPS_ROOT = '/data/prusa-cam/backups'
+DEFAULT_BACKUPS_ROOT = '/data/pibuddycam/backups'
 
 # Module-level so tests can redirect them to a temporary directory.
 DEVICE_TOML_PATH = config_schema.DEVICE_TOML_PATH

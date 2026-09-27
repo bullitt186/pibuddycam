@@ -198,11 +198,11 @@ class AdminShellTests(unittest.TestCase):
     def test_missing_shell_falls_back_to_a_minimal_login_page(self):
         with tempfile.TemporaryDirectory() as tmp:
             app = _build_app(web_dir=tmp)
-            with self.assertLogs('prusa-cam.admin_http', level='WARNING'):
+            with self.assertLogs('pibuddycam.admin_http', level='WARNING'):
                 response = app.handle(_make_request('GET', '/admin'))
         self.assertEqual(response.status, 200)
         html = response.body.decode('utf-8')
-        self.assertIn('Buddy3D Camera', html)
+        self.assertIn('PiBuddyCam', html)
         self.assertIn('Trusted LAN only', html)
 
 
@@ -856,7 +856,7 @@ class AdminLiveMonitorUiTests(unittest.TestCase):
         self.assertIn('handleExpired()', self.code)
         self.assertIn('toggleLivePause', self.code)
         self.assertIn('downloadLiveSnapshot', self.code)
-        self.assertIn("'buddy3d-snapshot.jpg'", self.code)
+        self.assertIn("'pibuddycam-snapshot.jpg'", self.code)
         self.assertIn('X-Live-State', self.code)
         self.assertIn('X-Live-Age', self.code)
         # No stale object URLs leak on repeated frames.

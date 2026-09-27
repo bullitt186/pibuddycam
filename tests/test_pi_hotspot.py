@@ -47,7 +47,7 @@ def make_runner(handlers=(), default=None, timeout_match=None, unavailable_match
 ACTIVE_AP = (
     ('GENERAL.CONNECTION', FakeResult(0, 'GENERAL.CONNECTION:Hotspot\n')),
     ('802-11-wireless.mode', FakeResult(0, '802-11-wireless.mode:ap\n')),
-    ('802-11-wireless.ssid', FakeResult(0, '802-11-wireless.ssid:Buddy3D-Setup-ddeeff\n')),
+    ('802-11-wireless.ssid', FakeResult(0, '802-11-wireless.ssid:PiBuddyCam-Setup-ddeeff\n')),
 )
 NO_CONNECTION = (('GENERAL.CONNECTION', FakeResult(0, 'GENERAL.CONNECTION:--\n')),)
 STATION_MODE = (
@@ -80,21 +80,21 @@ class ConstantTests(unittest.TestCase):
             hotspot.setup_ssid(device_id),
             provisioning.setup_ssid(device_id),
         )
-        self.assertEqual(hotspot.setup_ssid(device_id), 'Buddy3D-Setup-ddeeff')
+        self.assertEqual(hotspot.setup_ssid(device_id), 'PiBuddyCam-Setup-ddeeff')
         self.assertEqual(hotspot.setup_ssid(''), '')
 
 
 class StartTests(unittest.TestCase):
     def test_connection_name_and_address_are_pinned(self):
-        self.assertEqual(hotspot.CONNECTION_NAME, 'buddy3d-setup')
+        self.assertEqual(hotspot.CONNECTION_NAME, 'pibuddycam-setup')
         self.assertEqual(hotspot.CAPTIVE_PORTAL_PREFIX, '192.168.4.1/24')
 
     def test_start_pins_address_and_disconnects_first(self):
         runner = make_runner(default=FakeResult(0, ''))
-        result = hotspot.start('Buddy3D-Setup-ddeeff', runner=runner)
+        result = hotspot.start('PiBuddyCam-Setup-ddeeff', runner=runner)
         self.assertTrue(result.ok)
         self.assertTrue(result.active)
-        self.assertEqual(result.ssid, 'Buddy3D-Setup-ddeeff')
+        self.assertEqual(result.ssid, 'PiBuddyCam-Setup-ddeeff')
 
         # B1: a best-effort disconnect runs first so a prefilled station
         # profile cannot keep the AP from starting.
@@ -105,8 +105,8 @@ class StartTests(unittest.TestCase):
         add = runner.calls[1][0]
         self.assertEqual(add[:4], ['nmcli', 'connection', 'add', 'type'])
         self.assertIn('con-name', add)
-        self.assertEqual(add[add.index('con-name') + 1], 'buddy3d-setup')
-        self.assertEqual(add[add.index('ssid') + 1], 'Buddy3D-Setup-ddeeff')
+        self.assertEqual(add[add.index('con-name') + 1], 'pibuddycam-setup')
+        self.assertEqual(add[add.index('ssid') + 1], 'PiBuddyCam-Setup-ddeeff')
         self.assertEqual(add[add.index('autoconnect') + 1], 'no')
         self.assertEqual(add[add.index('mode') + 1], 'ap')
         self.assertIn('ipv4.method', add)
@@ -119,12 +119,12 @@ class StartTests(unittest.TestCase):
 
         self.assertEqual(
             runner.calls[2][0],
-            ['nmcli', 'connection', 'up', 'buddy3d-setup'],
+            ['nmcli', 'connection', 'up', 'pibuddycam-setup'],
         )
 
     def test_start_with_password_passes_it_on_the_add(self):
         runner = make_runner(default=FakeResult(0, ''))
-        result = hotspot.start('Buddy3D-Setup-ddeeff', password='longenough', runner=runner)
+        result = hotspot.start('PiBuddyCam-Setup-ddeeff', password='longenough', runner=runner)
         self.assertTrue(result.ok)
         add = runner.calls[1][0]
         self.assertIn('wifi-sec.key-mgmt', add)
@@ -139,11 +139,11 @@ class StartTests(unittest.TestCase):
             return FakeResult(0, '')
 
         runner.calls = []
-        result = hotspot.start('Buddy3D-Setup-ddeeff', runner=runner)
+        result = hotspot.start('PiBuddyCam-Setup-ddeeff', runner=runner)
         self.assertTrue(result.ok)
         modify = runner.calls[2][0]
         self.assertEqual(modify[:3], ['nmcli', 'connection', 'modify'])
-        self.assertEqual(modify[3], 'buddy3d-setup')
+        self.assertEqual(modify[3], 'pibuddycam-setup')
         self.assertEqual(modify[modify.index('ipv4.addresses') + 1], '192.168.4.1/24')
         self.assertEqual(modify[modify.index('connection.autoconnect') + 1], 'no')
 
@@ -159,7 +159,7 @@ class StartTests(unittest.TestCase):
         runner = make_runner()
         for password in ('short', 'x' * 64):
             with self.subTest(password=password):
-                result = hotspot.start('Buddy3D-Setup-ddeeff', password=password, runner=runner)
+                result = hotspot.start('PiBuddyCam-Setup-ddeeff', password=password, runner=runner)
                 self.assertFalse(result.ok)
                 self.assertNotIn(password, result.reason)
         self.assertEqual(runner.calls, [])
@@ -167,19 +167,19 @@ class StartTests(unittest.TestCase):
     def test_start_command_failure_is_reported(self):
         # add and modify both fail -> reported, never raised.
         runner = make_runner(default=FakeResult(1, ''))
-        result = hotspot.start('Buddy3D-Setup-ddeeff', runner=runner)
+        result = hotspot.start('PiBuddyCam-Setup-ddeeff', runner=runner)
         self.assertFalse(result.ok)
         self.assertIn('exit 1', result.reason)
 
     def test_start_timeout_is_reported(self):
         runner = make_runner(timeout_match='connection add')
-        result = hotspot.start('Buddy3D-Setup-ddeeff', runner=runner)
+        result = hotspot.start('PiBuddyCam-Setup-ddeeff', runner=runner)
         self.assertFalse(result.ok)
         self.assertIn('timed out', result.reason)
 
     def test_start_missing_tool_is_reported(self):
         runner = make_runner(unavailable_match='connection add')
-        result = hotspot.start('Buddy3D-Setup-ddeeff', runner=runner)
+        result = hotspot.start('PiBuddyCam-Setup-ddeeff', runner=runner)
         self.assertFalse(result.ok)
         self.assertIn('unavailable', result.reason)
 
@@ -192,8 +192,8 @@ class StartTests(unittest.TestCase):
             ('connection add', failure),
             ('connection modify', failure),
         ])
-        with self.assertLogs('prusa-cam.hotspot', level='WARNING') as logs:
-            result = hotspot.start('Buddy3D-Setup-ddeeff', runner=runner)
+        with self.assertLogs('pibuddycam.hotspot', level='WARNING') as logs:
+            result = hotspot.start('PiBuddyCam-Setup-ddeeff', runner=runner)
         self.assertFalse(result.ok)
         self.assertTrue(
             any('requires dnsmasq' in message for message in logs.output),
@@ -214,7 +214,7 @@ class StopTests(unittest.TestCase):
         self.assertFalse(result.active)
         self.assertEqual(
             self._down_calls(runner),
-            [['nmcli', 'connection', 'down', 'buddy3d-setup']],
+            [['nmcli', 'connection', 'down', 'pibuddycam-setup']],
         )
         self.assertNotIn(
             ['nmcli', 'device', 'disconnect', 'wlan0'],
@@ -274,7 +274,7 @@ class StatusTests(unittest.TestCase):
         result = hotspot.status(runner=runner)
         self.assertTrue(result.ok)
         self.assertTrue(result.active)
-        self.assertEqual(result.ssid, 'Buddy3D-Setup-ddeeff')
+        self.assertEqual(result.ssid, 'PiBuddyCam-Setup-ddeeff')
         self.assertEqual(result.address, '192.168.4.1')
 
     def test_status_inactive_is_ok_without_ssid(self):

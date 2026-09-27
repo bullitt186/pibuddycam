@@ -94,7 +94,7 @@ class E2EHarnessTests(unittest.TestCase):
         status, headers, payload = HarnessClient(self.base).call('GET', '/admin')
         self.assertEqual(status, 200)
         text = payload.decode('utf-8')
-        self.assertIn('Buddy3D Camera', text)
+        self.assertIn('PiBuddyCam', text)
         self.assertNotIn('__ASSET_VERSION__', text)
         self.assertIn("default-src 'none'", headers.get('Content-Security-Policy', ''))
         for asset in e2e_server.admin_http.ASSET_ALLOWLIST:

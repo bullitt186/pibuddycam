@@ -1,5 +1,5 @@
 #!/bin/bash
-# genimage exec-pre hook for the Buddy3D image layer.
+# genimage exec-pre hook for the PiBuddyCam image layer.
 #
 # genimage(1) invokes this once per partition image as `setup.sh <LABEL>` with
 # IMAGEMOUNTPATH set to the mounted partition image (see rpi-image-gen v2.8.0
@@ -39,15 +39,15 @@ case "$LABEL" in
       # PARTUUID-based fstab. ROOT stays read-only and is never written, so a
       # power-off at any moment cannot damage the OS. The volatile runtime state
       # that must be writable (NetworkManager leases/state, systemd, Samba,
-      # journald, and the app's /etc/prusa-cam ephemeral files) lives on tmpfs.
+      # journald, and the app's /etc/pibuddycam ephemeral files) lives on tmpfs.
       # overlayroot(8) is still configured as the intended writable layer, but
       # the tmpfs mounts below are what the appliance relies on today: on the
       # first real boot overlayroot did not activate, leaving ROOT read-only and
       # dnsmasq/NM/systemd/Samba unable to write (the setup hotspot never came
       # up). These mounts keep power-off safety (ROOT is untouched) while giving
       # the runtime a writable home.
-      uid="$(awk -F: '$1=="prusa-cam"{print $3}' "$IMAGEMOUNTPATH/etc/passwd" 2>/dev/null || true)"
-      gid="$(awk -F: '$1=="prusa-cam"{print $4}' "$IMAGEMOUNTPATH/etc/passwd" 2>/dev/null || true)"
+      uid="$(awk -F: '$1=="pibuddycam"{print $3}' "$IMAGEMOUNTPATH/etc/passwd" 2>/dev/null || true)"
+      gid="$(awk -F: '$1=="pibuddycam"{print $4}' "$IMAGEMOUNTPATH/etc/passwd" 2>/dev/null || true)"
       [ -n "$uid" ] || uid=1000
       [ -n "$gid" ] || gid=1000
       cat > "$IMAGEMOUNTPATH/etc/fstab" << EOF
@@ -58,7 +58,7 @@ PARTUUID=$boot_pu     /boot/firmware  vfat  defaults,rw,noatime,errors=remount-r
 PARTUUID=$persist_pu  /data           ext4  defaults,noatime,errors=remount-ro     0 2
 # Volatile runtime state: writable, discarded on power-off, ROOT never written.
 tmpfs                 /var            tmpfs  mode=0755                            0 0
-tmpfs                 /etc/prusa-cam  tmpfs  mode=0750,uid=$uid,gid=$gid           0 0
+tmpfs                 /etc/pibuddycam  tmpfs  mode=0750,uid=$uid,gid=$gid           0 0
 EOF
       # Persistent overlayroot configuration: tmpfs upper, no recursion.
       install -d -m 0755 "$IMAGEMOUNTPATH/etc"
@@ -69,19 +69,19 @@ EOF
       # at runtime; no device identity (state.json/identity.json) is written at
       # build time.
       install -d -m 0750 \
-         "$IMAGEMOUNTPATH/prusa-cam" \
-         "$IMAGEMOUNTPATH/prusa-cam/config" \
-         "$IMAGEMOUNTPATH/prusa-cam/releases" \
-         "$IMAGEMOUNTPATH/prusa-cam/backups" \
+         "$IMAGEMOUNTPATH/pibuddycam" \
+         "$IMAGEMOUNTPATH/pibuddycam/config" \
+         "$IMAGEMOUNTPATH/pibuddycam/releases" \
+         "$IMAGEMOUNTPATH/pibuddycam/backups" \
          "$IMAGEMOUNTPATH/network" \
          "$IMAGEMOUNTPATH/network/system-connections" \
          "$IMAGEMOUNTPATH/sdcard" \
          "$IMAGEMOUNTPATH/sdcard/timelapse"
-      uid="$(awk -F: '$1=="prusa-cam"{print $3}' "${IGconf_target_path}/etc/passwd" 2>/dev/null || true)"
-      gid="$(awk -F: '$1=="prusa-cam"{print $4}' "${IGconf_target_path}/etc/passwd" 2>/dev/null || true)"
+      uid="$(awk -F: '$1=="pibuddycam"{print $3}' "${IGconf_target_path}/etc/passwd" 2>/dev/null || true)"
+      gid="$(awk -F: '$1=="pibuddycam"{print $4}' "${IGconf_target_path}/etc/passwd" 2>/dev/null || true)"
       if [ -n "$uid" ] && [ -n "$gid" ]; then
          chown -R "$uid:$gid" \
-            "$IMAGEMOUNTPATH/prusa-cam" \
+            "$IMAGEMOUNTPATH/pibuddycam" \
             "$IMAGEMOUNTPATH/network" \
             "$IMAGEMOUNTPATH/sdcard"
       fi
@@ -90,10 +90,10 @@ EOF
       # account must not be able to write them (WP-R4b). persist_restore.py
       # re-asserts this at runtime; the build seed matches.
       chown root:root \
-         "$IMAGEMOUNTPATH/prusa-cam/releases" \
+         "$IMAGEMOUNTPATH/pibuddycam/releases" \
          "$IMAGEMOUNTPATH/network" \
          "$IMAGEMOUNTPATH/network/system-connections"
-      chmod 0755 "$IMAGEMOUNTPATH/prusa-cam/releases"
+      chmod 0755 "$IMAGEMOUNTPATH/pibuddycam/releases"
       chmod 0700 "$IMAGEMOUNTPATH/network" \
          "$IMAGEMOUNTPATH/network/system-connections"
       ;;

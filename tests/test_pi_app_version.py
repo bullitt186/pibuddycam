@@ -27,7 +27,7 @@ class ApplicationVersionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = self._write_build_info(d, {'version': '1.2.3'})
             self.assertEqual(
-                app_version.application_version(path, env={'PRUSA_APP_VERSION': '9.9.9'}),
+                app_version.application_version(path, env={'PIBUDDYCAM_APP_VERSION': '9.9.9'}),
                 '1.2.3',
             )
 
@@ -35,7 +35,7 @@ class ApplicationVersionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = self._write_build_info(d, {'source_commit': 'abc'})
             self.assertEqual(
-                app_version.application_version(path, env={'PRUSA_APP_VERSION': '2.0.0'}),
+                app_version.application_version(path, env={'PIBUDDYCAM_APP_VERSION': '2.0.0'}),
                 '2.0.0',
             )
 
@@ -50,7 +50,7 @@ class ApplicationVersionTests(unittest.TestCase):
     def test_missing_file_falls_through_to_env(self):
         self.assertEqual(
             app_version.application_version(
-                '/nonexistent/build-info.json', env={'PRUSA_APP_VERSION': '3.1.0'}),
+                '/nonexistent/build-info.json', env={'PIBUDDYCAM_APP_VERSION': '3.1.0'}),
             '3.1.0',
         )
 
@@ -66,7 +66,7 @@ class ApplicationVersionTests(unittest.TestCase):
 
     def test_blank_env_falls_through_to_default(self):
         self.assertEqual(
-            app_version.application_version('/nonexistent', env={'PRUSA_APP_VERSION': '   '}),
+            app_version.application_version('/nonexistent', env={'PIBUDDYCAM_APP_VERSION': '   '}),
             app_version.DEFAULT_VERSION,
         )
 

@@ -1,8 +1,8 @@
 #!/bin/bash
 # First-boot growth of the PERSIST partition and filesystem (AC-11).
 #
-# Installed to /usr/libexec/prusa-data-grow and run once per boot by
-# prusa-data-grow.service, ordered local-fs.target -> prusa-data-grow.service
+# Installed to /usr/libexec/pibuddycam-data-grow and run once per boot by
+# pibuddycam-data-grow.service, ordered local-fs.target -> pibuddycam-data-grow.service
 # -> data-ready.target (source §3.2). It never assumes a device name: the
 # parent device and partition number come from the mounted /data source and
 # sysfs, and it validates the PERSIST label and the expected PARTUUID
@@ -14,11 +14,11 @@
 # resize2fs is a no-op on an already-grown filesystem.
 set -eu
 
-MARKER=/data/.prusa-data-grow.done
+MARKER=/data/.pibuddycam-data-grow.done
 EXPECTED_LABEL=PERSIST
 EXPECTED_PARTNUM=3
 
-log() { echo "prusa-data-grow: $*"; }
+log() { echo "pibuddycam-data-grow: $*"; }
 die() { log "ERROR: $*"; exit 1; }
 
 if [ -f "$MARKER" ]; then
@@ -51,7 +51,7 @@ label="$(blkid -s LABEL -o value "$src" 2>/dev/null || true)"
 # matches the first partition on the same device. Compare the suffix
 # numerically so '-3' and '-03' both mean partition 3 (hardware-found: a
 # literal '*-3' match rejected the real 'b33dcafe-03', which failed
-# prusa-data-grow -> data-ready.target -> the whole camera target).
+# pibuddycam-data-grow -> data-ready.target -> the whole camera target).
 partuuid="$(blkid -s PARTUUID -o value "$src" 2>/dev/null || true)"
 [ -n "$partuuid" ] || die "no PARTUUID for $src"
 pu_num="${partuuid##*-}"

@@ -140,7 +140,7 @@ class RedactionTests(unittest.TestCase):
     def test_log_output_never_carries_a_canary(self):
         runner = FakeRunner(exc=RuntimeError('token=leakme /home/bob'))
 
-        with self.assertLogs('prusa-cam.diagnostics', level='WARNING') as captured:
+        with self.assertLogs('pibuddycam.diagnostics', level='WARNING') as captured:
             diagnostics.collect_diagnostics(runner=runner, clock=lambda: 1.0)
         joined = '\n'.join(captured.output)
         self.assertNotIn('leakme', joined)
@@ -148,7 +148,7 @@ class RedactionTests(unittest.TestCase):
 
     def test_command_line_and_environment_canaries(self):
         out = self._redact(
-            'ExecStart=/usr/bin/python /opt/prusa-cam/main.py token=abc\n'
+            'ExecStart=/usr/bin/python /opt/pibuddycam/main.py token=abc\n'
             'environ PATH=/usr/bin HOME=/home/bob password=xyz\n')
         self.assertNotIn('token=abc', out)
         self.assertNotIn('password=xyz', out)

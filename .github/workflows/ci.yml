@@ -88,8 +88,10 @@ jobs:
               tests/* | docs/* | image/scripts/scan-secrets.sh | image/README.md) continue ;;
             esac
             [ -f "$f" ] || continue
+            # Program source (Python, Rust) uses the high-signal source-tree
+            # mode; variables named token/password are code, not secrets.
             case "$f" in
-              *.py) py+=("$f") ;;
+              *.py | *.rs) py+=("$f") ;;
               *) other+=("$f") ;;
             esac
           done

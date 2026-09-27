@@ -17,7 +17,7 @@ import quality
 import privileged
 from state import RAW_TO_ENUM
 
-log = logging.getLogger('prusa-cam.quality')
+log = logging.getLogger('pibuddycam.quality')
 
 # Exact firmware log string (DAT_000a89c4) emitted by the config quality path
 # when a TURN client is online and a raise is rejected (GAP-WEBRTC-05).

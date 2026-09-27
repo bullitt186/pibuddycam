@@ -4,17 +4,17 @@ default-members = ["."]
 resolver = "2"
 
 [package]
-name = "buddy3d-proxy"
+name = "pibuddycam-proxy"
 version = "0.2.3"
 edition = "2021"
 rust-version = "1.85"
 
 [lib]
-name = "buddy3d_proxy"
+name = "pibuddycam_proxy"
 path = "src/lib.rs"
 
 [[bin]]
-name = "buddy3d-proxy"
+name = "pibuddycam-proxy"
 path = "src/main.rs"
 
 [dependencies]

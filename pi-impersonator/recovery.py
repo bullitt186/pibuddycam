@@ -5,7 +5,7 @@ by the source plan §4.6:
 
 * An authenticated "Enter setup mode" action in the web UI or CLI
   (:func:`enter_setup_mode`).
-* A documented ``buddy3d-recovery`` sentinel placed on the BOOT partition while
+* A documented ``pibuddycam-recovery`` sentinel placed on the BOOT partition while
   the device is powered off (:data:`RECOVERY_SENTINEL`,
   :func:`sentinel_present`, :func:`set_sentinel`, :func:`clear_sentinel`).
 
@@ -35,13 +35,13 @@ import dataclasses
 import logging
 import os
 
-log = logging.getLogger('prusa-cam.recovery')
+log = logging.getLogger('pibuddycam.recovery')
 
 #: Documented recovery sentinel on the BOOT (FAT) partition (source §4.6).
 #: Its presence makes the next boot start the setup hotspot instead of the
 #: camera target. The path is injectable on every function so tests use a
 #: ``tempfile`` path and never touch ``/boot``.
-RECOVERY_SENTINEL = '/boot/firmware/buddy3d-recovery'
+RECOVERY_SENTINEL = '/boot/firmware/pibuddycam-recovery'
 
 #: Provisioning state that means "already in recovery" (mirrors
 #: :data:`provisioning.RECOVERY`; duplicated as a literal so this module stays

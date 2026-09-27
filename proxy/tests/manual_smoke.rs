@@ -12,11 +12,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use buddy3d_proxy::prusa::api::{list_cameras, list_printers};
-use buddy3d_proxy::prusa::auth::{AuthEndpoints, AuthOrchestrator};
-use buddy3d_proxy::prusa::client::PrusaClient;
-use buddy3d_proxy::rate_limit::RateLimiter;
-use buddy3d_proxy::token_store::TokenStore;
+use pibuddycam_proxy::prusa::api::{list_cameras, list_printers};
+use pibuddycam_proxy::prusa::auth::{AuthEndpoints, AuthOrchestrator};
+use pibuddycam_proxy::prusa::client::PrusaClient;
+use pibuddycam_proxy::rate_limit::RateLimiter;
+use pibuddycam_proxy::token_store::TokenStore;
 
 fn install_crypto_provider() {
     // rustls 0.23 needs an explicit crypto provider before any TLS handshake.
@@ -30,7 +30,7 @@ async fn real_prusa_account_smoke() {
     let email = std::env::var("PRUSA_EMAIL").expect("PRUSA_EMAIL");
     let password = std::env::var("PRUSA_PASSWORD").expect("PRUSA_PASSWORD");
     let token_path = std::env::var("TOKEN_STORE_PATH")
-        .unwrap_or_else(|_| "/tmp/buddy3d-tokens.json".into());
+        .unwrap_or_else(|_| "/tmp/pibuddycam-tokens.json".into());
 
     let limiter = Arc::new(RateLimiter::new(3, Duration::from_secs(60)));
     let http = reqwest::Client::builder()
@@ -80,22 +80,22 @@ async fn real_prusa_account_smoke() {
 #[ignore]
 async fn real_prusa_stream_smoke() {
     install_crypto_provider();
-    use buddy3d_proxy::prusa::api::fetch_webrtc_config;
-    use buddy3d_proxy::prusa::auth::{AuthEndpoints, AuthOrchestrator};
-    use buddy3d_proxy::prusa::client::PrusaClient;
-    use buddy3d_proxy::prusa::signaling::PrusaSignaling;
-    use buddy3d_proxy::rate_limit::RateLimiter;
-    use buddy3d_proxy::token_store::TokenStore;
-    use buddy3d_proxy::webrtc_session::{run_session, WebRtcSession};
+    use pibuddycam_proxy::prusa::api::fetch_webrtc_config;
+    use pibuddycam_proxy::prusa::auth::{AuthEndpoints, AuthOrchestrator};
+    use pibuddycam_proxy::prusa::client::PrusaClient;
+    use pibuddycam_proxy::prusa::signaling::PrusaSignaling;
+    use pibuddycam_proxy::rate_limit::RateLimiter;
+    use pibuddycam_proxy::token_store::TokenStore;
+    use pibuddycam_proxy::webrtc_session::{run_session, WebRtcSession};
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::sync::mpsc;
 
-    buddy3d_proxy::init_tracing();
+    pibuddycam_proxy::init_tracing();
     let email = std::env::var("PRUSA_EMAIL").expect("PRUSA_EMAIL");
     let password = std::env::var("PRUSA_PASSWORD").expect("PRUSA_PASSWORD");
     let token_path = std::env::var("TOKEN_STORE_PATH")
-        .unwrap_or_else(|_| "/tmp/buddy3d-tokens.json".into());
+        .unwrap_or_else(|_| "/tmp/pibuddycam-tokens.json".into());
 
     let limiter = Arc::new(RateLimiter::new(3, Duration::from_secs(60)));
     let http = reqwest::Client::builder()
@@ -115,7 +115,7 @@ async fn real_prusa_stream_smoke() {
 
     let token = orch.access_token().await.expect("access token");
 
-    use buddy3d_proxy::prusa::api::{list_cameras, list_printers};
+    use pibuddycam_proxy::prusa::api::{list_cameras, list_printers};
     let printers = list_printers(&prusa, &endpoints.connect_base, &token)
         .await
         .expect("printers");

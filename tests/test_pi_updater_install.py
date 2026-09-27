@@ -41,7 +41,7 @@ def valid_manifest(**overrides):
         'channel': 'stable',
         'source_commit': 'deadbeef' * 5,
         'min_image_version': '1.0.0',
-        'bundle_url': 'https://example.com/buddy3d-camera-app-1.1.0.tar.zst',
+        'bundle_url': 'https://example.com/pibuddycam-app-1.1.0.tar.zst',
         'bundle_sha256': SHA_A,
         'bundle_size': 1024,
         'release_summary': 'Fixes a camera bug.',
@@ -213,11 +213,11 @@ class Harness:
 class InstallPathsTests(unittest.TestCase):
     def test_defaults(self):
         paths = ui.InstallPaths()
-        self.assertEqual(paths.releases_dir, '/data/prusa-cam/releases')
-        self.assertEqual(paths.current_link, '/data/prusa-cam/releases/current')
-        self.assertEqual(paths.previous_link, '/data/prusa-cam/releases/previous')
-        self.assertEqual(paths.factory_app, '/opt/prusa-cam')
-        self.assertEqual(paths.state_dir, '/data/prusa-cam')
+        self.assertEqual(paths.releases_dir, '/data/pibuddycam/releases')
+        self.assertEqual(paths.current_link, '/data/pibuddycam/releases/current')
+        self.assertEqual(paths.previous_link, '/data/pibuddycam/releases/previous')
+        self.assertEqual(paths.factory_app, '/opt/pibuddycam')
+        self.assertEqual(paths.state_dir, '/data/pibuddycam')
 
     def test_version_dir(self):
         paths = ui.InstallPaths(releases_dir='/tmp/x')
@@ -278,7 +278,7 @@ class SwitchReleaseTests(unittest.TestCase):
 
     def test_activated_release_is_world_traversable(self):
         # mkdtemp creates the staging directory 0700 root; the unprivileged
-        # launcher (prusa-cam) must still be able to traverse the activated
+        # launcher (pibuddycam) must still be able to traverse the activated
         # release, otherwise it silently falls back to the factory app.
         staging = self._staging('.1.1.0.staging.abc')
         os.chmod(staging, 0o700)
@@ -1136,7 +1136,7 @@ class UpdateStateFileTests(unittest.TestCase):
 
     def test_default_path_is_under_durable_data(self):
         self.assertEqual(ui.DEFAULT_UPDATE_STATE_PATH,
-                         '/data/prusa-cam/update-state.json')
+                         '/data/pibuddycam/update-state.json')
 
     def test_round_trip(self):
         document = ui.update_state_document(
@@ -1526,7 +1526,7 @@ class DefaultHealthCheckTests(unittest.TestCase):
 # --------------------------------------------------------------------------- #
 
 class DefaultServiceUnitTests(unittest.TestCase):
-    """Restart/stop address the launcher units, never ``prusa-camera.target``."""
+    """Restart/stop address the launcher units, never ``pibuddycam.target``."""
 
     def setUp(self):
         self.returncode = 0
@@ -1552,7 +1552,7 @@ class DefaultServiceUnitTests(unittest.TestCase):
         self.assertEqual(args[:2], ['/usr/bin/systemctl', 'restart'])
         for unit in ui.RUNTIME_LAUNCHER_UNITS:
             self.assertIn(unit, args)
-        self.assertNotIn('prusa-camera.target', args)
+        self.assertNotIn('pibuddycam.target', args)
         self.assertNotIn('rpicam-source.service', args)
         self.assertEqual(kwargs.get('timeout'), ui.COMMAND_TIMEOUT_SECONDS)
 
@@ -1563,7 +1563,7 @@ class DefaultServiceUnitTests(unittest.TestCase):
         self.assertEqual(args[:2], ['/usr/bin/systemctl', 'stop'])
         for unit in ui.RUNTIME_LAUNCHER_UNITS:
             self.assertIn(unit, args)
-        self.assertNotIn('prusa-camera.target', args)
+        self.assertNotIn('pibuddycam.target', args)
         self.assertNotIn('rpicam-source.service', args)
 
     def test_nonzero_exit_is_a_bounded_failure(self):
@@ -1621,7 +1621,7 @@ class DefaultDownloadCompositionTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.staging = os.path.join(self.tmp.name, 'staging')
         os.makedirs(self.staging)
-        self.pubkey = os.path.join(self.tmp.name, 'buddy3d-release.pub')
+        self.pubkey = os.path.join(self.tmp.name, 'pibuddycam-release.pub')
         with open(self.pubkey, 'w', encoding='utf-8') as handle:
             handle.write(
                 'untrusted comment: minisign public key SYNTHETIC\n'
@@ -1630,7 +1630,7 @@ class DefaultDownloadCompositionTests(unittest.TestCase):
     def test_bundle_and_signature_downloaded_then_verified(self):
         bundle_bytes = b'bundle-bytes'
         sig_bytes = b'untrusted comment: signature\nRWT...\n'
-        url = 'https://example.com/buddy3d-camera-app-1.1.0.tar.zst'
+        url = 'https://example.com/pibuddycam-app-1.1.0.tar.zst'
         manifest = make_manifest(bundle_size=len(bundle_bytes), bundle_url=url)
         requested = []
 
@@ -1745,7 +1745,7 @@ def parse_unit(path):
 
 class UpdaterUnitTests(unittest.TestCase):
     def test_service_is_root_oneshot_gated_on_data_ready(self):
-        unit = parse_unit(PI_DIR / 'systemd' / 'prusa-updater.service')
+        unit = parse_unit(PI_DIR / 'systemd' / 'pibuddycam-updater.service')
         section = unit['Unit']
         self.assertIn('data-ready.target', section['Requires'].split())
         self.assertIn('data-ready.target', section['After'].split())
@@ -1760,38 +1760,38 @@ class UpdaterUnitTests(unittest.TestCase):
         self.assertNotIn('Install', unit)
 
     def test_service_recovers_before_check(self):
-        unit = parse_unit(PI_DIR / 'systemd' / 'prusa-updater.service')
+        unit = parse_unit(PI_DIR / 'systemd' / 'pibuddycam-updater.service')
         service = unit['Service']
         self.assertIn('updater_install.py recover', service['ExecStartPre'])
         self.assertIn(' check', service['ExecStart'])
 
     def test_service_config_is_root_owned_not_service_writable(self):
-        text = (PI_DIR / 'systemd' / 'prusa-updater.service').read_text(
+        text = (PI_DIR / 'systemd' / 'pibuddycam-updater.service').read_text(
             encoding='utf-8')
-        service = parse_unit(PI_DIR / 'systemd' / 'prusa-updater.service')['Service']
+        service = parse_unit(PI_DIR / 'systemd' / 'pibuddycam-updater.service')['Service']
         # AC-32: the manifest URL comes from the root-owned file, never from
-        # /etc/prusa-cam (which the unprivileged service account can write).
-        self.assertEqual(service.get('EnvironmentFile'), '-/etc/prusa-updater.conf')
-        self.assertNotIn('/etc/prusa-cam/', text)
+        # /etc/pibuddycam (which the unprivileged service account can write).
+        self.assertEqual(service.get('EnvironmentFile'), '-/etc/pibuddycam-updater.conf')
+        self.assertNotIn('/etc/pibuddycam/', text)
         # The trust anchor cannot be overridden from the environment.
-        self.assertNotIn('PRUSA_UPDATE_PUBLIC_KEY', text)
+        self.assertNotIn('PIBUDDYCAM_UPDATE_PUBLIC_KEY', text)
         # The module itself must never read a public-key env override.
         source = (PI_DIR / 'updater_install.py').read_text(encoding='utf-8')
-        self.assertNotIn('PRUSA_UPDATE_PUBLIC_KEY', source)
+        self.assertNotIn('PIBUDDYCAM_UPDATE_PUBLIC_KEY', source)
         self.assertNotIn('PUBLIC_KEY_ENV', source)
 
     def test_timer_triggers_service_and_is_enabled(self):
-        unit = parse_unit(PI_DIR / 'systemd' / 'prusa-updater.timer')
-        self.assertEqual(unit['Timer']['Unit'], 'prusa-updater.service')
+        unit = parse_unit(PI_DIR / 'systemd' / 'pibuddycam-updater.timer')
+        self.assertEqual(unit['Timer']['Unit'], 'pibuddycam-updater.service')
         self.assertIn('24h', unit['Timer']['OnUnitActiveSec'])
         self.assertIn('multi-user.target', unit['Install']['WantedBy'].split())
 
     def test_camera_target_wants_timer_but_never_requires_it(self):
         unit = parse_unit(
-            REPO_ROOT / 'image' / 'assets' / 'systemd' / 'prusa-camera.target')
+            REPO_ROOT / 'image' / 'assets' / 'systemd' / 'pibuddycam.target')
         section = unit['Unit']
-        self.assertIn('prusa-updater.timer', section['Wants'].split())
-        self.assertNotIn('prusa-updater.timer', section.get('Requires', '').split())
+        self.assertIn('pibuddycam-updater.timer', section['Wants'].split())
+        self.assertNotIn('pibuddycam-updater.timer', section.get('Requires', '').split())
 
 
 class InstallerWiringTests(unittest.TestCase):
@@ -1801,32 +1801,32 @@ class InstallerWiringTests(unittest.TestCase):
         ).read_text(encoding='utf-8')
 
     def test_embeds_public_key_root_owned_0644(self):
-        self.assertIn('image/keys/buddy3d-release.pub', self.text)
-        self.assertIn('/usr/share/prusa-buddy3d-camera/buddy3d-release.pub',
+        self.assertIn('image/keys/pibuddycam-release.pub', self.text)
+        self.assertIn('/usr/share/pibuddycam/pibuddycam-release.pub',
                       self.text)
         self.assertIn('-o root -g root -m 0644', self.text)
 
     def test_installs_and_enables_updater_units(self):
-        self.assertIn('prusa-updater.service prusa-updater.timer', self.text)
+        self.assertIn('pibuddycam-updater.service pibuddycam-updater.timer', self.text)
         enable_block = self.text.split('systemctl enable', 1)[1].split('|| true', 1)[0]
-        self.assertIn('prusa-updater.timer', enable_block)
-        self.assertNotIn('prusa-updater.service', enable_block)
+        self.assertIn('pibuddycam-updater.timer', enable_block)
+        self.assertNotIn('pibuddycam-updater.service', enable_block)
 
     def test_layer_installs_minisign_and_zstd(self):
         layer = (
-            REPO_ROOT / 'image' / 'layer' / 'buddy3d-image.yaml'
+            REPO_ROOT / 'image' / 'layer' / 'pibuddycam-image.yaml'
         ).read_text(encoding='utf-8')
         self.assertIsNotNone(re.search(r'^\s*- minisign\s*$', layer, re.MULTILINE))
         self.assertIsNotNone(re.search(r'^\s*- zstd\s*$', layer, re.MULTILINE))
 
     def test_installs_root_owned_updater_config(self):
         # AC-32: the only configurable value lives in a root-owned file, never
-        # in the service-writable /etc/prusa-cam tree.
-        self.assertIn('/etc/prusa-updater.conf', self.text)
-        self.assertIn('PRUSA_UPDATE_MANIFEST_URL', self.text)
+        # in the service-writable /etc/pibuddycam tree.
+        self.assertIn('/etc/pibuddycam-updater.conf', self.text)
+        self.assertIn('PIBUDDYCAM_UPDATE_MANIFEST_URL', self.text)
         self.assertIn('chown root:root', self.text)
         self.assertIn('chmod 0644', self.text)
-        self.assertNotIn('/etc/prusa-cam/updater.env', self.text)
+        self.assertNotIn('/etc/pibuddycam/updater.env', self.text)
 
 
 class ResolveVersionsTests(unittest.TestCase):
@@ -1996,19 +1996,19 @@ class ValidatorAssertionsTests(unittest.TestCase):
         ).read_text(encoding='utf-8')
 
     def test_validator_asserts_key_and_units(self):
-        self.assertIn('buddy3d-release.pub', self.text)
-        self.assertIn('prusa-updater.service', self.text)
-        self.assertIn('prusa-updater.timer', self.text)
+        self.assertIn('pibuddycam-release.pub', self.text)
+        self.assertIn('pibuddycam-updater.service', self.text)
+        self.assertIn('pibuddycam-updater.timer', self.text)
         self.assertIn('is enabled at multi-user.target', self.text)
         # AC-32: no service-writable EnvironmentFile, no public-key env override.
         self.assertIn('no service-writable EnvironmentFile', self.text)
         self.assertIn('no public-key env override', self.text)
         self.assertIn('updater_install.py recover', self.text)
         # WP-R4c: the install oneshot runs the install and is never enabled.
-        self.assertIn('prusa-updater-install.service', self.text)
+        self.assertIn('pibuddycam-updater-install.service', self.text)
         self.assertIn('updater_install.py install', self.text)
         self.assertIn(
-            'prusa-updater-install.service is not enabled', self.text)
+            'pibuddycam-updater-install.service is not enabled', self.text)
 
 
 class ImportSafetyTests(unittest.TestCase):
@@ -2044,3 +2044,28 @@ class ImportSafetyTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DefaultImageVersionTests(unittest.TestCase):
+    """min_image_version is enforced from the image's own build-info."""
+
+    def _build_info(self, version):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, 'build-info.json')
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump({'version': version}, f)
+        return path
+
+    def test_build_info_release_version_is_used(self):
+        self.assertEqual(
+            ui.default_image_version({}, self._build_info('1.4.0')), '1.4.0')
+
+    def test_env_override_wins(self):
+        self.assertEqual(ui.default_image_version(
+            {'PIBUDDYCAM_IMAGE_VERSION': '2.0.0'}, self._build_info('1.4.0')), '2.0.0')
+
+    def test_dev_or_missing_version_skips_the_check(self):
+        self.assertEqual(
+            ui.default_image_version({}, self._build_info('0.0.0+local')), '')
+        self.assertEqual(ui.default_image_version({}, '/nonexistent/b.json'), '')

@@ -1,4 +1,4 @@
-# Prusa Buddy3D Camera — Linux Impersonator Implementation Guide
+# PiBuddyCam — Linux Impersonator Implementation Guide
 
 Build a Linux application that appears as a genuine Buddy3D camera to Prusa Connect.
 

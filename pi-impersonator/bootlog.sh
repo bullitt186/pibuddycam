@@ -20,14 +20,14 @@ LOG=/boot/firmware/bootlog.txt
     # overlay, so persist the runtime unit state, NetworkManager view, and the
     # provisioning/hotspot logs here. This is what made the first-boot "no
     # setup hotspot" failure diagnosable without a console.
-    echo "--- buddy3d services ($(date -Is)) ---"
+    echo "--- pibuddycam services ($(date -Is)) ---"
     systemctl --failed --no-pager 2>/dev/null
-    for unit in data-ready.target pi-persist.service prusa-boot-mode.service \
-                prusa-provisioning.service NetworkManager.service; do
+    for unit in data-ready.target pi-persist.service pibuddycam-boot-mode.service \
+                pibuddycam-provisioning.service NetworkManager.service; do
         echo "$unit: active=$(systemctl is-active "$unit" 2>/dev/null) enabled=$(systemctl is-enabled "$unit" 2>/dev/null)"
     done
     echo "--- systemctl status ---"
-    systemctl status --no-pager -l prusa-boot-mode.service prusa-provisioning.service 2>/dev/null | head -60
+    systemctl status --no-pager -l pibuddycam-boot-mode.service pibuddycam-provisioning.service 2>/dev/null | head -60
     echo "--- nmcli general / device ---"
     nmcli general status 2>/dev/null
     nmcli -t device status 2>/dev/null
@@ -36,20 +36,20 @@ LOG=/boot/firmware/bootlog.txt
     echo "--- rfkill ---"
     rfkill list 2>/dev/null
     echo "--- provisioning state / data ---"
-    cat /data/prusa-cam/provisioning.json 2>/dev/null || echo "(no provisioning.json)"
-    ls -la /data/prusa-cam/ 2>/dev/null
+    cat /data/pibuddycam/provisioning.json 2>/dev/null || echo "(no provisioning.json)"
+    ls -la /data/pibuddycam/ 2>/dev/null
     ls -la /data/network/system-connections/ 2>/dev/null
     echo "--- journal (boot-mode/provisioning/NetworkManager) ---"
-    journalctl -b --no-pager -n 300 -u prusa-boot-mode \
-        -u prusa-provisioning -u NetworkManager -u data-ready.target 2>/dev/null
+    journalctl -b --no-pager -n 300 -u pibuddycam-boot-mode \
+        -u pibuddycam-provisioning -u NetworkManager -u data-ready.target 2>/dev/null
     echo
     # Camera-target forensics: after claim the runtime owns the device. Capture
     # the unit states, whether libcamera actually sees a sensor, and the app
     # journal so a "no :80/:443, RTSP up" boot is diagnosable without a console.
     echo "--- camera target units ($(date -Is)) ---"
     systemctl --failed --no-pager 2>/dev/null
-    for unit in prusa-camera.target rpicam-source.service prusa-rtsp.service \
-                prusa-ha-rtsp.service prusa-cam.service prusa-admin.service; do
+    for unit in pibuddycam.target rpicam-source.service pibuddycam-rtsp.service \
+                pibuddycam-ha-rtsp.service pibuddycam.service pibuddycam-admin.service; do
         echo "$unit: active=$(systemctl is-active "$unit" 2>/dev/null) enabled=$(systemctl is-enabled "$unit" 2>/dev/null)"
     done
     echo "--- camera detection ---"
@@ -57,8 +57,8 @@ LOG=/boot/firmware/bootlog.txt
     { rpicam-still --list-cameras 2>&1 || libcamera-hello --list-cameras 2>&1; } | head -25
     dmesg 2>/dev/null | grep -iE "camera|ov5647|ov5640|imx|unicam|bcm2835-isp|brcm" | tail -25
     echo "--- journal (camera target) ---"
-    journalctl -b --no-pager -n 250 -u prusa-camera.target -u rpicam-source \
-        -u prusa-cam -u prusa-admin -u prusa-rtsp -u prusa-ha-rtsp 2>/dev/null
+    journalctl -b --no-pager -n 250 -u pibuddycam.target -u rpicam-source \
+        -u pibuddycam -u pibuddycam-admin -u pibuddycam-rtsp -u pibuddycam-ha-rtsp 2>/dev/null
     echo
 } >> "$LOG" 2>&1 || true
 

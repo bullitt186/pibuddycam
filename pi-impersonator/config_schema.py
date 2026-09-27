@@ -3,8 +3,8 @@
 The Pi root is a read-only overlayfs, so durable configuration lives on the
 ``PERSIST`` ext4 partition mounted at ``/data``:
 
-    /data/prusa-cam/config/device.toml    non-secret appliance configuration
-    /data/prusa-cam/config/secrets.toml   Prusa/MQTT/admin secrets (mode 0600)
+    /data/pibuddycam/config/device.toml    non-secret appliance configuration
+    /data/pibuddycam/config/secrets.toml   Prusa/MQTT/admin secrets (mode 0600)
 
 This module owns the schema, its strict allowlist, validation, migration
 harness, and a bounded deterministic TOML writer. There is no TOML writer in
@@ -35,11 +35,11 @@ import re
 import tomllib
 from urllib.parse import urlsplit
 
-log = logging.getLogger('prusa-cam.config')
+log = logging.getLogger('pibuddycam.config')
 
 SCHEMA_VERSION = 1
 
-CONFIG_DIR = '/data/prusa-cam/config'
+CONFIG_DIR = '/data/pibuddycam/config'
 DEVICE_TOML_PATH = CONFIG_DIR + '/device.toml'
 SECRETS_TOML_PATH = CONFIG_DIR + '/secrets.toml'
 
@@ -104,7 +104,7 @@ def default_device():
             'uri': 'mqtts://broker.example:8883',
             'client_id': '',
             'discovery_prefix': 'homeassistant',
-            'topic_prefix': 'buddy3d',
+            'topic_prefix': 'pibuddycam',
             'ca_file': '',
         },
         'admin': {'hostname': ''},
@@ -553,7 +553,7 @@ def save_pair(device_cfg, secrets_cfg, device_path=DEVICE_TOML_PATH,
     :func:`write_atomic`, which is atomic per file (temp + ``os.replace``) and
     sets the documented mode (``0640`` device, ``0600`` secrets). Because the
     admin and camera services run as the same service account, the rename keeps
-    the ``prusa-cam`` ownership; the mode is set explicitly on the temp file.
+    the ``pibuddycam`` ownership; the mode is set explicitly on the temp file.
 
     If the secrets write fails after the device write succeeded, the previous
     device document is restored (or removed if it did not exist). This rollback

@@ -502,7 +502,7 @@ class PersistTests(WizardTestBase):
 
         device = config_schema.load_device(self.device_path)
         secrets = config_schema.load_secrets(self.secrets_path)
-        self.assertEqual(device['admin']['hostname'], 'buddy3d-ddeeff')
+        self.assertEqual(device['admin']['hostname'], 'pibuddycam-ddeeff')
         self.assertEqual(secrets['prusa']['token'], TOKEN)
         self.assertEqual(secrets['wifi']['psk'], PSK)
         self.assertTrue(secrets['admin']['password_hash'].startswith('scrypt$'))
@@ -663,7 +663,7 @@ class FinishTests(WizardTestBase):
                 self.assertFalse(result.ok)
                 self.assertIn('stayed in setup', result.reason)
                 self.assertEqual(events, ['hotspot_stop', 'hotspot_start'])
-                self.assertEqual(controller.start_ssids, ['Buddy3D-Setup-ddeeff'])
+                self.assertEqual(controller.start_ssids, ['PiBuddyCam-Setup-ddeeff'])
                 self.assertNotIn(PSK, result.reason)
                 self.assertNotIn(TOKEN, result.reason)
                 self.assertNotIn('sup3rsecret', result.reason)

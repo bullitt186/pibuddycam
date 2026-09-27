@@ -7,7 +7,7 @@ with :mod:`ast` and asserts the shape the contract requires:
 * the aiohttp routes map 1:1 onto :class:`admin_http.AdminApp`'s route table;
 * ``peer_ip`` comes from the socket transport, never a forwarding header;
 * the ``Response`` (including ``Set-Cookie``) is passed through verbatim;
-* ``prusa-admin.service`` is a valid, non-personal unit gated on
+* ``pibuddycam-admin.service`` is a valid, non-personal unit gated on
   ``data-ready.target``; and
 * the factory installer installs and enables the unit.
 
@@ -23,7 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 PI_DIR = REPO / 'pi-impersonator'
 ADMIN_APP = PI_DIR / 'admin_app.py'
 ADMIN_HTTP = PI_DIR / 'admin_http.py'
-UNIT = PI_DIR / 'systemd' / 'prusa-admin.service'
+UNIT = PI_DIR / 'systemd' / 'pibuddycam-admin.service'
 INSTALLER = REPO / 'image' / 'assets' / 'install-factory-app.sh'
 
 sys.path.insert(0, str(PI_DIR))
@@ -448,15 +448,15 @@ class AdminUnitTests(unittest.TestCase):
             self.assertTrue(value, f'empty systemd value in: {line!r}')
 
     def test_runs_as_service_account_from_app_root(self):
-        self.assertEqual(self._values('User'), ['prusa-cam'])
-        self.assertEqual(self._values('WorkingDirectory'), ['/opt/prusa-cam'])
+        self.assertEqual(self._values('User'), ['pibuddycam'])
+        self.assertEqual(self._values('WorkingDirectory'), ['/opt/pibuddycam'])
 
     def test_execstart_runs_the_transport_entry_point(self):
         exec_start = self._values('ExecStart')
         self.assertEqual(len(exec_start), 1)
         # WP-R4c: the unit starts through the launcher so an installed signed
         # release (and its per-release venv) runs, with a factory fallback.
-        self.assertIn('/opt/prusa-cam/launcher.sh', exec_start[0])
+        self.assertIn('/opt/pibuddycam/launcher.sh', exec_start[0])
         self.assertIn('admin_app.py', exec_start[0])
 
     def test_gated_on_data_ready(self):
@@ -479,7 +479,7 @@ class AdminUnitTests(unittest.TestCase):
 
     def test_installs_under_camera_target(self):
         install_index = self.lines.index('[Install]')
-        self.assertIn('WantedBy=prusa-camera.target', self.lines[install_index:])
+        self.assertIn('WantedBy=pibuddycam.target', self.lines[install_index:])
 
     def test_no_personal_username_or_home_path(self):
         self.assertNotIn('bullitt', self.text)
@@ -491,16 +491,16 @@ class FactoryInstallerTests(unittest.TestCase):
         text = INSTALLER.read_text(encoding='utf-8')
         unit_loop = text.split('systemctl enable', 1)[0]
         enable_block = text.split('systemctl enable', 1)[1]
-        # Installed verbatim; enabled only transitively via prusa-camera.target
+        # Installed verbatim; enabled only transitively via pibuddycam.target
         # after claim, never directly at multi-user.target.
-        self.assertIn('prusa-admin.service', unit_loop)
-        self.assertNotIn('prusa-admin.service', enable_block)
+        self.assertIn('pibuddycam-admin.service', unit_loop)
+        self.assertNotIn('pibuddycam-admin.service', enable_block)
 
     def test_installer_installs_provisioning_and_boot_mode_units(self):
         text = INSTALLER.read_text(encoding='utf-8')
         unit_loop = text.split('systemctl enable', 1)[0]
-        self.assertIn('prusa-provisioning.service', unit_loop)
-        self.assertIn('prusa-boot-mode.service', unit_loop)
+        self.assertIn('pibuddycam-provisioning.service', unit_loop)
+        self.assertIn('pibuddycam-boot-mode.service', unit_loop)
 
 
 class CoreOffloadTests(unittest.TestCase):

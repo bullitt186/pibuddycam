@@ -1,7 +1,7 @@
 """WP-UI2 (AC-4/AC-17/AC-18): bounded local runtime-control IPC.
 
 Stdlib-only and hermetic: every server binds a ``tempfile`` Unix socket and
-every client talks to that path. No real ``/run/prusa-cam``, no device, and no
+every client talks to that path. No real ``/run/pibuddycam``, no device, and no
 network are touched.
 """
 import json

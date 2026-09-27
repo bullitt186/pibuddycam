@@ -1,21 +1,21 @@
-# Always-on local RTSP endpoint for Home Assistant. Unlike prusa-rtsp.service,
+# Always-on local RTSP endpoint for Home Assistant. Unlike pibuddycam-rtsp.service,
 # this unit is never controlled by Prusa RTSP/WebRTC mode commands.
 # data-ready.target gates this unit on a real, writable PERSIST /data mount (AC-7).
 [Unit]
-Description=Home Assistant RTSP endpoint for Prusa camera impersonator
+Description=Home Assistant RTSP endpoint for PiBuddyCam
 After=network.target data-ready.target rpicam-source.service
 Requires=rpicam-source.service data-ready.target
 
 [Service]
 Type=simple
-User=prusa-cam
-WorkingDirectory=/opt/prusa-cam
+User=pibuddycam
+WorkingDirectory=/opt/pibuddycam
 # GStreamer/fontconfig need a writable cache (HOME is read-only on the appliance).
-Environment=XDG_CACHE_HOME=/tmp/prusa-cam
+Environment=XDG_CACHE_HOME=/tmp/pibuddycam
 Environment=RTSP_PORT=8555
 Environment=RTSP_PATH=/live
 Environment="RTSP_LABEL=Home Assistant"
-ExecStart=/opt/prusa-cam/launcher.sh rtsp_server.py
+ExecStart=/opt/pibuddycam/launcher.sh rtsp_server.py
 Restart=always
 RestartSec=2
 

@@ -28,7 +28,7 @@ Stdlib only, and no file/network/thread side effects on import.
 import concurrent.futures
 import logging
 
-log = logging.getLogger('prusa-cam.settings_dispatch')
+log = logging.getLogger('pibuddycam.settings_dispatch')
 
 #: Default bounded wait for a mutation to run on the owning loop. Long enough
 #: for a service restart triggered by a settings change, short enough that an

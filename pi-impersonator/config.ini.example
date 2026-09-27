@@ -14,7 +14,7 @@
 ;                     Out-of-range or non-integer values fall back to 10 with a warning.
 ;
 ; Resolution is NOT configured here: it follows the persisted video-quality tier
-; (/etc/prusa-cam/quality.env), which Connect changes via quality commands
+; (/etc/pibuddycam/quality.env), which Connect changes via quality commands
 ; (SD 640x480 / HD 1280x720 / FHD 1920x1080), exactly like firmware 3.1.6.
 
 [identity]

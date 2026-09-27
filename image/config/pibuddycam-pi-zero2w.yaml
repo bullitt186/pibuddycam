@@ -1,9 +1,9 @@
-# Buddy3D camera appliance image composition — Raspberry Pi Zero 2 W.
+# PiBuddyCam appliance image composition — Raspberry Pi Zero 2 W.
 #
 # Target: Raspberry Pi Zero 2 W, arm64, Raspberry Pi OS / Debian Trixie.
 # Layout: MBR with BOOT (vfat) + ROOT (ext4, immutable overlay lower) +
 # PERSIST (ext4, /data, last partition, grown on first boot). See
-# ../layer/buddy3d-image.yaml and ../README.md.
+# ../layer/pibuddycam-image.yaml and ../README.md.
 #
 # Build with the pinned builder (never a moving checkout):
 #   RPI_IMAGE_GEN_DIR=/path/to/rpi-image-gen image/scripts/build-image.sh
@@ -13,27 +13,27 @@
 # `layer:` names the extra suite layer. Keys map to IGconf_<section>_<key>.
 
 target:
-  context: buddy3d-camera
+  context: pibuddycam
 
 artefact:
-  target_name: buddy3d-camera-pi-zero2w
+  target_name: pibuddycam-pi-zero2w
   # Overridden by image/scripts/build-image.sh with the source git describe.
   version: 0.0.0+local
 
 device:
   layer: rpizero2w
-  hostname: buddy3d-camera
+  hostname: pibuddycam
   sector_size: 512
   # Dedicated non-login service identity (AC-1). device-user-admin creates
   # the account; image/assets/install-factory-app.sh forces nologin, moves
-  # the home to /opt/prusa-cam, and removes /home/prusa-cam.
-  user1: prusa-cam
+  # the home to /opt/pibuddycam, and removes /home/pibuddycam.
+  user1: pibuddycam
   user1sudo: none
   user1groups: video,render,audio,plugdev,gpio,i2c,spi
 
 image:
-  layer: buddy3d-image
-  name: buddy3d-camera-pi-zero2w
+  layer: pibuddycam-image
+  name: pibuddycam-pi-zero2w
   boot_part_size: 512M
   root_part_size: 4G
   persist_part_size: 512M
@@ -46,9 +46,9 @@ image:
   disksig: "0xb33dcafe"
 
 layer:
-  # Buddy3D suite: rpios minbase composition with NetworkManager as the
+  # PiBuddyCam suite: rpios minbase composition with NetworkManager as the
   # single network activator (source §3.2), instead of systemd-networkd/iwd.
-  base: buddy3d-suite
+  base: pibuddycam-suite
 
 packages:
   # Camera + media stack (mirrors pi-impersonator/bootstrap.sh).
@@ -89,19 +89,19 @@ packages:
   - nftables
   - iptables
   - ca-certificates
-  # sudo runs the fixed-verb root helper (prusa-priv) for the prusa-cam service
-  # account; the image installs a narrow /etc/sudoers.d/prusa-cam rule (B3).
+  # sudo runs the fixed-verb root helper (pibuddycam-priv) for the pibuddycam service
+  # account; the image installs a narrow /etc/sudoers.d/pibuddycam rule (B3).
   - sudo
   # Boot-time admin TLS provisioning (appliance image/security defect):
   # admin_tls.ensure() generates the durable self-signed keypair and recreates
-  # /etc/prusa-cam/admin.env before prusa-admin.service starts. openssl is
+  # /etc/pibuddycam/admin.env before pibuddycam-admin.service starts. openssl is
   # invoked with an argv list, never a shell, and must be installed explicitly.
   - openssl
 
 env:
   # Overridden by image/scripts/build-image.sh. The defaults keep a bare
   # `rpi-image-gen config` parse working without a git context.
-  PRUSA_SOURCE_COMMIT: unknown
+  PIBUDDYCAM_SOURCE_COMMIT: unknown
   RPI_IMAGE_GEN_REVISION: 262d4df5a9f9d4133370465399a7958a7c22cdc7
-  PRUSA_OS_SUITE: trixie
-  PRUSA_KERNEL_PACKAGE: linux-image-rpi-v8
+  PIBUDDYCAM_OS_SUITE: trixie
+  PIBUDDYCAM_KERNEL_PACKAGE: linux-image-rpi-v8

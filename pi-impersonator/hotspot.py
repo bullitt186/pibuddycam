@@ -3,11 +3,11 @@
 While the appliance is *unclaimed* it exposes a temporary Wi-Fi access point so a
 headless, unlabelled device can be reached without a display or a pre-shared
 credential (source plan §4.3). The captive portal is served at
-``http://192.168.4.1``; the SSID is ``Buddy3D-Setup-<last6-device-id>``
+``http://192.168.4.1``; the SSID is ``PiBuddyCam-Setup-<last6-device-id>``
 (:func:`setup_ssid`, delegated to :mod:`provisioning`).
 
 The hotspot is **only** active while the device is unclaimed. It is stopped
-before ``prusa-camera.target`` starts the camera source, so the runtime never
+before ``pibuddycam.target`` starts the camera source, so the runtime never
 shares the wireless interface with the setup portal.
 
 Host-only / injectable commands
@@ -22,10 +22,10 @@ Documented ``nmcli`` invocations
 * start:      first ``nmcli device disconnect <ifname>`` (best effort) so a
               Raspberry Pi Imager-prefilled station profile cannot keep the AP
               from starting; then a deterministic profile
-              (``nmcli connection add … con-name buddy3d-setup … mode ap`` with
+              (``nmcli connection add … con-name pibuddycam-setup … mode ap`` with
               ``ipv4.method shared``, ``ipv4.addresses 192.168.4.1/24``,
               ``ipv6.method disabled`` and ``connection.autoconnect no``)
-              followed by ``nmcli connection up buddy3d-setup``.
+              followed by ``nmcli connection up pibuddycam-setup``.
               ``nmcli device wifi hotspot`` alone would create the shared
               connection on NetworkManager's default ``10.42.0.1/24``, so the
               captive portal at ``192.168.4.1`` could never bind. When the
@@ -52,7 +52,7 @@ import subprocess
 
 import provisioning
 
-log = logging.getLogger('prusa-cam.hotspot')
+log = logging.getLogger('pibuddycam.hotspot')
 
 #: The documented captive portal address (source plan §4.3).
 CAPTIVE_PORTAL_IP = '192.168.4.1'
@@ -66,7 +66,7 @@ DEFAULT_IFNAME = 'wlan0'
 #: Deterministic NetworkManager connection profile name for the setup AP. A
 #: stable name lets ``start`` update rather than accumulate profiles and lets
 #: the image validator assert the pinned captive-portal address (B1).
-CONNECTION_NAME = 'buddy3d-setup'
+CONNECTION_NAME = 'pibuddycam-setup'
 
 #: The pinned prefix length for the captive-portal subnet.
 CAPTIVE_PORTAL_PREFIX = CAPTIVE_PORTAL_IP + '/24'
@@ -207,7 +207,7 @@ def _add_profile_command(ssid, password, ifname):
 
     Pins the documented captive-portal address and ``connection.autoconnect no``
     so the AP never comes up by itself at boot (it is only started by
-    ``hotspot_ctl.py``/``prusa-provisioning.service``).
+    ``hotspot_ctl.py``/``pibuddycam-provisioning.service``).
     """
     command = [
         'nmcli', 'connection', 'add', 'type', 'wifi',
@@ -226,7 +226,7 @@ def _add_profile_command(ssid, password, ifname):
 def _modify_profile_command(ssid, password, ifname):
     """``nmcli connection modify`` for an already existing setup AP profile.
 
-    Used when ``connection add`` fails because ``buddy3d-setup`` already exists,
+    Used when ``connection add`` fails because ``pibuddycam-setup`` already exists,
     so a service restart updates the pinned fields instead of failing.
     """
     command = [
@@ -244,7 +244,7 @@ def _modify_profile_command(ssid, password, ifname):
 
 
 def _up_command():
-    """``nmcli connection up buddy3d-setup`` activates the setup AP."""
+    """``nmcli connection up pibuddycam-setup`` activates the setup AP."""
     return ['nmcli', 'connection', 'up', CONNECTION_NAME]
 
 
@@ -254,7 +254,7 @@ def _disconnect_command(ifname):
 
 
 def _down_command():
-    """``nmcli connection down buddy3d-setup`` -- deactivate only the AP profile.
+    """``nmcli connection down pibuddycam-setup`` -- deactivate only the AP profile.
 
     :func:`stop` uses this instead of ``nmcli device disconnect <ifname>``.
     Disconnecting the *device* tears down whatever connection is active on the
@@ -327,7 +327,7 @@ def start(ssid, password=None, ifname=DEFAULT_IFNAME, runner=None):
 
     The sequence is: best-effort disconnect any active connection on ``ifname``
     (so an Imager-prefilled Wi-Fi profile cannot keep the AP from starting), add
-    or update the deterministic ``buddy3d-setup`` profile with
+    or update the deterministic ``pibuddycam-setup`` profile with
     ``ipv4.addresses 192.168.4.1/24`` and ``connection.autoconnect no``, then
     activate it. ``password`` is optional; when absent the AP is open, as
     documented for a headless first-boot device. Returns a
@@ -394,7 +394,7 @@ def stop(ifname=DEFAULT_IFNAME, runner=None):
     Idempotent: when the AP is not active there is nothing to stop, so success
     is reported without running nmcli (the wizard's ``finish`` already takes the
     AP down, and the provisioning service's ``ExecStopPost`` must not then fail).
-    ``nmcli connection down buddy3d-setup`` leaves any other active connection
+    ``nmcli connection down pibuddycam-setup`` leaves any other active connection
     (e.g. the station network ``finish`` just activated) untouched. Returns a
     :class:`HotspotResult`; a command failure/timeout is reported, never raised.
     """

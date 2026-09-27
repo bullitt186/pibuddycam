@@ -8,8 +8,8 @@ systemd calls injected, so it can be unit-tested without the Pi.
 
 Persistence
 -----------
-The configured mode is written to ``/etc/prusa-cam/rtsp.mode`` (override with
-``PRUSA_RTSP_MODE_FILE``). On the production Pi the root filesystem is a
+The configured mode is written to ``/etc/pibuddycam/rtsp.mode`` (override with
+``PIBUDDYCAM_RTSP_MODE_FILE``). On the production Pi the root filesystem is a
 read-only overlay, so a runtime write is visible for the running session but is
 discarded on the next power cycle unless it reaches the lower filesystem via
 ``deploy.sh``. ``main`` therefore reads the file at startup and keeps the
@@ -20,17 +20,17 @@ import os
 
 from proto import decode_message
 
-log = logging.getLogger('prusa-cam.rtsp')
+log = logging.getLogger('pibuddycam.rtsp')
 
 RTSP_DISABLED = 1
 RTSP_ENABLED = 2
 
-# The shipped ``prusa-rtsp.service`` is enabled at boot and firmware's shipped
+# The shipped ``pibuddycam-rtsp.service`` is enabled at boot and firmware's shipped
 # default mode is not recovered, so default to enabled to preserve the current
 # Pi behavior until a config image pins the firmware value.
 DEFAULT_RTSP_MODE = RTSP_ENABLED
 
-RTSP_MODE_FILE = os.environ.get('PRUSA_RTSP_MODE_FILE', '/etc/prusa-cam/rtsp.mode')
+RTSP_MODE_FILE = os.environ.get('PIBUDDYCAM_RTSP_MODE_FILE', '/etc/pibuddycam/rtsp.mode')
 
 
 def mode_from_config(value):
@@ -119,7 +119,7 @@ def apply_mode(mode, state, start_service=None, stop_service=None,
                query_service=None, persist=None):
     """Apply a configured RTSP mode through the shared direct/config path.
 
-    Sets ``state.rtsp_mode``, starts/stops ``prusa-rtsp.service``, optionally
+    Sets ``state.rtsp_mode``, starts/stops ``pibuddycam-rtsp.service``, optionally
     persists the mode, and sets ``state.rtsp_running`` from the actual (or
     commanded) service state.
     """

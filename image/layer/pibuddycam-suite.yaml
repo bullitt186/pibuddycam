@@ -1,7 +1,7 @@
 # METABEGIN
-# X-Env-Layer-Name: buddy3d-suite
+# X-Env-Layer-Name: pibuddycam-suite
 # X-Env-Layer-Category: suite
-# X-Env-Layer-Desc: Buddy3D camera appliance suite. Mirrors the documented
+# X-Env-Layer-Desc: PiBuddyCam appliance suite. Mirrors the documented
 #  trixie-minbase composition (layer/suite/debian/trixie-minbase.yaml,
 #  rpi-image-gen v2.8.0) but selects NetworkManager as the single network
 #  activator required by source §3.2 instead of systemd-networkd/iwd.

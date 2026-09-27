@@ -266,7 +266,7 @@ const TESTS = [
         page.waitForEvent('download'),
         page.locator('#live-download').click(),
       ]);
-      assertEqual(download.suggestedFilename(), 'buddy3d-snapshot.jpg', 'snapshot filename');
+      assertEqual(download.suggestedFilename(), 'pibuddycam-snapshot.jpg', 'snapshot filename');
 
       await setScenario(request, base, { live: 'stale' });
       await waitForText(page.locator('#live-placeholder'), 'stale', 10000);

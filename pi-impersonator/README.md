@@ -23,8 +23,8 @@ implementation backlog: [`../docs/firmware-implementation-gap-tracker.md`](../do
 For a new appliance, build/flash the image described in [`../image/README.md`](../image/README.md)
 and follow the onboarding flow in
 [`../docs/appliance-user-guide.md`](../docs/appliance-user-guide.md). A released appliance runs as
-the dedicated `prusa-cam` account, reads durable TOML configuration from `/data/prusa-cam/config`,
-and launches `/data/prusa-cam/releases/current` with `/opt/prusa-cam` as the factory fallback.
+the dedicated `pibuddycam` account, reads durable TOML configuration from `/data/pibuddycam/config`,
+and launches `/data/pibuddycam/releases/current` with `/opt/pibuddycam` as the factory fallback.
 
 Application updates use signed bundles built by `image/scripts/make-app-release.sh`; image-owned
 units, root helpers, packages, and boot configuration require an image change. See `AGENTS.md` and
@@ -39,17 +39,17 @@ username `pi`). Then from this repo on your machine:
 PI=pi@<PI_IP> pi-impersonator/bootstrap.sh
 ```
 
-`bootstrap.sh` installs dependencies, creates the dedicated account and `/opt/prusa-cam`, builds
+`bootstrap.sh` installs dependencies, creates the dedicated account and `/opt/pibuddycam`, builds
 the venv, installs the runtime units, and deploys the code. Follow the final commands printed by
-the script to install `config.ini` as `prusa-cam`; do not copy it into the SSH user's home.
+the script to install `config.ini` as `pibuddycam`; do not copy it into the SSH user's home.
 
 ```bash
 cp pi-impersonator/config.ini.example /tmp/config.ini
 # edit /tmp/config.ini: set token
 scp /tmp/config.ini pi@<PI_IP>:/tmp/config.ini
-ssh pi@<PI_IP> 'sudo install -o prusa-cam -g prusa-cam -m 0600 \
-  /tmp/config.ini /opt/prusa-cam/config.ini && unlink /tmp/config.ini'
-ssh pi@<PI_IP> 'sudo systemctl restart prusa-cam'
+ssh pi@<PI_IP> 'sudo install -o pibuddycam -g pibuddycam -m 0600 \
+  /tmp/config.ini /opt/pibuddycam/config.ini && unlink /tmp/config.ini'
+ssh pi@<PI_IP> 'sudo systemctl restart pibuddycam'
 ```
 
 The following overlay step applies only to this legacy Raspberry Pi OS developer installation. It
@@ -70,8 +70,8 @@ PI=pi@<PI_IP> pi-impersonator/deploy.sh --enable-overlay
 | `interval` | Snapshot upload interval in seconds, `10`–`600` (default `10`) |
 
 Resolution is not configured here: it follows the persisted video-quality tier
-(`/etc/prusa-cam/quality.env`) and the ephemeral live override
-(`/etc/prusa-cam/quality.live.env`), so snapshots, RTSP, WebRTC and status always agree.
+(`/etc/pibuddycam/quality.env`) and the ephemeral live override
+(`/etc/pibuddycam/quality.live.env`), so snapshots, RTSP, WebRTC and status always agree.
 
 Fingerprint precedence: an explicit `[identity] fingerprint` wins, so an already-registered token
 keeps working. With no configured value, the fingerprint is generated automatically from `wlan0`
@@ -88,23 +88,23 @@ rpicam-source.service   rpicam-vid -o - | stream_mux.py → H.264 TCP :8888 (mul
         │                 resolution driven by quality.env (persisted) + quality.live.env (live override)
         │                 --rotation 180  --intra 30  --flush
         ↓
-prusa-rtsp.service      rtsp_server.py (GStreamer) → rtsp://<pi>:8554/live
+pibuddycam-rtsp.service      rtsp_server.py (GStreamer) → rtsp://<pi>:8554/live
         │
-prusa-ha-rtsp.service   rtsp_server.py (GStreamer) → rtsp://<pi>:8555/live (always on)
+pibuddycam-ha-rtsp.service   rtsp_server.py (GStreamer) → rtsp://<pi>:8555/live (always on)
         │
-prusa-cam.service       main.py
+pibuddycam.service       main.py
                           /c/info upload · snapshot loop · Socket.IO signaling · WebRTC
                           HTTP snapshot · ONVIF SOAP · WS-Discovery
 ```
 
-`main.py` starts/stops `prusa-rtsp` on command from Prusa. The independent
-`prusa-ha-rtsp` endpoint remains available to Home Assistant, so Prusa's RTSP mode
+`main.py` starts/stops `pibuddycam-rtsp` on command from Prusa. The independent
+`pibuddycam-ha-rtsp` endpoint remains available to Home Assistant, so Prusa's RTSP mode
 cannot remove Home Assistant's stream. Both servers and JPEG capture consume the
 existing H.264 fan-out and do not open a second camera pipeline. `main.py` reconfigures the encoder
 resolution live on video-quality commands (SD 640×480 / HD 1280×720 / FHD 1920×1080) by
-writing the ephemeral `/etc/prusa-cam/quality.live.env` and restarting `rpicam-source`;
+writing the ephemeral `/etc/pibuddycam/quality.live.env` and restarting `rpicam-source`;
 a persistence flag (whose event wiring is still being recovered, see `GAP-QUALITY-02`) also
-writes `/etc/prusa-cam/quality.env` for the next boot.
+writes `/etc/pibuddycam/quality.env` for the next boot.
 
 ## Files
 
@@ -128,7 +128,7 @@ writes `/etc/prusa-cam/quality.env` for the next boot.
 | `config.ini.example` | Config template |
 | `deploy.sh` | Legacy developer-install overlay deploy helper; not the appliance OTA path |
 | `bootstrap.sh` | One-command fresh-Pi provisioning |
-| `systemd/` | Ready-to-install unit files (run with `User=prusa-cam` from `/opt/prusa-cam`; installed verbatim) |
+| `systemd/` | Ready-to-install unit files (run with `User=pibuddycam` from `/opt/pibuddycam`; installed verbatim) |
 
 ## Local development
 
@@ -152,11 +152,11 @@ Those actions require an explicit user request and the private `.agent/pi-ops.md
 
 Do not `rsync` application code into the appliance. Commit and test the source, create a signed
 application bundle with `../image/scripts/make-app-release.sh`, then install it through the updater's
-fixed root action. The launcher atomically selects `/data/prusa-cam/releases/current`, retains
-`previous` for rollback, and falls back to `/opt/prusa-cam` only when no valid release exists.
+fixed root action. The launcher atomically selects `/data/pibuddycam/releases/current`, retains
+`previous` for rollback, and falls back to `/opt/pibuddycam` only when no valid release exists.
 
 ROOT is the real ext4 filesystem mounted read-only; `overlayroot` did not activate during hardware
-acceptance. `/var` and `/etc/prusa-cam` are tmpfs, while `/data` is durable. A remount-rw ROOT edit
+acceptance. `/var` and `/etc/pibuddycam` are tmpfs, while `/data` is durable. A remount-rw ROOT edit
 persists and therefore creates drift: use it only for an explicitly authorized test of an
 image-owned asset, restore read-only state, and commit the identical `image/` change immediately.
 
@@ -186,13 +186,13 @@ PI=pi@<PI_IP> pi-impersonator/deploy.sh --enable-overlay   # verifies initramfs 
 ```
 
 **By contrast, intentionally ephemeral on the appliance** (re-materialized from `/data` on boot):
-- `/etc/prusa-cam/quality.env` and `/etc/prusa-cam/quality.live.env`
-- journald logs — in RAM (`Storage=volatile`); read with `journalctl -u prusa-cam`
+- `/etc/pibuddycam/quality.env` and `/etc/pibuddycam/quality.live.env`
+- journald logs — in RAM (`Storage=volatile`); read with `journalctl -u pibuddycam`
 
 ## Manual/developer install
 
 `bootstrap.sh` is the authoritative legacy developer/migration installer. It mirrors the service
-identity and `/opt/prusa-cam` layout closely enough for protocol work, but it does not reproduce the
+identity and `/opt/pibuddycam` layout closely enough for protocol work, but it does not reproduce the
 appliance partitioning, onboarding, recovery, or signed-release lifecycle. Do not maintain a second
 set of ad-hoc install commands here: update `bootstrap.sh`, its tests, and this description together
 when that developer path changes.
@@ -200,7 +200,7 @@ when that developer path changes.
 ## Verify
 
 ```bash
-ssh pi@<PI_IP> 'journalctl -u prusa-cam -n 30 --no-pager'
+ssh pi@<PI_IP> 'journalctl -u pibuddycam -n 30 --no-pager'
 # expect lines like:
 #   /c/info upload: 200
 #   /c/info response: … registered=True …
@@ -250,7 +250,7 @@ If the Pi will not boot after a power cut:
 
 1. Reflash the SD card (Raspberry Pi OS Lite 64-bit, same settings as before).
 2. Run `PI=pi@<PI_IP> pi-impersonator/bootstrap.sh` to rebuild everything.
-3. Restore `config.ini` (token) and restart `prusa-cam`.
+3. Restore `config.ini` (token) and restart `pibuddycam`.
 4. For the supported product path, rebuild/reflash the appliance image. The overlay command is only
    for the legacy developer installation.
 

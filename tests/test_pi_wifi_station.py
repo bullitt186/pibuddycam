@@ -81,7 +81,7 @@ class ImportSafetyTests(unittest.TestCase):
 
 class ConstantTests(unittest.TestCase):
     def test_station_profile_name_is_deterministic(self):
-        self.assertEqual(wifi_station.CONNECTION_NAME, 'buddy3d-station')
+        self.assertEqual(wifi_station.CONNECTION_NAME, 'pibuddycam-station')
 
 
 class ApplyTests(unittest.TestCase):
@@ -92,7 +92,7 @@ class ApplyTests(unittest.TestCase):
 
         add = runner.calls[0][0]
         self.assertEqual(add[:4], ['nmcli', 'connection', 'add', 'type'])
-        self.assertEqual(add[add.index('con-name') + 1], 'buddy3d-station')
+        self.assertEqual(add[add.index('con-name') + 1], 'pibuddycam-station')
         self.assertEqual(add[add.index('ssid') + 1], 'HomeNet')
         self.assertEqual(add[add.index('autoconnect') + 1], 'yes')
         self.assertEqual(add[add.index('ipv4.method') + 1], 'auto')
@@ -103,13 +103,13 @@ class ApplyTests(unittest.TestCase):
         self.assertNotIn('passwd-file', all_argv(runner))
         self.assertNotIn('--ask', all_argv(runner))
         self.assertIn(
-            ['nmcli', 'connection', 'modify', 'buddy3d-station',
+            ['nmcli', 'connection', 'modify', 'pibuddycam-station',
              'remove', '802-11-wireless-security'],
             [args for args, _t, _i in runner.calls],
         )
         self.assertEqual(
             runner.calls[-1][0],
-            ['nmcli', 'connection', 'up', 'buddy3d-station'],
+            ['nmcli', 'connection', 'up', 'pibuddycam-station'],
         )
 
     def test_wpa_network_uses_0600_passwd_file_not_argv(self):
@@ -136,7 +136,7 @@ class ApplyTests(unittest.TestCase):
             self.assertTrue(captured['path'].startswith(tmp))
             self.assertEqual(
                 runner.calls[-1][0],
-                ['nmcli', 'connection', 'up', 'buddy3d-station',
+                ['nmcli', 'connection', 'up', 'pibuddycam-station',
                  'passwd-file', captured['path']],
             )
             # Removed afterwards.
@@ -184,7 +184,7 @@ class ApplyTests(unittest.TestCase):
         self.assertTrue(ok, reason)
         modify = runner.calls[1][0]
         self.assertEqual(modify[:3], ['nmcli', 'connection', 'modify'])
-        self.assertEqual(modify[3], 'buddy3d-station')
+        self.assertEqual(modify[3], 'pibuddycam-station')
         self.assertEqual(modify[modify.index('ipv4.method') + 1], 'auto')
 
     def test_add_and_modify_failure_is_reported(self):

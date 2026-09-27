@@ -118,13 +118,13 @@ class CameraNameTests(unittest.TestCase):
         for invalid in ('', '   ', '\t\n', None, 42, b'name'):
             with self.subTest(invalid=invalid):
                 self.assertFalse(state.set_camera_name(invalid))
-        self.assertEqual(state.camera_name, 'Buddy3D Camera')
+        self.assertEqual(state.camera_name, 'PiBuddyCam')
 
 
 class CameraStateDefaultsTests(unittest.TestCase):
     def test_defaults(self):
         state = CameraState()
-        self.assertEqual(state.camera_name, 'Buddy3D Camera')
+        self.assertEqual(state.camera_name, 'PiBuddyCam')
         self.assertEqual(state.quality, DEFAULT_QUALITY)
         self.assertEqual(state.snapshot_interval, SNAPSHOT_INTERVAL_MIN)
         self.assertTrue(state.snapshot_upload_enabled)
@@ -289,7 +289,7 @@ class PersistedStateTests(unittest.TestCase):
         })
         self.assertEqual(applied, [])
         self.assertEqual(state.quality, DEFAULT_QUALITY)
-        self.assertEqual(state.camera_name, 'Buddy3D Camera')
+        self.assertEqual(state.camera_name, 'PiBuddyCam')
         self.assertEqual(state.snapshot_interval, SNAPSHOT_INTERVAL_MIN)
         self.assertTrue(state.snapshot_upload_enabled)
         self.assertEqual(state.timelapse_interval, 10)

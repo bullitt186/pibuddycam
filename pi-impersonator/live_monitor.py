@@ -32,7 +32,7 @@ import logging
 import threading
 import time
 
-log = logging.getLogger('prusa-cam.live_monitor')
+log = logging.getLogger('pibuddycam.live_monitor')
 
 #: Source label reported in metrics. A fixed string; no path or host is exposed.
 SOURCE_LABEL = 'stream_mux:8888'

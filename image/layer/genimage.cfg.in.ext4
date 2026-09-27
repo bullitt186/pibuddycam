@@ -1,11 +1,11 @@
-# genimage template for the Buddy3D appliance layout.
+# genimage template for the PiBuddyCam appliance layout.
 #
 # Modelled on rpi-image-gen v2.8.0 image/mbr/simple_dual/genimage.cfg.in.ext4,
 # extended with the third (PERSIST) primary partition. Placeholders are
 # substituted by ../pre-image.sh; <SETUP> is invoked by genimage as
 # `setup.sh <LABEL>` with IMAGEMOUNTPATH pointing at each partition image.
 #
-# MBR disk-signature is fixed in image/config/buddy3d-pi-zero2w.yaml so the
+# MBR disk-signature is fixed in image/config/pibuddycam-pi-zero2w.yaml so the
 # kernel-derived PARTUUIDs are <signature>-01 (BOOT), -02 (ROOT), -03 (PERSIST).
 
 image <IMAGE_DIR>/<IMAGE_NAME>.<IMAGE_SUFFIX>.sparse {

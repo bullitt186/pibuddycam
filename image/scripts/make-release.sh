@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# make-release.sh — assemble the Buddy3D appliance release artifacts.
+# make-release.sh — assemble the PiBuddyCam appliance release artifacts.
 #
 # Usage:
 #   make-release.sh --image <file> --version <semver> --out-dir <dir>
@@ -8,12 +8,12 @@
 #       [--key <minisign.key>]
 #
 # Produces (AC-14, AC-34, AC-35):
-#   buddy3d-camera-pi-zero2w-<version>.img.xz
-#   buddy3d-camera-pi-zero2w-<version>.img.xz.sha256
-#   buddy3d-camera-pi-zero2w-<version>.img.xz.minisig   (only with --key)
-#   buddy3d-camera-pi-zero2w-<version>.spdx.json
-#   buddy3d-camera-pi-zero2w-<version>.packages.txt     (only with --packages)
-#   buddy3d-camera-os-list.json                         (Raspberry Pi Imager)
+#   pibuddycam-pi-zero2w-<version>.img.xz
+#   pibuddycam-pi-zero2w-<version>.img.xz.sha256
+#   pibuddycam-pi-zero2w-<version>.img.xz.minisig   (only with --key)
+#   pibuddycam-pi-zero2w-<version>.spdx.json
+#   pibuddycam-pi-zero2w-<version>.packages.txt     (only with --packages)
+#   pibuddycam-os-list.json                         (Raspberry Pi Imager)
 #
 # The signing key is never required: without --key the artifact is left
 # unsigned with a clear warning. With --key, minisign must be installed or the
@@ -101,12 +101,12 @@ else
    export SOURCE_DATE_EPOCH
 fi
 
-BASE="buddy3d-camera-pi-zero2w-${VERSION}"
+BASE="pibuddycam-pi-zero2w-${VERSION}"
 IMG_XZ="$OUT_DIR/${BASE}.img.xz"
 SHA_FILE="${IMG_XZ}.sha256"
 SPDX_FILE="$OUT_DIR/${BASE}.spdx.json"
 PKG_OUT="$OUT_DIR/${BASE}.packages.txt"
-OS_LIST="$OUT_DIR/buddy3d-camera-os-list.json"
+OS_LIST="$OUT_DIR/pibuddycam-os-list.json"
 
 # xz writes no timestamps; -T1 forces single-threaded compression, which with
 # the fixed preset and check type is deterministic for a given xz version
@@ -131,20 +131,20 @@ printf '%s' "$RELEASE_DATE" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || \
 CREATED="$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf '%sT00:00:00Z' "$RELEASE_DATE")"
 
 if [ -z "$URL_BASE" ]; then
-   URL_BASE="https://example.invalid/buddy3d-camera/releases/v${VERSION}"
+   URL_BASE="https://example.invalid/pibuddycam/releases/v${VERSION}"
    warn "--url-base not provided; using placeholder $URL_BASE (override for a real release)"
 fi
 URL_BASE="${URL_BASE%/}"
 IMAGE_URL="$URL_BASE/${BASE}.img.xz"
 if [ -z "$ICON" ]; then
-   ICON="$URL_BASE/buddy3d-camera.png"
+   ICON="$URL_BASE/pibuddycam.png"
    warn "--icon not provided; defaulting to $ICON"
    # The default URL points next to the image, so ship the icon with the
    # artifacts; otherwise the Imager manifest links to a missing asset.
-   cp "$IMAGE_DIR/assets/icon/buddy3d-camera.png" "$OUT_DIR/buddy3d-camera.png"
+   cp "$IMAGE_DIR/assets/icon/pibuddycam.png" "$OUT_DIR/pibuddycam.png"
 fi
 if [ -z "$WEBSITE" ]; then
-   WEBSITE="https://example.invalid/buddy3d-camera"
+   WEBSITE="https://example.invalid/pibuddycam"
    warn "--website not provided; defaulting to $WEBSITE"
 fi
 
@@ -152,8 +152,8 @@ fi
 # 64-bit BCM2710 family tag) in os_list_imagingutility_v4.json; there is no
 # dedicated zero2w tag. The image is arm64, so only the 64-bit tag applies.
 DEVICES='["pi3-64bit"]'
-INIT_FORMAT="${PRUSA_IMAGER_INIT_FORMAT:-systemd}"
-ARCH="${PRUSA_IMAGER_ARCH:-armv8}"
+INIT_FORMAT="${PIBUDDYCAM_IMAGER_INIT_FORMAT:-systemd}"
+ARCH="${PIBUDDYCAM_IMAGER_ARCH:-armv8}"
 
 # --- 4. Package manifest (when supplied) ------------------------------------
 if [ -n "$PACKAGES" ]; then

@@ -124,9 +124,9 @@ scan_content() {
 # this whole check. A grep error in the pipeline is treated as a match.
 scan_home_paths() {
    local home_out rc=0
-   HOME_ALLOW_PATTERN="${SCAN_HOME_ALLOW_PATTERN:-prusa-cam|pi|root|admin}"
+   HOME_ALLOW_PATTERN="${SCAN_HOME_ALLOW_PATTERN:-pibuddycam|pi|root|admin}"
    home_out="$(grep -inoHIE --binary-files=without-match \
-      -e '/home[/][A-Za-z0-9._-]+' -- "${files[@]}" 2>/dev/null \
+      -e '/home[/][A-Za-z0-9._-]*[A-Za-z0-9_-]' -- "${files[@]}" 2>/dev/null \
       | grep -vE ":/home[/](${HOME_ALLOW_PATTERN})\$")" || rc=$?
    if [ "$rc" -ge 2 ]; then
       echo "scan-secrets: home-path scan failed (grep exit $rc)" >&2
@@ -207,7 +207,8 @@ if [ "$MODE" != "source" ]; then
    # Broad patterns that only make sense on built artifacts.
    scan_content "wifi psk"          '^[[:space:]]*psk[[:space:]]*='
    scan_content "prusa token json"  '"[A-Za-z_]*token"[[:space:]]*:[[:space:]]*"[^"]+"'
-   scan_content "prusa token env"   '[A-Z_]*TOKEN[[:space:]]*=[[:space:]]*[^[:space:]]+'
+   # A <PLACEHOLDER> value is the repository's redaction convention, not a secret.
+   scan_content "prusa token env"   '[A-Z_]*TOKEN[[:space:]]*=[[:space:]]*[^<[:space:]][^[:space:]]*'
    scan_content "mqtt password"     '[Mm][Qq][Tt][Tt][A-Za-z_-]*[Pp][Aa][Ss][Ss][A-Za-z]*[[:space:]]*[:=][[:space:]]*[^[:space:]]+'
    scan_content "password_hash"     'password_hash'
 fi

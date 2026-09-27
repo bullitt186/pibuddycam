@@ -649,7 +649,7 @@ closing the gap.
   offer (`Sent WebRTC offer … 755 chars`), the viewer answered (`Remote answer set`), and 21
   candidates arrived — **7 added, 14 dropped** as `WebRTC candidate message carried no candidate`.
   The stream never completed and `state.streaming` stayed `True`; two `GET /snapshot.jpg` 13 s
-  apart were byte-identical and 40 s of `journalctl -f -u prusa-cam` had zero `Snapshot:` lines —
+  apart were byte-identical and 40 s of `journalctl -f -u pibuddycam` had zero `Snapshot:` lines —
   **periodic snapshots were permanently paused**, exactly as the "Current behavior" note predicts.
 - **Live fix (2026-09-19, `8bd7a45`):** `webrtcbin` has **no** `on-ice-connection-state-change` signal (gst-inspect confirms only `on-ice-candidate`/`on-negotiation-needed`); the first attempt raised in `create_offer` and left snapshots paused again. Fixed by connecting **`notify::ice-connection-state`** (a readable GObject property), arming the connect watchdog *before* signal wiring, wrapping each connect, and resuming snapshots if `create_offer` raises. **Verified live:** a browser "Play live stream" now creates and sends the offer (`m=video 9`, media accepted, 754 chars) with local candidates; when ICE never connected, the 30 s watchdog fired (`WebRTC stream ended (no-ice-connection)`) and snapshots resumed (`Resuming snapshots after WebRTC stream ended`; cadence gap 22:33:19→22:34:00 then every 10 s). Candidate extraction (`proto.find_webrtc_candidate`) also fixed (unit-tested).
 - **Browser WebRTC now works (live-verified 2026-09-19):** after the candidate-extraction fix the viewer's trickle candidates are all applied, and the browser stream establishes — Pi log `Remote answer set` → `WebRTC inbound candidate added` → `ICE connection state: 1/2/3`; the page's `<video>` was **1920×1080, readyState 4, playing** (`currentTime` advancing). The candidate fix was the enabler: the earlier run dropped 14/21 candidates and ICE never completed. Teardown also verified: ending the viewer gave `ICE connection state: 4` → `WebRTC stream ended (ice-failed)` → `Resuming snapshots` and snapshots resumed within seconds.
@@ -972,9 +972,9 @@ closing the gap.
   appliance and decoded as quality `3`, but the service account's legacy direct
   `sudo systemctl restart ...` calls were rejected by the image's deliberately narrow sudoers
   policy (`command not allowed`), so the encoder was never reconfigured. The quality restart now
-  uses the image's fixed-verb `prusa-priv quality-restart` action. This preserves the privilege
-  boundary while restarting exactly `rpicam-source.service` and `prusa-ha-rtsp.service`, followed
-  by `try-restart prusa-rtsp.service` so a disabled Prusa RTSP mode stays disabled.
+  uses the image's fixed-verb `pibuddycam-priv quality-restart` action. This preserves the privilege
+  boundary while restarting exactly `rpicam-source.service` and `pibuddycam-ha-rtsp.service`, followed
+  by `try-restart pibuddycam-rtsp.service` so a disabled Prusa RTSP mode stays disabled.
 - **Live-verified 2026-09-25 (`c1d3e76`, application release `1.0.4`):** an authenticated
   Connect viewer sent the real nested `configuration` form (`tag8.1=2`, then `tag8.1=3`). The
   running OV5647 encoder changed from `1920×1080` to `1280×720` and back to `1920×1080`; both RTSP
@@ -1051,9 +1051,9 @@ closing the gap.
 - **Firmware behavior:** handles disabled/enabled modes (`1`/`2` on the recovered direct event),
   starts/stops the server, tracks clients, and reports mode/status/URL dynamically. **[confirmed]**
 - **Current behavior (implemented):** direct and configuration-form commands share
-  `rtsp_control.apply_mode`, which starts/stops `prusa-rtsp.service`, sets `state.rtsp_mode`, and
+  `rtsp_control.apply_mode`, which starts/stops `pibuddycam-rtsp.service`, sets `state.rtsp_mode`, and
   resolves `state.rtsp_running` from `systemctl is-active`; the configured mode persists at
-  `/etc/prusa-cam/rtsp.mode` (and in `state.json` via GAP-PERSIST-01).
+  `/etc/pibuddycam/rtsp.mode` (and in `state.json` via GAP-PERSIST-01).
 - **Connect impact (resolved):** reported and actual RTSP state stay consistent.
 - **Before (superseded):** direct start/stop called systemd but status remained hardcoded and
   configuration-form RTSP changes were only logged, so reported and actual state could diverge.
@@ -1063,11 +1063,11 @@ closing the gap.
   and both command forms behave identically.
 - **Implementation (staged, commit pending):** [`rtsp_control.py`](../pi-impersonator/rtsp_control.py)
   decodes the direct field-1 mode, maps `configuration.rtsp` `on`/`off` to `2`/`1`, and applies both
-  through one `apply_mode` path that starts/stops `prusa-rtsp.service`, sets `state.rtsp_mode`, and
+  through one `apply_mode` path that starts/stops `pibuddycam-rtsp.service`, sets `state.rtsp_mode`, and
   resolves `state.rtsp_running` from `systemctl is-active` (falling back to the commanded state when
-  the unit cannot be probed). The configured mode persists at `/etc/prusa-cam/rtsp.mode`
-  (`PRUSA_RTSP_MODE_FILE` override) and is read at startup. On the appliance, persistence is owned
-  by `/data/prusa-cam/state.json`; `/etc/prusa-cam` is tmpfs re-materialized at boot. The older
+  the unit cannot be probed). The configured mode persists at `/etc/pibuddycam/rtsp.mode`
+  (`PIBUDDYCAM_RTSP_MODE_FILE` override) and is read at startup. On the appliance, persistence is owned
+  by `/data/pibuddycam/state.json`; `/etc/pibuddycam` is tmpfs re-materialized at boot. The older
   lower-filesystem/`deploy.sh` statement applied only to the legacy developer install. Tests:
   `test_pi_rtsp_control.py`. Default mode when the file is absent is `2` (enabled), matching the
   shipped unit; the firmware's shipped default remains unrecovered. Client tracking is unchanged
@@ -1280,14 +1280,14 @@ closing the gap.
 ### GAP-PERSIST-01 — Persist settings + timelapse storage on /data
 
 - [x] **P2 · Live-verified 2026-09-20: settings + timelapse store survive a reboot**
-- **Historical problem (legacy deployment):** `/etc/prusa-cam/*` (quality/rtsp/identity) and
+- **Historical problem (legacy deployment):** `/etc/pibuddycam/*` (quality/rtsp/identity) and
   `/mnt/sdcard` (timelapse frames, `.avi`, `.timelapse_videos.csv`) lived in volatile storage and
   were discarded on reboot. The appliance now uses direct read-only ext4 ROOT, explicit tmpfs for
   volatile state, and `/data` for durability; `overlayroot` did not activate on accepted hardware.
   `CameraState` settings (quality tier, camera name, snapshot/timelapse intervals and enables,
   RTSP/WebRTC modes) were memory-only.
 - **Design:** a new 4 GB ext4 partition (`mmcblk0p3`, label `PERSIST`, PARTUUID `46f0d7c3-03`)
-  mounted at `/data`; `/data/prusa-cam/state.json` holds the runtime settings and `/data/sdcard`
+  mounted at `/data`; `/data/pibuddycam/state.json` holds the runtime settings and `/data/sdcard`
   is bind-mounted onto `/mnt/sdcard` (SMB keeps sharing `/mnt/sdcard` unchanged).
   `quality.live.env` stays ephemeral (GAP-QUALITY-02).
 - **No-op rule (safe pre-deploy):** `settings_store.available()` is true only when `/data` exists
@@ -1305,7 +1305,7 @@ closing the gap.
   `handle_event` (camera name, snapshot/timelapse intervals and enables, quality persist path,
   RTSP/WebRTC modes) calls `_save_persisted_state`.
 - **Restore:** `persist_restore.py` (root, `pi-persist.service`, `RequiresMountsFor=/data`,
-  `Before=` the three camera units) ensures `/data/{sdcard,prusa-cam}`, chowns to `SERVICE_USER`,
+  `Before=` the three camera units) ensures `/data/{sdcard,pibuddycam}`, chowns to `SERVICE_USER`,
   bind-mounts the store, re-materializes `quality.env`/`rtsp.mode` from `state.json`, and prunes
   the oldest `/data/sdcard/timelapse/*.jpg` frames when `/data` free space is below 300 MB
   (`.avi`/CSV never deleted). `deploy.sh` installs+enables the unit and activates the fstab entry
@@ -1418,7 +1418,7 @@ closing the gap.
 - **Mitigations deployed (`bootlog.sh` + `systemd/bootlog.service`, `rpicam-source.service`):**
   a oneshot writes `date`/uptime/`get_rsts`/`get_throttled`/temp/dmesg to the real vfat
   `/boot/firmware/bootlog.txt` each boot (survives reboots); `rpicam-vid -v 0` stops the ~30 lines/s
-  frame stats that evicted `prusa-cam` logs from the volatile journal within minutes.
+  frame stats that evicted `pibuddycam` logs from the volatile journal within minutes.
 - **Open (hardware/ops):** fit a heatsink/fan or reduce the stream (720p/15 fps); repair the failing
   swap/remount-fs units; keep an off-box logger (netconsole/serial) if a reboot must be captured
   precisely. Confirm the next reboot from `/boot/firmware/bootlog.txt`.
@@ -1458,8 +1458,8 @@ closing the gap.
   [`main.py`](../pi-impersonator/main.py#L120-L127)
 - **Implementation (staged, commit pending):** [`identity.py`](../pi-impersonator/identity.py) adds
   `fingerprint_from_seed` (lowercase MD5 of the exact seed text), `generate_fallback_seed`, and
-  `load_or_create_fallback_seed`, which persists the seed at `/etc/prusa-cam/identity.fallback`
-  (`PRUSA_IDENTITY_FALLBACK` override) and reuses a valid existing seed verbatim so a bound token's
+  `load_or_create_fallback_seed`, which persists the seed at `/etc/pibuddycam/identity.fallback`
+  (`PIBUDDYCAM_IDENTITY_FALLBACK` override) and reuses a valid existing seed verbatim so a bound token's
   fingerprint is never silently rotated. `main.get_network_info` now resolves the fingerprint via
   `identity.resolve_fingerprint`: an explicit `config.ini` `[identity] fingerprint` wins (the value
   the registered token is bound to; live-verified 2026-09-18), then the MAC derivation, then this

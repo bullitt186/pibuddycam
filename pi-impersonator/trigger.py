@@ -35,7 +35,7 @@ import logging
 
 from proto import decode_message
 
-log = logging.getLogger('prusa-cam.trigger')
+log = logging.getLogger('pibuddycam.trigger')
 
 # Action identifiers returned by ``trigger_actions`` and consumed by main.py.
 STATUS = 'status'

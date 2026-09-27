@@ -54,7 +54,7 @@ import shutil
 import subprocess
 import time
 
-log = logging.getLogger('prusa-cam.qr')
+log = logging.getLogger('pibuddycam.qr')
 
 #: The exact, captured key set. Order is the documented field order.
 QR_KEYS = ('ssid', 'pwd', 'token')

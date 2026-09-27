@@ -2,14 +2,14 @@
 
 Appliance image/security defect (not a firmware ``GAP-*`` item). The admin
 transport (:mod:`admin_app`) consumes ``ADMIN_TLS_CERT``/``ADMIN_TLS_KEY`` from
-``/etc/prusa-cam/admin.env``, but nothing generated them, so a claimed device
+``/etc/pibuddycam/admin.env``, but nothing generated them, so a claimed device
 served the admin UI as **plaintext HTTP on port 443**. This module closes that
 defect:
 
 1. it generates a device self-signed certificate + private key once, durably,
-   under ``/data/prusa-cam/config/admin-tls/`` and reuses the same keypair on
+   under ``/data/pibuddycam/config/admin-tls/`` and reuses the same keypair on
    every later boot (a LAN IP change never regenerates it);
-2. it recreates the volatile ``/etc/prusa-cam/admin.env`` on every boot (the
+2. it recreates the volatile ``/etc/pibuddycam/admin.env`` on every boot (the
    file lives on tmpfs and is lost across reboots);
 3. it fails closed: when the keypair cannot be provisioned, ``admin.env`` is not
    written and :mod:`admin_app` refuses to start in ``admin`` mode, so the
@@ -23,7 +23,7 @@ a symlink planted at a destination path is replaced, not followed.
 one (key/cert match, SAN coverage, remaining validity). It is invoked with an
 argv list and never through a shell, so no value is subject to shell
 interpolation. The image installs ``openssl`` explicitly (see
-``image/layer/buddy3d-image.yaml`` and ``image/config/buddy3d-pi-zero2w.yaml``).
+``image/layer/pibuddycam-image.yaml`` and ``image/config/pibuddycam-pi-zero2w.yaml``).
 
 Stdlib only; importing this module performs no filesystem I/O.
 """
@@ -39,17 +39,17 @@ import tempfile
 import config_schema
 import provisioning
 
-log = logging.getLogger('prusa-cam.admin_tls')
+log = logging.getLogger('pibuddycam.admin_tls')
 
 #: Durable directory holding the device keypair (PERSIST partition).
-TLS_DIR = '/data/prusa-cam/config/admin-tls'
+TLS_DIR = '/data/pibuddycam/config/admin-tls'
 TLS_CERT_PATH = TLS_DIR + '/admin.crt'
 TLS_KEY_PATH = TLS_DIR + '/admin.key'
 
-#: Volatile environment file consumed by ``prusa-admin.service`` (tmpfs).
-ADMIN_ENV_PATH = '/etc/prusa-cam/admin.env'
+#: Volatile environment file consumed by ``pibuddycam-admin.service`` (tmpfs).
+ADMIN_ENV_PATH = '/etc/pibuddycam/admin.env'
 
-DEFAULT_SERVICE_USER = 'prusa-cam'
+DEFAULT_SERVICE_USER = 'pibuddycam'
 DEFAULT_OPENSSL = 'openssl'
 
 CERT_MODE = 0o644
@@ -87,9 +87,9 @@ def hostname_candidates(device_path=None):
     """Return the distinct DNS names the certificate must cover.
 
     Prefers the configured ``device.toml [admin].hostname`` (what the wizard
-    persists at claim) and also includes the derived ``buddy3d-<last6>`` name, so
+    persists at claim) and also includes the derived ``pibuddycam-<last6>`` name, so
     a certificate provisioned before claim still matches the canonical
-    ``buddy3d-<device-id>.local`` address afterwards. Both are sanitized to a
+    ``pibuddycam-<device-id>.local`` address afterwards. Both are sanitized to a
     valid DNS label; the result may be empty when no identity is available.
     """
     configured = ''
@@ -301,7 +301,7 @@ def ensure(service_user=DEFAULT_SERVICE_USER, *, tls_dir=TLS_DIR,
 
     ``hostnames``/``openssl``/``runner``/``which``/``chown``/``service_ids`` and
     the two paths are injectable so tests never touch the real ``/data`` or
-    ``/etc/prusa-cam``. Raises :class:`TlsError` on any failure; the caller
+    ``/etc/pibuddycam``. Raises :class:`TlsError` on any failure; the caller
     (``pi-persist``) logs it and leaves ``admin.env`` absent, so the admin
     service fails closed.
     """

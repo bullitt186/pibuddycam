@@ -1,6 +1,6 @@
 """Setup-hotspot CLI for the provisioning service (WP-R1, AC-17).
 
-``prusa-provisioning.service`` starts the setup AP as an ``ExecStartPre`` and
+``pibuddycam-provisioning.service`` starts the setup AP as an ``ExecStartPre`` and
 stops it as an ``ExecStopPost``::
 
     ExecStartPre=+.../hotspot_ctl.py start
@@ -22,7 +22,7 @@ import sys
 import hotspot
 import provisioning
 
-log = logging.getLogger('prusa-cam.hotspot_ctl')
+log = logging.getLogger('pibuddycam.hotspot_ctl')
 
 
 def _status(controller, ifname, runner):
@@ -96,7 +96,7 @@ def main(argv=None):
         format='%(asctime)s %(levelname)s %(name)s: %(message)s',
         stream=sys.stderr,
     )
-    parser = argparse.ArgumentParser(description='Buddy3D setup hotspot control')
+    parser = argparse.ArgumentParser(description='PiBuddyCam setup hotspot control')
     parser.add_argument('action', choices=('start', 'stop'))
     args = parser.parse_args(argv)
 

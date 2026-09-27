@@ -1,7 +1,7 @@
 #!/bin/bash
-# Runtime launcher for the Buddy3D appliance (AC-13 / WP-R4c).
+# Runtime launcher for the PiBuddyCam appliance (AC-13 / WP-R4c).
 #
-# The runtime units (prusa-cam.service, prusa-rtsp.service, prusa-admin.service)
+# The runtime units (pibuddycam.service, pibuddycam-rtsp.service, pibuddycam-admin.service)
 # all start through this script. It chooses *what to execute* and nothing else:
 # no secrets, no identity, no state. Given an optional relative script argument
 # (default main.py) it resolves:
@@ -19,8 +19,8 @@
 # Usage: launcher.sh [relative-script] [args...]
 set -eu
 
-APP_ROOT=/opt/prusa-cam
-RELEASES=/data/prusa-cam/releases
+APP_ROOT=/opt/pibuddycam
+RELEASES=/data/pibuddycam/releases
 DEFAULT_SCRIPT=main.py
 
 if [ $# -gt 0 ]; then

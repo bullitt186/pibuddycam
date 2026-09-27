@@ -182,7 +182,7 @@ that already worked for `ir_mode`/`speaker_volume`/`video_quality`.
 
 ## Implementing changes based on findings
 
-- **File**: `~/prusa-cam/signaling.py` on the Pi (`pi@<PI_IP>`), function
+- **File**: `~/pibuddycam/signaling.py` on the Pi (`pi@<PI_IP>`), function
   `PrusaSignaling._send_post_auth`.
 - Once P0-P2 give enough confidence, expand `status_msg` from its current 4 fields to
   include every field the real camera always sets (the 13 "has"-flag fields identified in
@@ -197,9 +197,9 @@ that already worked for `ir_mode`/`speaker_volume`/`video_quality`.
 
 ## Verification (end-to-end, after implementation)
 
-- [x] SSH to `pi@<PI_IP>`, restart `prusa-cam.service`
-      (`sudo systemctl restart prusa-cam.service`), tail logs
-      (`journalctl -u prusa-cam -f`) to confirm clean connect/auth/status with no
+- [x] SSH to `pi@<PI_IP>`, restart `pibuddycam.service`
+      (`sudo systemctl restart pibuddycam.service`), tail logs
+      (`journalctl -u pibuddycam -f`) to confirm clean connect/auth/status with no
       disconnects. 2026-07-07 result: `/c/info` 200, auth ACK `1`, snapshots 200,
       `status` 371 bytes, `protobuf_version` 27 bytes, `features` 391 bytes, stable
       connection for 90+ seconds.

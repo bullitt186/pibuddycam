@@ -10,36 +10,36 @@
 | **Pi** | Raspberry Pi Zero 2 W, Debian 13 (trixie). Runs the impersonator. | `ssh <PI_USER>@<PI_IP>` (SSH **key** auth, no password) |
 | **Camera** | Optional genuine Prusa Buddy3D Camera, firmware 3.1.6 (Rockchip, ARM). The RE target. | via Prusa Connect / read-only SD copy |
 
-On the appliance, the factory app lives at `/opt/prusa-cam` and the launcher prefers the signed
-release at `/data/prusa-cam/releases/current`. Repo source of truth is `pi-impersonator/`; image
+On the appliance, the factory app lives at `/opt/pibuddycam` and the launcher prefers the signed
+release at `/data/pibuddycam/releases/current`. Repo source of truth is `pi-impersonator/`; image
 assets and fixed root helpers live under `image/`.
 
 ## SSH quick checks
 
 ```bash
 PI=<PI_USER>@<PI_IP>   # fill in your Pi
-ssh $PI 'systemctl is-active rpicam-source prusa-ha-rtsp prusa-rtsp prusa-cam'
-ssh $PI 'journalctl -u prusa-cam -n 50 --no-pager'                 # impersonator log
-ssh $PI 'journalctl -fu prusa-cam'                                 # follow live
-ssh $PI 'readlink -f /data/prusa-cam/releases/current; findmnt -no OPTIONS /'
+ssh $PI 'systemctl is-active rpicam-source pibuddycam-ha-rtsp pibuddycam-rtsp pibuddycam'
+ssh $PI 'journalctl -u pibuddycam -n 50 --no-pager'                 # impersonator log
+ssh $PI 'journalctl -fu pibuddycam'                                 # follow live
+ssh $PI 'readlink -f /data/pibuddycam/releases/current; findmnt -no OPTIONS /'
 ```
 
 ## Deploy code changes (repo → Pi, only when explicitly authorized)
 
 Repository edits/tests do not authorize a live deployment. For the appliance, application code is
 deployed as a signed bundle made by `image/scripts/make-app-release.sh`; record the clean source
-commit in the manifest and install via `prusa-priv install-update`. Document in the private copy:
+commit in the manifest and install via `pibuddycam-priv install-update`. Document in the private copy:
 
 - signing-key location and wheel cache (never commit either);
 - temporary HTTPS/CA procedure;
-- exact backup/restore procedure for `/etc/prusa-updater.conf`;
+- exact backup/restore procedure for `/etc/pibuddycam-updater.conf`;
 - post-install checks and cleanup.
 
 ```bash
 image/scripts/make-app-release.sh --version X.Y.Z --out-dir <dir> --wheels <dir> \
   --url-base https://<temporary-server> --key <private-key> --source-commit <git-sha>
 # On the device, after configuring the explicitly temporary manifest/CA:
-/usr/libexec/prusa-cam/prusa-priv install-update
+/usr/libexec/pibuddycam/pibuddycam-priv install-update
 ```
 
 The legacy `pi-impersonator/deploy.sh` flow is only for the old developer install, not the appliance.
@@ -52,23 +52,23 @@ repo mode, and remount `/` ro. Commit the identical image change in the same ses
 ```bash
 # four runtime units:
 #   rpicam-source.service  -> rpicam-vid H264 to tcp://0.0.0.0:8888
-#   prusa-rtsp.service     -> rtsp_server.py, rtsp://<pi>:8554/live  (toggled by main.py)
-#   prusa-ha-rtsp.service  -> rtsp_server.py, rtsp://<pi>:8555/live  (always on)
-#   prusa-cam.service      -> main.py (registers to Prusa, uploads, signaling/WebRTC)
-ssh $PI 'systemctl restart prusa-cam'
-ssh $PI 'systemctl try-restart prusa-rtsp'
+#   pibuddycam-rtsp.service     -> rtsp_server.py, rtsp://<pi>:8554/live  (toggled by main.py)
+#   pibuddycam-ha-rtsp.service  -> rtsp_server.py, rtsp://<pi>:8555/live  (always on)
+#   pibuddycam.service      -> main.py (registers to Prusa, uploads, signaling/WebRTC)
+ssh $PI 'systemctl restart pibuddycam'
+ssh $PI 'systemctl try-restart pibuddycam-rtsp'
 vlc rtsp://<PI_IP>:8554/live      # verify local stream
 ```
 
 ## Rotate / change the registration token
 
-Token and fingerprint live in `/data/prusa-cam/config/secrets.toml` and `device.toml`. Prefer the
+Token and fingerprint live in `/data/pibuddycam/config/secrets.toml` and `device.toml`. Prefer the
 admin/onboarding path. Direct root edits are hazardous: the files must remain owned by
-`prusa-cam:prusa-cam` (`0600` secrets, `0640` device). Token rotation and backend registration are
+`pibuddycam:pibuddycam` (`0600` secrets, `0640` device). Token rotation and backend registration are
 separate, explicitly authorized operations.
 
 ```bash
-ssh $PI 'stat -c "%U:%G %a %n" /data/prusa-cam/config/*.toml'
+ssh $PI 'stat -c "%U:%G %a %n" /data/pibuddycam/config/*.toml'
 ```
 
 ## Flash / reimage the Pi (SD card)

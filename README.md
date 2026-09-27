@@ -1,4 +1,7 @@
-# Prusa Buddy3D Camera — Protocol Reverse Engineering & Impersonator
+# PiBuddyCam — a Raspberry Pi camera for Prusa Connect
+
+> Formerly `prusa-buddy3d-camera-re`. PiBuddyCam is an independent, community project and is not
+> affiliated with or endorsed by Prusa Research.
 
 Reverse engineering of the **Prusa Buddy3D Camera** cloud protocol (firmware through `3.1.6`),
 plus two working implementations that let a Linux box (Raspberry Pi)
@@ -52,7 +55,7 @@ Every **claimed** appliance serves a self-hosted control console — no CDN, web
 JavaScript framework, and no Internet exposure required:
 
 ```
-https://buddy3d-<device-id>.local/admin
+https://pibuddycam-<device-id>.local/admin
 ```
 
 The certificate is device-generated and self-signed, so a browser warning is expected and

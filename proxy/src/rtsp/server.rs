@@ -31,7 +31,7 @@ pub trait StreamSource: Send + Sync + 'static {
     async fn subscribe(&self) -> Result<Subscription, SourceError>;
     /// Camera display name (for the SDP `s=` line).
     fn camera_name(&self) -> &str;
-    /// Path component of the RTSP URI we accept (e.g. "buddy3d-camera").
+    /// Path component of the RTSP URI we accept (e.g. "pibuddycam").
     fn rtsp_path(&self) -> &str;
 }
 

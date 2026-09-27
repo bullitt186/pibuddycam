@@ -10,7 +10,7 @@ Runs as root from ``pi-persist.service`` before the camera/RTSP units. It:
    ``/etc/NetworkManager/system-connections`` so the station profile created at
    claim survives the read-only-root reboot (B4);
 3. provisions the durable admin self-signed keypair and recreates the volatile
-   ``/etc/prusa-cam/admin.env`` so ``prusa-admin.service`` can serve HTTPS
+   ``/etc/pibuddycam/admin.env`` so ``pibuddycam-admin.service`` can serve HTTPS
    (appliance image/security defect; see :mod:`admin_tls`);
 4. restores ``quality.env``, ``rotation.env`` and ``rtsp.mode`` from
    ``state.json``;
@@ -35,14 +35,14 @@ import rotation
 import rtsp_control
 import settings_store
 
-log = logging.getLogger('prusa-cam.persist')
+log = logging.getLogger('pibuddycam.persist')
 
 DATA_MOUNT = '/data'
 DATA_SDCARD = '/data/sdcard'
-DATA_PRUSA_CAM = '/data/prusa-cam'
-DATA_CONFIG_DIR = DATA_PRUSA_CAM + '/config'
-DATA_RELEASES_DIR = DATA_PRUSA_CAM + '/releases'
-DATA_BACKUPS_DIR = DATA_PRUSA_CAM + '/backups'
+DATA_PIBUDDYCAM = '/data/pibuddycam'
+DATA_CONFIG_DIR = DATA_PIBUDDYCAM + '/config'
+DATA_RELEASES_DIR = DATA_PIBUDDYCAM + '/releases'
+DATA_BACKUPS_DIR = DATA_PIBUDDYCAM + '/backups'
 DATA_NETWORK_DIR = '/data/network'
 DATA_NETWORK_CONNECTIONS = DATA_NETWORK_DIR + '/system-connections'
 SD_MOUNT = '/mnt/sdcard'
@@ -58,7 +58,7 @@ PRUNE_FREE_THRESHOLD_BYTES = 300 * 1024 * 1024
 # Dedicated non-login service account that owns every durable directory. The
 # account is created by deploy.sh/bootstrap.sh and is the single identity in the
 # systemd units; override only for a non-standard install via SERVICE_USER.
-DEFAULT_SERVICE_USER = 'prusa-cam'
+DEFAULT_SERVICE_USER = 'pibuddycam'
 
 # Durable directory layout on the PERSIST partition, in creation order, with the
 # mode each directory must end up with. ``config``/``backups`` hold secrets and
@@ -69,7 +69,7 @@ DEFAULT_SERVICE_USER = 'prusa-cam'
 DATA_LAYOUT = (
     (DATA_SDCARD, 0o755),
     (TIMELAPSE_DIR, 0o755),
-    (DATA_PRUSA_CAM, 0o750),
+    (DATA_PIBUDDYCAM, 0o750),
     (DATA_CONFIG_DIR, 0o750),
     (DATA_RELEASES_DIR, 0o755),
     (DATA_BACKUPS_DIR, 0o750),
@@ -98,7 +98,7 @@ def quality_env_values(tier):
     """Return the ``(width, height)`` a persisted quality tier maps to.
 
     Pure mirror of ``quality.write_current``'s resolution table so the restore
-    decision is testable without writing ``/etc/prusa-cam``.
+    decision is testable without writing ``/etc/pibuddycam``.
     """
     resolutions = quality.RESOLUTIONS
     return resolutions.get(tier, resolutions[quality.DEFAULT_QUALITY])
@@ -303,7 +303,7 @@ def main():
 
     # OTA-deployed ROOT migrations run first — they may create mountpoints or
     # install config files that the rest of this function depends on (e.g.
-    # /mnt/sdcard, samba config, prusa-priv fixes).  The migration runner
+    # /mnt/sdcard, samba config, pibuddycam-priv fixes).  The migration runner
     # handles rw/ro remount and idempotency tracking.
     try:
         applied = migrations.run_pending()

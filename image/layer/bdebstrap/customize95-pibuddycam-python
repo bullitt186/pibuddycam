@@ -1,11 +1,11 @@
 #!/bin/bash
-# Buddy3D image Python dependency hook — explicit no-op (WP-R3 / AC-14).
+# PiBuddyCam image Python dependency hook — explicit no-op (WP-R3 / AC-14).
 #
-# The runtime venv at /opt/prusa-cam/venv is owned by
-# image/assets/install-factory-app.sh, which the buddy3d-image layer invokes
+# The runtime venv at /opt/pibuddycam/venv is owned by
+# image/assets/install-factory-app.sh, which the pibuddycam-image layer invokes
 # from its mmdebstrap customize-hooks. That installer runs after the factory
 # app directory exists, so `python3 -m venv --system-site-packages` and
-# `pip install --require-hashes` always operate on a populated /opt/prusa-cam.
+# `pip install --require-hashes` always operate on a populated /opt/pibuddycam.
 #
 # This bdebstrap bundle hook's ordering relative to the layer customize-hooks
 # is not guaranteed by the builder, so it must NOT build the venv itself. It
@@ -19,7 +19,7 @@
 set -eu
 
 root="${1:-}"
-echo "buddy3d-image: customize95-buddy3d-python is a no-op;" >&2
-echo "buddy3d-image: /opt/prusa-cam/venv is created by install-factory-app.sh" >&2
-echo "buddy3d-image: from the layer customize-hooks (root=${root:-unset})." >&2
+echo "pibuddycam-image: customize95-pibuddycam-python is a no-op;" >&2
+echo "pibuddycam-image: /opt/pibuddycam/venv is created by install-factory-app.sh" >&2
+echo "pibuddycam-image: from the layer customize-hooks (root=${root:-unset})." >&2
 exit 0

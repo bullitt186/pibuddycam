@@ -2,11 +2,11 @@
 
 The wizard persists the user's SSID/PSK, but persisting them is not enough: the
 claimed device must actually *join* the network. This module creates or updates a
-deterministic NetworkManager station profile (``buddy3d-station``) and activates
+deterministic NetworkManager station profile (``pibuddycam-station``) and activates
 it, so a claimed device comes up online instead of staying offline on wlan0.
 
-It runs as the unprivileged ``prusa-cam`` service account through the fixed-verb
-root helper ``prusa-priv`` (``wifi-station-apply``), which is the only way the
+It runs as the unprivileged ``pibuddycam`` service account through the fixed-verb
+root helper ``pibuddycam-priv`` (``wifi-station-apply``), which is the only way the
 account may reach NetworkManager with write privileges.
 
 Secret hygiene
@@ -32,18 +32,18 @@ import subprocess
 import sys
 import tempfile
 
-log = logging.getLogger('prusa-cam.wifi_station')
+log = logging.getLogger('pibuddycam.wifi_station')
 
 #: Deterministic NetworkManager station profile name. A stable name lets
 #: ``apply`` update rather than accumulate profiles and lets the durable
 #: ``/data/network/system-connections`` bind mount (B4) persist it across reboot.
-CONNECTION_NAME = 'buddy3d-station'
+CONNECTION_NAME = 'pibuddycam-station'
 
 #: Default wireless interface for the station profile.
 DEFAULT_IFNAME = 'wlan0'
 
 #: Preferred directory for the short-lived ``0600`` nmcli passwd-file. It runs as
-#: root through ``prusa-priv``, so ``/run`` (tmpfs, root-only) is available; a
+#: root through ``pibuddycam-priv``, so ``/run`` (tmpfs, root-only) is available; a
 #: writable-directory fallback keeps the helper usable in a test sandbox.
 PASSWD_FILE_DIR = '/run'
 
@@ -164,7 +164,7 @@ def _remove_security_command():
 
 
 def _up_command():
-    """``nmcli connection up buddy3d-station`` activates the station profile."""
+    """``nmcli connection up pibuddycam-station`` activates the station profile."""
     return ['nmcli', 'connection', 'up', CONNECTION_NAME]
 
 
@@ -201,7 +201,7 @@ def _write_passwd_file(psk, directory=None):
     """
     target_dir = _passwd_file_dir(directory)
     try:
-        fd, path = tempfile.mkstemp(prefix='buddy3d-psk-', dir=target_dir)
+        fd, path = tempfile.mkstemp(prefix='pibuddycam-psk-', dir=target_dir)
     except OSError:
         return '', 'could not create Wi-Fi credential file'
     try:
@@ -300,7 +300,7 @@ def apply(ssid, psk='', ifname=DEFAULT_IFNAME, runner=None, passwd_dir=None):
 
 
 def main(argv=None):
-    """CLI entry point used by ``prusa-priv wifi-station-apply <ssid>``.
+    """CLI entry point used by ``pibuddycam-priv wifi-station-apply <ssid>``.
 
     The SSID is an argument; the PSK is read from **stdin** so it never reaches
     the process list. An empty stdin means an open network. Exit status is 0 on
@@ -311,7 +311,7 @@ def main(argv=None):
         format='%(asctime)s %(levelname)s %(name)s: %(message)s',
         stream=sys.stderr,
     )
-    parser = argparse.ArgumentParser(description='Buddy3D Wi-Fi station activation')
+    parser = argparse.ArgumentParser(description='PiBuddyCam Wi-Fi station activation')
     parser.add_argument('action', choices=('apply',))
     parser.add_argument('ssid')
     args = parser.parse_args(argv)

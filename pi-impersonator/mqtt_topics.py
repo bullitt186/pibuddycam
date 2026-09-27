@@ -2,7 +2,7 @@
 
 Source of truth: ``docs/public-appliance-distribution-plan.md`` §6.3. The
 appliance publishes and subscribes on one fixed topic tree rooted at the
-configurable base prefix (default ``buddy3d``)::
+configurable base prefix (default ``pibuddycam``)::
 
     <base>/<device-id>/availability
     <base>/<device-id>/state
@@ -16,7 +16,7 @@ Device identity
 the changeable camera name or the device IP. The seed is hashed through the same
 derivation used for the setup SSID and the ONVIF endpoint
 (:func:`provisioning.derive_device_id`, ``uuid5(NAMESPACE_URL,
-'prusa-camera:<seed>')``) so one appliance keeps one identity across the wizard,
+'pibuddycam:<seed>')``) so one appliance keeps one identity across the wizard,
 mDNS, ONVIF discovery, and MQTT. The result is projected onto the safe
 lowercase ``[a-z0-9-]`` token used in MQTT topics and HA unique IDs.
 
@@ -36,7 +36,7 @@ import uuid
 import provisioning
 
 #: Default root of the appliance's own topic tree (source §6.3).
-DEFAULT_BASE_PREFIX = 'buddy3d'
+DEFAULT_BASE_PREFIX = 'pibuddycam'
 
 #: Default Home Assistant discovery prefix (source §6.4).
 DEFAULT_DISCOVERY_PREFIX = 'homeassistant'
@@ -45,7 +45,7 @@ DEFAULT_DISCOVERY_PREFIX = 'homeassistant'
 HA_STATUS_TOPIC = 'homeassistant/status'
 
 #: Object-id prefix for the device-discovery topic (source §6.4).
-DISCOVERY_OBJECT_PREFIX = 'buddy3d_'
+DISCOVERY_OBJECT_PREFIX = 'pibuddycam_'
 
 #: The ten ``command/<name>`` leaves of the §6.3 contract, in table order.
 #:
@@ -177,9 +177,9 @@ def update_install(device_id_value, base_prefix=DEFAULT_BASE_PREFIX):
 
 
 def discovery_device_topic(discovery_prefix, device_id_value):
-    """``<discovery-prefix>/device/buddy3d_<device-id>/config`` (source §6.4).
+    """``<discovery-prefix>/device/pibuddycam_<device-id>/config`` (source §6.4).
 
-    The object id keeps the ``buddy3d_`` prefix so the HA discovery identity is
+    The object id keeps the ``pibuddycam_`` prefix so the HA discovery identity is
     stable across camera renames and IP changes.
     """
     validate_prefix(discovery_prefix, 'discovery_prefix')

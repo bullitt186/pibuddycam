@@ -20,14 +20,14 @@ Bind port by mode
 -----------------
 The pre-claim captive portal binds TCP ``80`` in ``setup`` mode
 (``http://192.168.4.1``); the post-claim administration UI binds TCP ``443`` in
-``admin`` mode and is reached at ``https://buddy3d-<device-id>.local`` with a
+``admin`` mode and is reached at ``https://pibuddycam-<device-id>.local`` with a
 device-generated self-signed certificate (a browser warning is acceptable and
 documented in the source plan §4.5). The bind host/port and TLS context are all
 injectable.
 
 TLS is **mandatory in admin mode**: the boot-time provisioner
 (:mod:`admin_tls`, run by ``pi-persist.service``) generates the durable keypair
-and recreates ``/etc/prusa-cam/admin.env``. When that configuration is missing
+and recreates ``/etc/pibuddycam/admin.env``. When that configuration is missing
 or invalid, ``run`` raises and the service fails instead of serving the console
 as plaintext. Setup mode stays plain HTTP on the captive portal.
 
@@ -58,6 +58,7 @@ import app_version
 import camera_probe
 import dashboard
 import diagnostics
+import image_guard
 import live_monitor
 import local_webrtc_signaling
 import media_build
@@ -67,7 +68,7 @@ import provisioning
 import runtime_ipc
 import update_control
 
-log = logging.getLogger('prusa-cam.admin_app')
+log = logging.getLogger('pibuddycam.admin_app')
 
 #: Default broker-test callable for the wizard/admin MQTT route (WP-R2).
 #: Resolved at import so the ``build_admin_app`` parameter can also be named
@@ -619,9 +620,9 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
     through the fixed-verb privileged helper (WP-R1/B2):
 
     * ``start_camera`` defaults to :func:`privileged.start_camera`, which starts
-      ``prusa-camera.target`` through ``prusa-priv start-camera``; the
-      ``Conflicts=`` edges then stop ``prusa-provisioning.service`` and the
-      camera target pulls ``prusa-admin.service`` (AC-12).
+      ``pibuddycam.target`` through ``pibuddycam-priv start-camera``; the
+      ``Conflicts=`` edges then stop ``pibuddycam-provisioning.service`` and the
+      camera target pulls ``pibuddycam-admin.service`` (AC-12).
     * ``activate_station`` defaults to :func:`privileged.activate_station`, which
       creates/activates the Wi-Fi station profile before the camera starts so a
       claimed device comes up online.
@@ -751,7 +752,7 @@ def _port_from_env(mode, env=None):
 
 
 def main(argv=None):
-    """Command-line entry point used by ``prusa-admin.service``.
+    """Command-line entry point used by ``pibuddycam-admin.service``.
 
     ``ADMIN_MODE`` (or ``--mode``) selects ``setup``/``admin``; when neither is
     given the mode is resolved from the persisted provisioning state. This keeps
@@ -761,7 +762,7 @@ def main(argv=None):
         level=os.environ.get('ADMIN_LOG_LEVEL', 'INFO').upper(),
         format='%(asctime)s %(levelname)s %(name)s: %(message)s',
     )
-    parser = argparse.ArgumentParser(description='Buddy3D admin/provisioning UI')
+    parser = argparse.ArgumentParser(description='PiBuddyCam admin/provisioning UI')
     parser.add_argument('--mode', choices=VALID_MODES, default=None)
     parser.add_argument('--host', default=None)
     parser.add_argument('--port', type=int, default=None)
@@ -771,4 +772,5 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
+    image_guard.exit_if_legacy_image()
     raise SystemExit(main())

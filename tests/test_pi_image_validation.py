@@ -43,10 +43,10 @@ ROOT_SIZE_SECTORS = 8388608  # 4 GiB
 PERSIST_SIZE_SECTORS = 1048576  # 512 MiB
 
 REQUIRED_DATA_DIRS = [
-    "prusa-cam",
-    "prusa-cam/config",
-    "prusa-cam/releases",
-    "prusa-cam/backups",
+    "pibuddycam",
+    "pibuddycam/config",
+    "pibuddycam/releases",
+    "pibuddycam/backups",
     "network",
     "network/system-connections",
     "sdcard",
@@ -56,19 +56,19 @@ REQUIRED_DATA_DIRS = [
 # Durable dirs the validator requires to be root:root 0:0 rather than owned by
 # the service account (the root updater owns releases; NetworkManager the store).
 PERSIST_ROOT_ONLY = {
-    "prusa-cam/releases",
+    "pibuddycam/releases",
     "network",
     "network/system-connections",
 }
 
 # The synthetic tree is created by the (unprivileged) test runner, so every
 # file is owned by the current uid/gid. Map the image's "root" account to that
-# uid/gid and give prusa-cam a distinct sentinel so the validator's ownership
+# uid/gid and give pibuddycam a distinct sentinel so the validator's ownership
 # assertions are exercised without needing real root (B3).
 SYNTH_ROOT_UID = os.getuid()
 SYNTH_ROOT_GID = os.getgid()
-SYNTH_PRUSA_UID = os.getuid() + 1000
-SYNTH_PRUSA_GID = os.getgid() + 1000
+SYNTH_SERVICE_UID = os.getuid() + 1000
+SYNTH_SERVICE_GID = os.getgid() + 1000
 
 
 def run_validator(*args):
@@ -149,25 +149,25 @@ def make_rootfs(base):
     ) + sorted(REPO_SYSTEMD.glob("*.timer")):
         shutil.copy2(src, systemd / src.name)
     for name in (
-        "prusa-data-grow.service",
-        "prusa-camera.target",
-        "prusa-boot-mode.service",
+        "pibuddycam-data-grow.service",
+        "pibuddycam.target",
+        "pibuddycam-boot-mode.service",
     ):
         shutil.copy2(ASSET_SYSTEMD / name, systemd / name)
 
     # Boot-mode gating (AC-12/AC-17): the selector is enabled at
     # multi-user.target; the camera target, the provisioning service and the
-    # camera units are deliberately NOT enabled, and prusa-admin.service is
-    # enabled only under prusa-camera.target.wants (post-claim).
+    # camera units are deliberately NOT enabled, and pibuddycam-admin.service is
+    # enabled only under pibuddycam.target.wants (post-claim).
     wants = systemd / "multi-user.target.wants"
     wants.mkdir(parents=True)
-    os.symlink("../prusa-boot-mode.service", wants / "prusa-boot-mode.service")
+    os.symlink("../pibuddycam-boot-mode.service", wants / "pibuddycam-boot-mode.service")
     # WP-R4b: the updater timer is enabled at multi-user.target; its oneshot
     # service is triggered by the timer and is not enabled directly.
-    os.symlink("../prusa-updater.timer", wants / "prusa-updater.timer")
-    camera_wants = systemd / "prusa-camera.target.wants"
+    os.symlink("../pibuddycam-updater.timer", wants / "pibuddycam-updater.timer")
+    camera_wants = systemd / "pibuddycam.target.wants"
     camera_wants.mkdir(parents=True)
-    os.symlink("../prusa-admin.service", camera_wants / "prusa-admin.service")
+    os.symlink("../pibuddycam-admin.service", camera_wants / "pibuddycam-admin.service")
 
     # Overlay root: config file and boot cmdline.
     (root / "etc" / "overlayroot.conf").write_text(
@@ -180,7 +180,7 @@ def make_rootfs(base):
         "PARTUUID=b33dcafe-01     /boot/firmware  vfat  defaults,rw 0 2\n"
         "PARTUUID=b33dcafe-03     /data           ext4  defaults 0 2\n"
         "tmpfs                    /var            tmpfs  mode=0755 0 0\n"
-        "tmpfs                    /etc/prusa-cam  tmpfs  mode=0750,uid=1000,gid=1000 0 0\n",
+        "tmpfs                    /etc/pibuddycam  tmpfs  mode=0750,uid=1000,gid=1000 0 0\n",
         encoding="utf-8",
     )
     boot = root / "boot" / "firmware"
@@ -198,10 +198,10 @@ def make_rootfs(base):
         "[Journal]\nStorage=volatile\nRuntimeMaxUse=32M\n", encoding="utf-8"
     )
 
-    # Camera device access: prusa-cam must be able to open /dev/dma_heap/*.
+    # Camera device access: pibuddycam must be able to open /dev/dma_heap/*.
     udev = root / "etc" / "udev" / "rules.d"
     udev.mkdir(parents=True)
-    (udev / "50-prusa-cam-camera.rules").write_text(
+    (udev / "50-pibuddycam-camera.rules").write_text(
         'SUBSYSTEM=="dma_heap", GROUP="video", MODE="0660"\n', encoding="utf-8"
     )
 
@@ -214,7 +214,7 @@ def make_rootfs(base):
     # Stable Wi-Fi identity: no scan-time MAC randomization.
     nm_conf = networkmanager / "conf.d"
     nm_conf.mkdir(parents=True, exist_ok=True)
-    (nm_conf / "10-prusa-mac.conf").write_text(
+    (nm_conf / "10-pibuddycam-mac.conf").write_text(
         "[device]\nwifi.scan-rand-mac-address=no\n", encoding="utf-8"
     )
 
@@ -231,7 +231,7 @@ def make_rootfs(base):
         "   browseable = yes\n"
         "   read only = no\n"
         "   guest ok = yes\n"
-        "   force user = prusa-cam\n"
+        "   force user = pibuddycam\n"
         "   create mask = 0644\n"
         "   directory mask = 0755\n",
         encoding="utf-8",
@@ -243,7 +243,7 @@ def make_rootfs(base):
     )
     tmpfiles = root / "etc" / "tmpfiles.d"
     tmpfiles.mkdir(parents=True, exist_ok=True)
-    (tmpfiles / "buddy3d-samba.conf").write_text(
+    (tmpfiles / "pibuddycam-samba.conf").write_text(
         "d /var/lib/samba          0755 root root -\n"
         "d /var/lib/samba/private  0700 root root -\n"
         "d /var/log/samba          0755 root root -\n"
@@ -254,7 +254,7 @@ def make_rootfs(base):
     # Factory application + launcher fallback. The fixture installs the real
     # image asset so the validator's WP-R4c launcher assertions (per-release
     # venv preference, factory fallback) exercise the shipped script.
-    app = root / "opt" / "prusa-cam"
+    app = root / "opt" / "pibuddycam"
     app.mkdir(parents=True)
     # The image installs the factory app root-owned 0755 (B3); the fixture's
     # umask would otherwise make it group-writable.
@@ -277,7 +277,7 @@ def make_rootfs(base):
     # fail-closed resolver. Keep the synthetic content free of secret-looking
     # patterns so the image secret scan is not tripped.
     (app / "admin_tls.py").write_text(
-        "TLS_DIR = '/data/prusa-cam/config/admin-tls'\n"
+        "TLS_DIR = '/data/pibuddycam/config/admin-tls'\n"
         "def ensure():\n    return True\n",
         encoding="utf-8",
     )
@@ -322,7 +322,7 @@ def make_rootfs(base):
     # Privileged helper + narrow sudoers rule (B3). Both are owned by the
     # synthetic "root" account (the test runner) with the restricted modes the
     # image installs, so the validator's ownership/mode assertions are exercised.
-    helper = root / "usr" / "libexec" / "prusa-cam" / "prusa-priv"
+    helper = root / "usr" / "libexec" / "pibuddycam" / "pibuddycam-priv"
     helper.parent.mkdir(parents=True)
     helper.write_text(
         "#!/bin/bash\n# synthetic fixed-verb helper\nexit 2\n", encoding="utf-8"
@@ -346,18 +346,18 @@ def make_rootfs(base):
     nft.chmod(0o755)
     sudoers_dir = root / "etc" / "sudoers.d"
     sudoers_dir.mkdir(parents=True)
-    sudoers_file = sudoers_dir / "prusa-cam"
+    sudoers_file = sudoers_dir / "pibuddycam"
     sudoers_file.write_text(
-        "Defaults:prusa-cam env_reset\n"
-        'Defaults:prusa-cam secure_path="/usr/local/sbin:/usr/local/bin:'
+        "Defaults:pibuddycam env_reset\n"
+        'Defaults:pibuddycam secure_path="/usr/local/sbin:/usr/local/bin:'
         '/usr/sbin:/usr/bin:/sbin:/bin"\n'
-        "prusa-cam ALL=(root) NOPASSWD: /usr/libexec/prusa-cam/prusa-priv\n",
+        "pibuddycam ALL=(root) NOPASSWD: /usr/libexec/pibuddycam/pibuddycam-priv\n",
         encoding="utf-8",
     )
     sudoers_file.chmod(0o440)
 
     # build-info.json.
-    build_info_dir = root / "usr" / "share" / "prusa-buddy3d-camera"
+    build_info_dir = root / "usr" / "share" / "pibuddycam"
     build_info_dir.mkdir(parents=True)
     (build_info_dir / "build-info.json").write_text(
         json.dumps(
@@ -367,7 +367,7 @@ def make_rootfs(base):
                 "builder_revision": "262d4df5a9f9d4133370465399a7958a7c22cdc7",
                 "os_suite": "trixie",
                 "kernel_package": "linux-image-rpi-v8",
-                "package_manifest": "/usr/share/prusa-buddy3d-camera/packages.txt",
+                "package_manifest": "/usr/share/pibuddycam/packages.txt",
             }
         ),
         encoding="utf-8",
@@ -375,12 +375,12 @@ def make_rootfs(base):
 
     # Embedded release-signing public key (WP-R4b/AC-29): root:root 0644, no
     # private key material.
-    (build_info_dir / "buddy3d-release.pub").write_text(
+    (build_info_dir / "pibuddycam-release.pub").write_text(
         "untrusted comment: minisign public key SYNTHETIC\n"
         "RWTjuP4R4QtoSN543KA74kYYGJ7WkKAz2j5el+ZZC310+TJvrxVAia02\n",
         encoding="utf-8",
     )
-    (build_info_dir / "buddy3d-release.pub").chmod(0o644)
+    (build_info_dir / "pibuddycam-release.pub").chmod(0o644)
 
     # SSH disabled by default, root locked, no authorized_keys.
     ssh = root / "etc" / "ssh"
@@ -394,15 +394,15 @@ def make_rootfs(base):
     )
     (root / "etc" / "passwd").write_text(
         f"root:x:{SYNTH_ROOT_UID}:{SYNTH_ROOT_GID}:root:/root:/bin/bash\n"
-        f"prusa-cam:x:{SYNTH_PRUSA_UID}:{SYNTH_PRUSA_GID}:Prusa Camera:"
-        "/opt/prusa-cam:/usr/sbin/nologin\n",
+        f"pibuddycam:x:{SYNTH_SERVICE_UID}:{SYNTH_SERVICE_GID}:PiBuddyCam:"
+        "/opt/pibuddycam:/usr/sbin/nologin\n",
         encoding="utf-8",
     )
 
     # No persistent machine-id.
     (root / "etc" / "machine-id").write_text("", encoding="utf-8")
 
-    # Initial PERSIST structure; ownership matches the passwd prusa-cam entry.
+    # Initial PERSIST structure; ownership matches the passwd pibuddycam entry.
     data = root / "data"
     for relative in REQUIRED_DATA_DIRS:
         (data / relative).mkdir(parents=True, exist_ok=True)
@@ -446,7 +446,7 @@ def make_persist_image(path, tree, uid=None, gid=None):
 
     ``mke2fs -d`` preserves the source tree's (test-runner) ownership, so when
     ``uid``/``gid`` are given every seeded directory is re-owned in the image
-    with ``debugfs sif`` to match the synthetic ``prusa-cam`` account. This lets
+    with ``debugfs sif`` to match the synthetic ``pibuddycam`` account. This lets
     the ownership assertion run without needing real root.
     """
     path = Path(path)
@@ -459,7 +459,7 @@ def make_persist_image(path, tree, uid=None, gid=None):
     )
     if uid is not None and gid is not None:
         for relative in REQUIRED_DATA_DIRS:
-            # Root-only dirs must be 0:0; the rest use the synthetic prusa-cam.
+            # Root-only dirs must be 0:0; the rest use the synthetic pibuddycam.
             owner_uid, owner_gid = (
                 (0, 0) if relative in PERSIST_ROOT_ONLY else (uid, gid)
             )
@@ -630,14 +630,14 @@ class RootfsValidationTests(unittest.TestCase):
             fstab.read_text(encoding="utf-8")
             .replace("tmpfs                    /var            tmpfs  mode=0755 0 0\n", "")
             .replace(
-                "tmpfs                    /etc/prusa-cam  tmpfs  mode=0750,uid=1000,gid=1000 0 0\n",
+                "tmpfs                    /etc/pibuddycam  tmpfs  mode=0750,uid=1000,gid=1000 0 0\n",
                 "",
             ),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("must mount /var and /etc/prusa-cam on tmpfs", result.stdout)
+        self.assertIn("must mount /var and /etc/pibuddycam on tmpfs", result.stdout)
 
     def test_missing_dnsmasq_fails(self):
         # NetworkManager shared/hotspot mode cannot activate without dnsmasq.
@@ -649,14 +649,14 @@ class RootfsValidationTests(unittest.TestCase):
 
     def test_missing_camera_dma_heap_rule_fails(self):
         root = self._root()
-        (root / "etc" / "udev" / "rules.d" / "50-prusa-cam-camera.rules").unlink()
+        (root / "etc" / "udev" / "rules.d" / "50-pibuddycam-camera.rules").unlink()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing dma_heap udev rule", result.stdout)
 
     def test_missing_stable_mac_conf_fails(self):
         root = self._root()
-        (root / "etc" / "NetworkManager" / "conf.d" / "10-prusa-mac.conf").unlink()
+        (root / "etc" / "NetworkManager" / "conf.d" / "10-pibuddycam-mac.conf").unlink()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("fingerprint flaps", result.stdout)
@@ -673,7 +673,7 @@ class RootfsValidationTests(unittest.TestCase):
 
     def test_unit_referencing_personal_home_fails(self):
         root = self._root()
-        unit = root / "etc" / "systemd" / "system" / "prusa-cam.service"
+        unit = root / "etc" / "systemd" / "system" / "pibuddycam.service"
         unit.write_text(
             unit.read_text(encoding="utf-8")
             + "Environment=HOME=/home/alice\n",
@@ -723,14 +723,14 @@ class RootfsValidationTests(unittest.TestCase):
 
     def test_missing_build_info_fails(self):
         root = self._root()
-        (root / "usr" / "share" / "prusa-buddy3d-camera" / "build-info.json").unlink()
+        (root / "usr" / "share" / "pibuddycam" / "build-info.json").unlink()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("build-info.json", result.stdout)
 
     def test_identity_json_in_data_fails(self):
         root = self._root()
-        (root / "data" / "prusa-cam" / "identity.json").write_text(
+        (root / "data" / "pibuddycam" / "identity.json").write_text(
             '{"device_id": "synthetic"}\n', encoding="utf-8"
         )
         result = run_validator("--image", self.image, "--mount-root", root)
@@ -790,13 +790,13 @@ class BootModeGatingValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(
-            "prusa-boot-mode.service is enabled at multi-user.target",
+            "pibuddycam-boot-mode.service is enabled at multi-user.target",
             result.stdout,
         )
-        self.assertIn("prusa-provisioning.service is not enabled", result.stdout)
-        self.assertIn("prusa-camera.target is not enabled", result.stdout)
+        self.assertIn("pibuddycam-provisioning.service is not enabled", result.stdout)
+        self.assertIn("pibuddycam.target is not enabled", result.stdout)
         self.assertIn(
-            "prusa-admin.service is enabled under prusa-camera.target.wants",
+            "pibuddycam-admin.service is enabled under pibuddycam.target.wants",
             result.stdout,
         )
 
@@ -804,7 +804,7 @@ class BootModeGatingValidationTests(unittest.TestCase):
         root = self._root()
         (
             self._systemd(root) / "multi-user.target.wants"
-            / "prusa-boot-mode.service"
+            / "pibuddycam-boot-mode.service"
         ).unlink()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
@@ -813,23 +813,23 @@ class BootModeGatingValidationTests(unittest.TestCase):
     def test_camera_target_enabled_fails(self):
         root = self._root()
         os.symlink(
-            "../prusa-camera.target",
-            self._systemd(root) / "multi-user.target.wants" / "prusa-camera.target",
+            "../pibuddycam.target",
+            self._systemd(root) / "multi-user.target.wants" / "pibuddycam.target",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prusa-camera.target must NOT be enabled", result.stdout)
+        self.assertIn("pibuddycam.target must NOT be enabled", result.stdout)
 
     def test_provisioning_enabled_fails(self):
         root = self._root()
         os.symlink(
-            "../prusa-provisioning.service",
+            "../pibuddycam-provisioning.service",
             self._systemd(root) / "multi-user.target.wants"
-            / "prusa-provisioning.service",
+            / "pibuddycam-provisioning.service",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prusa-provisioning.service must NOT be enabled", result.stdout)
+        self.assertIn("pibuddycam-provisioning.service must NOT be enabled", result.stdout)
 
     def test_camera_unit_enabled_fails(self):
         root = self._root()
@@ -844,26 +844,26 @@ class BootModeGatingValidationTests(unittest.TestCase):
     def test_admin_not_bound_to_camera_target_fails(self):
         root = self._root()
         systemd = self._systemd(root)
-        (systemd / "prusa-camera.target.wants" / "prusa-admin.service").unlink()
-        unit = systemd / "prusa-admin.service"
+        (systemd / "pibuddycam.target.wants" / "pibuddycam-admin.service").unlink()
+        unit = systemd / "pibuddycam-admin.service"
         unit.write_text(
             unit.read_text(encoding="utf-8").replace(
-                "WantedBy=prusa-camera.target", "WantedBy=multi-user.target"
+                "WantedBy=pibuddycam.target", "WantedBy=multi-user.target"
             ),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            "prusa-admin.service must be enabled under prusa-camera.target.wants",
+            "pibuddycam-admin.service must be enabled under pibuddycam.target.wants",
             result.stdout,
         )
 
     def test_admin_enabled_at_multi_user_fails(self):
         root = self._root()
         os.symlink(
-            "../prusa-admin.service",
-            self._systemd(root) / "multi-user.target.wants" / "prusa-admin.service",
+            "../pibuddycam-admin.service",
+            self._systemd(root) / "multi-user.target.wants" / "pibuddycam-admin.service",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
@@ -871,20 +871,20 @@ class BootModeGatingValidationTests(unittest.TestCase):
 
     def test_provisioning_without_conflicts_fails(self):
         root = self._root()
-        unit = self._systemd(root) / "prusa-provisioning.service"
+        unit = self._systemd(root) / "pibuddycam-provisioning.service"
         unit.write_text(
             unit.read_text(encoding="utf-8").replace(
-                "Conflicts=prusa-camera.target\n", ""
+                "Conflicts=pibuddycam.target\n", ""
             ),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("must Conflicts= prusa-camera.target", result.stdout)
+        self.assertIn("must Conflicts= pibuddycam.target", result.stdout)
 
     def test_boot_mode_without_data_ready_after_fails(self):
         root = self._root()
-        unit = self._systemd(root) / "prusa-boot-mode.service"
+        unit = self._systemd(root) / "pibuddycam-boot-mode.service"
         unit.write_text(
             unit.read_text(encoding="utf-8").replace(
                 "After=data-ready.target", "After=network.target"
@@ -921,66 +921,66 @@ class PrivilegedHelperValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(
-            "prusa-priv is root:root and not group/world-writable", result.stdout
+            "pibuddycam-priv is root:root and not group/world-writable", result.stdout
         )
-        self.assertIn("/etc/sudoers.d/prusa-cam is root:root mode 0440", result.stdout)
+        self.assertIn("/etc/sudoers.d/pibuddycam is root:root mode 0440", result.stdout)
         self.assertIn(
             "sudoers pins env_reset/secure_path and only the fixed-verb helper",
             result.stdout,
         )
         self.assertIn(
-            "/opt/prusa-cam is root-owned and not group/world-writable",
+            "/opt/pibuddycam is root-owned and not group/world-writable",
             result.stdout,
         )
 
     def test_world_writable_helper_fails(self):
         root = self._root()
-        (root / "usr" / "libexec" / "prusa-cam" / "prusa-priv").chmod(0o777)
+        (root / "usr" / "libexec" / "pibuddycam" / "pibuddycam-priv").chmod(0o777)
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("group/world-writable", result.stdout)
 
     def test_missing_helper_fails(self):
         root = self._root()
-        (root / "usr" / "libexec" / "prusa-cam" / "prusa-priv").unlink()
+        (root / "usr" / "libexec" / "pibuddycam" / "pibuddycam-priv").unlink()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prusa-priv helper is missing", result.stdout)
+        self.assertIn("pibuddycam-priv helper is missing", result.stdout)
 
     def test_wrong_sudoers_mode_fails(self):
         root = self._root()
-        (root / "etc" / "sudoers.d" / "prusa-cam").chmod(0o644)
+        (root / "etc" / "sudoers.d" / "pibuddycam").chmod(0o644)
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("must be root:root mode 0440", result.stdout)
 
     def test_opt_owned_by_prusa_cam_fails(self):
         root = self._root()
-        # Map the synthetic prusa-cam account onto the test runner's uid so the
+        # Map the synthetic pibuddycam account onto the test runner's uid so the
         # /opt tree (owned by the runner) looks service-account-owned.
         passwd = root / "etc" / "passwd"
         passwd.write_text(
             passwd.read_text(encoding="utf-8").replace(
-                f":{SYNTH_PRUSA_UID}:{SYNTH_PRUSA_GID}:Prusa Camera:",
-                f":{SYNTH_ROOT_UID}:{SYNTH_ROOT_GID}:Prusa Camera:",
+                f":{SYNTH_SERVICE_UID}:{SYNTH_SERVICE_GID}:PiBuddyCam:",
+                f":{SYNTH_ROOT_UID}:{SYNTH_ROOT_GID}:PiBuddyCam:",
             ),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("/opt/prusa-cam must not be owned by prusa-cam", result.stdout)
+        self.assertIn("/opt/pibuddycam must not be owned by pibuddycam", result.stdout)
 
     def test_camera_target_without_admin_wants_fails(self):
         root = self._root()
-        unit = self._systemd(root) / "prusa-camera.target"
+        unit = self._systemd(root) / "pibuddycam.target"
         unit.write_text(
-            unit.read_text(encoding="utf-8").replace(" prusa-admin.service", ""),
+            unit.read_text(encoding="utf-8").replace(" pibuddycam-admin.service", ""),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            "prusa-camera.target must Wants= prusa-admin.service", result.stdout
+            "pibuddycam.target must Wants= pibuddycam-admin.service", result.stdout
         )
 
 
@@ -1003,17 +1003,17 @@ class PythonVenvValidationTests(unittest.TestCase):
 
     @staticmethod
     def _app(root):
-        return Path(root) / "opt" / "prusa-cam"
+        return Path(root) / "opt" / "pibuddycam"
 
     def test_good_rootfs_reports_venv_and_lock(self):
         root = self._root()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(
-            "/opt/prusa-cam/venv/bin/python is root-owned", result.stdout
+            "/opt/pibuddycam/venv/bin/python is root-owned", result.stdout
         )
         self.assertIn(
-            "/opt/prusa-cam/requirements.lock is root:root mode 0644",
+            "/opt/pibuddycam/requirements.lock is root:root mode 0644",
             result.stdout,
         )
         self.assertIn("each with a sha256 hash", result.stdout)
@@ -1155,7 +1155,7 @@ class PersistPartitionTests(unittest.TestCase):
         )
         persist = make_persist_image(
             Path(self.tmp) / "seeded.ext4", tree,
-            uid=SYNTH_PRUSA_UID, gid=SYNTH_PRUSA_GID,
+            uid=SYNTH_SERVICE_UID, gid=SYNTH_SERVICE_GID,
         )
         root = self._root()
         result = run_validator(
@@ -1203,24 +1203,24 @@ class UpdaterImageValidationTests(unittest.TestCase):
 
     def _key(self, root):
         return (
-            Path(root) / "usr" / "share" / "prusa-buddy3d-camera"
-            / "buddy3d-release.pub"
+            Path(root) / "usr" / "share" / "pibuddycam"
+            / "pibuddycam-release.pub"
         )
 
     def test_good_rootfs_reports_updater_checks(self):
         root = self._root()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("buddy3d-release.pub is root:root mode 0644", result.stdout)
-        self.assertIn("buddy3d-release.pub contains no private key material",
+        self.assertIn("pibuddycam-release.pub is root:root mode 0644", result.stdout)
+        self.assertIn("pibuddycam-release.pub contains no private key material",
                       result.stdout)
-        self.assertIn("prusa-updater.timer is enabled at multi-user.target",
+        self.assertIn("pibuddycam-updater.timer is enabled at multi-user.target",
                       result.stdout)
-        self.assertIn("prusa-updater.service is not separately enabled",
+        self.assertIn("pibuddycam-updater.service is not separately enabled",
                       result.stdout)
-        self.assertIn("prusa-updater.service runs updater_install.py",
+        self.assertIn("pibuddycam-updater.service runs updater_install.py",
                       result.stdout)
-        self.assertIn("prusa-camera.target Wants= prusa-updater.timer",
+        self.assertIn("pibuddycam.target Wants= pibuddycam-updater.timer",
                       result.stdout)
 
     def test_missing_key_fails(self):
@@ -1228,103 +1228,103 @@ class UpdaterImageValidationTests(unittest.TestCase):
         self._key(root).unlink()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("buddy3d-release.pub is missing", result.stdout)
+        self.assertIn("pibuddycam-release.pub is missing", result.stdout)
 
     def test_wrong_key_mode_fails(self):
         root = self._root()
         self._key(root).chmod(0o600)
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("buddy3d-release.pub must be mode 0644", result.stdout)
+        self.assertIn("pibuddycam-release.pub must be mode 0644", result.stdout)
 
     def test_prusa_cam_owned_key_fails(self):
         root = self._root()
         passwd = root / "etc" / "passwd"
         passwd.write_text(
             passwd.read_text(encoding="utf-8").replace(
-                f":{SYNTH_PRUSA_UID}:{SYNTH_PRUSA_GID}:Prusa Camera:",
-                f":{SYNTH_ROOT_UID}:{SYNTH_ROOT_GID}:Prusa Camera:",
+                f":{SYNTH_SERVICE_UID}:{SYNTH_SERVICE_GID}:PiBuddyCam:",
+                f":{SYNTH_ROOT_UID}:{SYNTH_ROOT_GID}:PiBuddyCam:",
             ),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("buddy3d-release.pub must not be owned by prusa-cam",
+        self.assertIn("pibuddycam-release.pub must not be owned by pibuddycam",
                       result.stdout)
 
     def test_missing_updater_service_fails(self):
         root = self._root()
-        (self._systemd(root) / "prusa-updater.service").unlink()
+        (self._systemd(root) / "pibuddycam-updater.service").unlink()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prusa-updater.service is missing", result.stdout)
+        self.assertIn("pibuddycam-updater.service is missing", result.stdout)
 
     def test_timer_not_enabled_fails(self):
         root = self._root()
         (
             self._systemd(root) / "multi-user.target.wants"
-            / "prusa-updater.timer"
+            / "pibuddycam-updater.timer"
         ).unlink()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prusa-updater.timer must be enabled", result.stdout)
+        self.assertIn("pibuddycam-updater.timer must be enabled", result.stdout)
 
     def test_updater_service_enabled_fails(self):
         root = self._root()
         os.symlink(
-            "../prusa-updater.service",
+            "../pibuddycam-updater.service",
             self._systemd(root) / "multi-user.target.wants"
-            / "prusa-updater.service",
+            / "pibuddycam-updater.service",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prusa-updater.service must not be enabled", result.stdout)
+        self.assertIn("pibuddycam-updater.service must not be enabled", result.stdout)
 
     def test_good_rootfs_reports_install_unit_checks(self):
         root = self._root()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(
-            "prusa-updater-install.service is installed", result.stdout)
+            "pibuddycam-updater-install.service is installed", result.stdout)
         self.assertIn(
-            "prusa-updater-install.service runs updater_install.py install",
+            "pibuddycam-updater-install.service runs updater_install.py install",
             result.stdout)
         self.assertIn(
-            "prusa-updater-install.service is After= and Requires= data-ready.target",
+            "pibuddycam-updater-install.service is After= and Requires= data-ready.target",
             result.stdout)
         self.assertIn(
-            "prusa-updater-install.service is not enabled", result.stdout)
+            "pibuddycam-updater-install.service is not enabled", result.stdout)
         self.assertIn(
-            "prusa-camera.target does not pull prusa-updater-install.service",
+            "pibuddycam.target does not pull pibuddycam-updater-install.service",
             result.stdout)
 
     def test_missing_install_unit_fails(self):
         root = self._root()
-        (self._systemd(root) / "prusa-updater-install.service").unlink()
+        (self._systemd(root) / "pibuddycam-updater-install.service").unlink()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prusa-updater-install.service is missing", result.stdout)
+        self.assertIn("pibuddycam-updater-install.service is missing", result.stdout)
 
     def test_enabled_install_unit_fails(self):
         root = self._root()
         os.symlink(
-            "../prusa-updater-install.service",
+            "../pibuddycam-updater-install.service",
             self._systemd(root) / "multi-user.target.wants"
-            / "prusa-updater-install.service",
+            / "pibuddycam-updater-install.service",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            "prusa-updater-install.service must not be enabled", result.stdout)
+            "pibuddycam-updater-install.service must not be enabled", result.stdout)
 
     def test_install_unit_in_camera_target_fails(self):
         root = self._root()
-        target = self._systemd(root) / "prusa-camera.target.wants"
+        target = self._systemd(root) / "pibuddycam.target.wants"
         if not target.exists():
             target.mkdir(parents=True)
         os.symlink(
-            "../prusa-updater-install.service",
-            target / "prusa-updater-install.service",
+            "../pibuddycam-updater-install.service",
+            target / "pibuddycam-updater-install.service",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
@@ -1353,24 +1353,24 @@ class LauncherWiringValidationTests(unittest.TestCase):
         return Path(root) / "etc" / "systemd" / "system"
 
     def _launcher(self, root):
-        return Path(root) / "opt" / "prusa-cam" / "launcher.sh"
+        return Path(root) / "opt" / "pibuddycam" / "launcher.sh"
 
     def test_good_rootfs_reports_launcher_wiring(self):
         root = self._root()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("prusa-cam.service execs /opt/prusa-cam/launcher.sh main.py",
+        self.assertIn("pibuddycam.service execs /opt/pibuddycam/launcher.sh main.py",
                       result.stdout)
         self.assertIn(
-            "prusa-rtsp.service execs /opt/prusa-cam/launcher.sh rtsp_server.py",
+            "pibuddycam-rtsp.service execs /opt/pibuddycam/launcher.sh rtsp_server.py",
             result.stdout,
         )
         self.assertIn(
-            "prusa-ha-rtsp.service execs /opt/prusa-cam/launcher.sh rtsp_server.py",
+            "pibuddycam-ha-rtsp.service execs /opt/pibuddycam/launcher.sh rtsp_server.py",
             result.stdout,
         )
         self.assertIn(
-            "prusa-admin.service execs /opt/prusa-cam/launcher.sh admin_app.py",
+            "pibuddycam-admin.service execs /opt/pibuddycam/launcher.sh admin_app.py",
             result.stdout,
         )
         self.assertIn(
@@ -1380,39 +1380,39 @@ class LauncherWiringValidationTests(unittest.TestCase):
 
     def test_unit_execing_factory_venv_directly_fails(self):
         root = self._root()
-        unit = self._systemd(root) / "prusa-cam.service"
+        unit = self._systemd(root) / "pibuddycam.service"
         unit.write_text(
             unit.read_text(encoding="utf-8").replace(
-                "ExecStart=/opt/prusa-cam/launcher.sh main.py",
-                "ExecStart=/opt/prusa-cam/venv/bin/python main.py",
+                "ExecStart=/opt/pibuddycam/launcher.sh main.py",
+                "ExecStart=/opt/pibuddycam/venv/bin/python main.py",
             ),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("must ExecStart=/opt/prusa-cam/launcher.sh main.py",
+        self.assertIn("must ExecStart=/opt/pibuddycam/launcher.sh main.py",
                       result.stdout)
 
     def test_wrong_script_in_unit_fails(self):
         root = self._root()
-        unit = self._systemd(root) / "prusa-rtsp.service"
+        unit = self._systemd(root) / "pibuddycam-rtsp.service"
         unit.write_text(
             unit.read_text(encoding="utf-8").replace(
-                "ExecStart=/opt/prusa-cam/launcher.sh rtsp_server.py",
-                "ExecStart=/opt/prusa-cam/launcher.sh main.py",
+                "ExecStart=/opt/pibuddycam/launcher.sh rtsp_server.py",
+                "ExecStart=/opt/pibuddycam/launcher.sh main.py",
             ),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("must ExecStart=/opt/prusa-cam/launcher.sh rtsp_server.py",
+        self.assertIn("must ExecStart=/opt/pibuddycam/launcher.sh rtsp_server.py",
                       result.stdout)
 
     def test_launcher_without_release_preference_fails(self):
         root = self._root()
         launcher = self._launcher(root)
         launcher.write_text(
-            "#!/bin/bash\nexec /opt/prusa-cam/venv/bin/python \"$@\"\n",
+            "#!/bin/bash\nexec /opt/pibuddycam/venv/bin/python \"$@\"\n",
             encoding="utf-8",
         )
         launcher.chmod(0o755)
@@ -1442,14 +1442,14 @@ class AdminWebAssetValidationTests(unittest.TestCase):
         return make_rootfs(tmp)
 
     def _web(self, root):
-        return Path(root) / "opt" / "prusa-cam" / "web"
+        return Path(root) / "opt" / "pibuddycam" / "web"
 
     def test_good_rootfs_reports_web_assets(self):
         root = self._root()
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(
-            "local admin web assets present under /opt/prusa-cam/web",
+            "local admin web assets present under /opt/pibuddycam/web",
             result.stdout,
         )
 
@@ -1459,7 +1459,7 @@ class AdminWebAssetValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(
-            "local admin web assets missing under /opt/prusa-cam/web",
+            "local admin web assets missing under /opt/pibuddycam/web",
             result.stdout,
         )
 
@@ -1497,7 +1497,7 @@ class AdminTlsValidationTests(unittest.TestCase):
         return make_rootfs(tmp)
 
     def _app(self, root):
-        return Path(root) / "opt" / "prusa-cam"
+        return Path(root) / "opt" / "pibuddycam"
 
     def _systemd(self, root):
         return Path(root) / "etc" / "systemd" / "system"
@@ -1515,9 +1515,9 @@ class AdminTlsValidationTests(unittest.TestCase):
             result.stdout,
         )
         self.assertIn(
-            "prusa-admin.service reads the boot-provisioned", result.stdout)
+            "pibuddycam-admin.service reads the boot-provisioned", result.stdout)
         self.assertIn(
-            "prusa-provisioning.service keeps the setup portal plain HTTP",
+            "pibuddycam-provisioning.service keeps the setup portal plain HTTP",
             result.stdout,
         )
 
@@ -1548,16 +1548,16 @@ class AdminTlsValidationTests(unittest.TestCase):
         unit = self._systemd(root) / "pi-persist.service"
         unit.write_text(
             unit.read_text(encoding="utf-8").replace(
-                " prusa-admin.service\n", "\n"),
+                " pibuddycam-admin.service\n", "\n"),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("prusa-admin.service", result.stdout)
+        self.assertIn("pibuddycam-admin.service", result.stdout)
 
     def test_setup_portal_with_tls_env_fails(self):
         root = self._root()
-        unit = self._systemd(root) / "prusa-provisioning.service"
+        unit = self._systemd(root) / "pibuddycam-provisioning.service"
         unit.write_text(
             unit.read_text(encoding="utf-8") + "Environment=ADMIN_TLS_CERT=/x\n",
             encoding="utf-8",
@@ -1592,21 +1592,21 @@ class RuntimeDirectoryValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(
-            "prusa-cam.service creates the service-owned runtime directory",
+            "pibuddycam.service creates the service-owned runtime directory",
             result.stdout,
         )
 
     def test_missing_runtime_directory_fails(self):
         root = self._root()
-        unit = self._systemd(root) / "prusa-cam.service"
+        unit = self._systemd(root) / "pibuddycam.service"
         unit.write_text(
             unit.read_text(encoding="utf-8").replace(
-                "RuntimeDirectory=prusa-cam\n", ""),
+                "RuntimeDirectory=pibuddycam\n", ""),
             encoding="utf-8",
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("RuntimeDirectory=prusa-cam", result.stdout)
+        self.assertIn("RuntimeDirectory=pibuddycam", result.stdout)
 
 
 class PrivateKeyScanTests(unittest.TestCase):
@@ -1660,7 +1660,7 @@ class PrivateKeyScanTests(unittest.TestCase):
 
     def test_openssh_private_key_content_is_flagged(self):
         root = self._root()
-        (root / "opt" / "prusa-cam" / "server.key").write_text(
+        (root / "opt" / "pibuddycam" / "server.key").write_text(
             "-----BEGIN OPENSSH PRIVATE KEY-----\nsynthetic\n"
             "-----END OPENSSH PRIVATE KEY-----\n",
             encoding="utf-8",
@@ -1671,7 +1671,7 @@ class PrivateKeyScanTests(unittest.TestCase):
 
     def test_id_rsa_filename_is_flagged(self):
         root = self._root()
-        (root / "opt" / "prusa-cam" / "id_rsa").write_text(
+        (root / "opt" / "pibuddycam" / "id_rsa").write_text(
             "-----BEGIN OPENSSH PRIVATE KEY-----\nsynthetic\n"
             "-----END OPENSSH PRIVATE KEY-----\n",
             encoding="utf-8",

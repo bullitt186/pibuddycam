@@ -65,7 +65,7 @@ class ContractPinsTests(ProvisioningTestBase):
         )
         self.assertEqual(provisioning.RECOVERY, 'recovery')
         self.assertEqual(
-            provisioning.PROVISIONING_PATH, '/data/prusa-cam/provisioning.json'
+            provisioning.PROVISIONING_PATH, '/data/pibuddycam/provisioning.json'
         )
 
     def test_next_state_chain_is_forward_only(self):
@@ -79,7 +79,7 @@ class ContractPinsTests(ProvisioningTestBase):
 
 class DeviceIdentityTests(ProvisioningTestBase):
     def test_derive_device_id_matches_onvif_uuid5(self):
-        expected = uuid.uuid5(uuid.NAMESPACE_URL, 'prusa-camera:seed').hex
+        expected = uuid.uuid5(uuid.NAMESPACE_URL, 'pibuddycam:seed').hex
         self.assertEqual(provisioning.derive_device_id('seed'), expected)
         self.assertEqual(
             provisioning.derive_device_id('seed'),
@@ -107,7 +107,7 @@ class DeviceIdentityTests(ProvisioningTestBase):
     def test_setup_ssid_derivation(self):
         self.assertEqual(
             provisioning.setup_ssid('AA:BB:CC:DD:EE:FF'),
-            'Buddy3D-Setup-ddeeff',
+            'PiBuddyCam-Setup-ddeeff',
         )
         self.assertEqual(provisioning.setup_ssid(''), '')
         ssid = provisioning.setup_ssid('AA:BB:CC:DD:EE:FF')
@@ -115,7 +115,7 @@ class DeviceIdentityTests(ProvisioningTestBase):
 
     def test_admin_hostname_is_a_valid_dns_label(self):
         self.assertEqual(
-            provisioning.admin_hostname('AA:BB:CC:DD:EE:FF'), 'buddy3d-ddeeff'
+            provisioning.admin_hostname('AA:BB:CC:DD:EE:FF'), 'pibuddycam-ddeeff'
         )
         self.assertEqual(provisioning.admin_hostname(''), '')
         hostname = provisioning.admin_hostname('AA:BB:CC:DD:EE:FF')
@@ -226,7 +226,7 @@ class ResolveDeviceIdTests(ProvisioningTestBase):
         # fallback seed must default under the durable PERSIST partition.
         self.assertEqual(
             provisioning.IDENTITY_FALLBACK_PATH,
-            '/data/prusa-cam/identity.fallback',
+            '/data/pibuddycam/identity.fallback',
         )
         captured = {}
 
@@ -239,7 +239,7 @@ class ResolveDeviceIdTests(ProvisioningTestBase):
                 device_path=os.path.join(self.root, 'absent.toml'),
                 mac_path=os.path.join(self.root, 'no-such-iface'),
             )
-        self.assertEqual(captured['fallback'], '/data/prusa-cam/identity.fallback')
+        self.assertEqual(captured['fallback'], '/data/pibuddycam/identity.fallback')
         self.assertEqual(result, provisioning.derive_device_id('deadbeef'))
 
     def test_explicit_fallback_path_still_overrides_the_default(self):
@@ -261,7 +261,7 @@ class ResolveDeviceIdTests(ProvisioningTestBase):
 
 
 def expected_uuid():
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, 'prusa-camera:seed'))
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, 'pibuddycam:seed'))
 
 
 class ClaimPredicateTests(ProvisioningTestBase):

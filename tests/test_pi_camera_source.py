@@ -10,8 +10,8 @@ sys.path.insert(0, str(PI_DIR))
 
 import camera_source  # noqa: E402
 
-PY = '/data/prusa-cam/releases/current/venv/bin/python'
-MUX = '/data/prusa-cam/releases/current/stream_mux.py'
+PY = '/data/pibuddycam/releases/current/venv/bin/python'
+MUX = '/data/pibuddycam/releases/current/stream_mux.py'
 
 
 def build(width, height, rotation, backend=None):
@@ -116,8 +116,8 @@ class UnitTests(unittest.TestCase):
     def test_unit_reads_rotation_env_and_execs_camera_source(self):
         unit = (PI_DIR / 'systemd' / 'rpicam-source.service').read_text()
         self.assertIn('Environment=CAM_WIDTH=1920 CAM_HEIGHT=1080 CAM_ROTATION=0', unit)
-        self.assertIn('EnvironmentFile=-/etc/prusa-cam/rotation.env', unit)
-        self.assertIn('ExecStart=/opt/prusa-cam/launcher.sh camera_source.py', unit)
+        self.assertIn('EnvironmentFile=-/etc/pibuddycam/rotation.env', unit)
+        self.assertIn('ExecStart=/opt/pibuddycam/launcher.sh camera_source.py', unit)
         self.assertNotIn('--rotation 180', unit)
         # The rotation file is read after the quality files, independent of them.
         self.assertLess(unit.index('quality.live.env'), unit.index('rotation.env\n'))

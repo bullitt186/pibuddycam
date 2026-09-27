@@ -27,7 +27,7 @@ import timelapse
 import webrtc_control
 from state import ENUM_TO_RAW, RAW_TO_ENUM
 
-log = logging.getLogger('prusa-cam.settings')
+log = logging.getLogger('pibuddycam.settings')
 
 #: The UI-facing mutation field names accepted by :meth:`apply_mutation`. This
 #: tuple *is* the allowlist: a name not present here can never reach a setter,

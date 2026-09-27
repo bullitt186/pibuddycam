@@ -58,7 +58,7 @@ def valid_manifest(**overrides):
         'channel': 'stable',
         'source_commit': 'deadbeef' * 5,
         'min_image_version': '1.0.0',
-        'bundle_url': 'https://example.com/buddy3d-camera-app-1.2.3.tar.zst',
+        'bundle_url': 'https://example.com/pibuddycam-app-1.2.3.tar.zst',
         'bundle_sha256': SHA_A,
         'bundle_size': 1024,
         'release_summary': 'Fixes a camera bug.',
@@ -375,7 +375,7 @@ class VerifyFileTests(unittest.TestCase):
         self.dir = self.tmp.name
         self.bundle = os.path.join(self.dir, 'app.tar.zst')
         self.sig = self.bundle + '.minisig'
-        self.pubkey = os.path.join(self.dir, 'buddy3d-release.pub')
+        self.pubkey = os.path.join(self.dir, 'pibuddycam-release.pub')
         for path, data in ((self.bundle, b'bundle'),
                            (self.sig, b'signature'),
                            (self.pubkey, PUBKEY_BODY.encode())):
@@ -464,7 +464,7 @@ class VerifyFileTests(unittest.TestCase):
     def test_default_public_key_path_constant(self):
         self.assertEqual(
             updater.DEFAULT_PUBLIC_KEY_PATH,
-            '/usr/share/prusa-buddy3d-camera/buddy3d-release.pub')
+            '/usr/share/pibuddycam/pibuddycam-release.pub')
 
 
 # --------------------------------------------------------------------------- #
@@ -751,7 +751,7 @@ class ExtractBundleTests(unittest.TestCase):
             self.archive, self.dest, runner=fake_zstd_runner())
         after = set(os.listdir(tempfile.gettempdir()))
         leaked = [name for name in after - before
-                  if name.startswith('buddy3d-update-')]
+                  if name.startswith('pibuddycam-update-')]
         self.assertEqual(leaked, [])
 
     def test_never_raises_with_broken_runner(self):

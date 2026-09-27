@@ -1,4 +1,4 @@
-# buddy3d-proxy (Rust)
+# pibuddycam-proxy (Rust)
 
 A companion tool to the [Pi impersonator](../pi-impersonator/). It logs into a Prusa account,
 connects to Prusa signaling, negotiates WebRTC with an **already-registered** Buddy3D camera,
@@ -16,7 +16,7 @@ app, and to fix cameras that auto-degrade their quality after many reconnects.
 ## Configure
 
 ```bash
-cp ../config/buddy3d-proxy.env.example .env   # .env is git-ignored
+cp ../config/pibuddycam-proxy.env.example .env   # .env is git-ignored
 # edit .env: set PRUSA_EMAIL and PRUSA_PASSWORD (everything else has defaults)
 ```
 
@@ -34,7 +34,7 @@ just serve            # start the RTSP proxy on RTSP_PORT (default 8554)
 vlc rtsp://<host>:8554/<camera-slug>
 ```
 
-Without `just`, use `cargo run --release --bin buddy3d-proxy -- <subcommand>`.
+Without `just`, use `cargo run --release --bin pibuddycam-proxy -- <subcommand>`.
 
 ## Subcommands
 

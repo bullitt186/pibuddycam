@@ -1,4 +1,4 @@
-# Project Status — Prusa Buddy3D Camera Impersonator
+# Project Status — PiBuddyCam
 
 Current, thematic status of the project (not a session log). Read this first; it is the
 ground truth on what works, what is blocked, and what is open. Wire-level detail lives in
@@ -39,10 +39,10 @@ See the 2026-09-20 section below and `firmware-implementation-gap-tracker.md`
   supervisor requires both transport and authentication before considering the link usable.
 - Fixed configuration-driven quality changes (`c1d3e76`): the appliance service account had called
   broad `sudo systemctl` commands that its narrow sudoers policy correctly rejected. Release
-  `1.0.4` uses `prusa-priv quality-restart`; a real nested Connect configuration changed the OV5647
+  `1.0.4` uses `pibuddycam-priv quality-restart`; a real nested Connect configuration changed the OV5647
   pipeline FHD→HD→FHD while snapshots and both RTSP endpoints stayed operational.
 - Signed OTA install, service restart, and cleanup were live-verified. The active release is
-  `/data/prusa-cam/releases/1.0.4`; ROOT is direct ext4 mounted read-only, not an overlay.
+  `/data/pibuddycam/releases/1.0.4`; ROOT is direct ext4 mounted read-only, not an overlay.
 - A clean Playwright reload still classified the device under “Other cameras,” with registry 404
   and no browser live/settings controls. A purpose-built control viewer authenticated with ACK 0
   and relayed the configuration used for the quality test; no current end-to-end WebRTC claim was
@@ -102,7 +102,7 @@ storage page shows size/used/free, and the interval is configurable. **Live end-
 `Config: timelapse_interval → 30s` with frames exactly 35 s apart. **Limitation:**
 `/mnt/sdcard` is on the read-only overlay root, so recordings were lost on reboot — **fixed
 2026-09-20 (GAP-PERSIST-01, live-verified):** the SD was repartitioned (p2 → 10.3G, new 4G ext4
-`mmcblk0p3` LABEL `PERSIST` mounted at `/data`). `/data/prusa-cam/state.json` now holds the runtime
+`mmcblk0p3` LABEL `PERSIST` mounted at `/data`). `/data/pibuddycam/state.json` now holds the runtime
 settings and `/data/sdcard` is bind-mounted onto `/mnt/sdcard`. After a real reboot: `/data` mounted,
 `quality.env` restored to `1280x720` (encoder `--width 1280 --height 720`), frames/`.avi`/CSV survived,
 the file list still returned the `.avi`, SMB unchanged, and `quality.live.env` stayed ephemeral. **Live 2026-09-19 (deployed `5ad9263`):** the app set 15 s then 10 s
@@ -132,7 +132,7 @@ Five follow-ups landed after the 2026-09-19 WebRTC work; live-verified unless no
    one connection.
 3. **Persistence (`GAP-PERSIST-01`, live-verified across a real reboot).** The SD was
    repartitioned (p2 → 10.3G, new 4G ext4 `mmcblk0p3` LABEL `PERSIST` mounted at
-   `/data`). `/data/prusa-cam/state.json` persists the runtime settings, `/data/sdcard`
+   `/data`). `/data/pibuddycam/state.json` persists the runtime settings, `/data/sdcard`
    is bind-mounted onto `/mnt/sdcard`, and `persist_restore.py` (root,
    `pi-persist.service`) restores them at boot. Verified across a reboot: `/data`
    mounted, quality restored (`1280x720`, encoder really at that size), timelapse
@@ -271,7 +271,7 @@ This is necessary for an offer to work after enrollment is unblocked, but cannot
 | Camera info / metadata (`/c/info`) | ✅ Working | 200; name, firmware, model, Wi-Fi shown in app **[confirmed]** |
 | Appears online & paired, survives reboot | ✅ Working | web + mobile app; `Restart=always` **[confirmed]** |
 | Local RTSP live view | ✅ Working | `rtsp://<pi>:8554/live` in VLC, 1080p, rotated per the console's image-rotation setting (was hardcoded `--rotation 180`, **[confirmed]** for 0/180) **[confirmed]**; the firmware default is `554` (`FUN_000b04d4`), so `8554` is a documented privileged-port Pi exception that Connect consumes (GAP-RTSP-01 closed) |
-| Dynamic video-quality tier-switching | ✅ Device path working (live-verified 2026-09-25) | authenticated nested `configuration` changed the real encoder FHD→HD→FHD on release 1.0.4 through `prusa-priv quality-restart`; Connect currently hides its settings UI because of the registry/classification state. The unresolved GAP-QUALITY-02 persist flag remains separate. |
+| Dynamic video-quality tier-switching | ✅ Device path working (live-verified 2026-09-25) | authenticated nested `configuration` changed the real encoder FHD→HD→FHD on release 1.0.4 through `pibuddycam-priv quality-restart`; Connect currently hides its settings UI because of the registry/classification state. The unresolved GAP-QUALITY-02 persist flag remains separate. |
 | Classified as a genuine Buddy camera | ❌ No | currently listed under “Other cameras” **[confirmed 2026-09-25]**. `origin: OTHER` alone is not proof of invalidity because genuine Buddy3D registration also uses OTHER, but the current UI classification accompanies registry 404. |
 | Live WebRTC stream (app + browser) | ⚠️ Implementation verified; current UI blocked | offer/answer/ICE and video played in app/browser on 2026-09-19/20. On 2026-09-25 the current and formerly working tokens both returned registry 404 and Connect exposed no play control. A control viewer ACKed 0 and delivered configuration, but full WebRTC was not re-established. |
 
@@ -299,7 +299,7 @@ This is necessary for an offer to work after enrollment is unblocked, but cannot
   until it is verified on hardware.
 - **Dynamic video-quality plumbing (partial parity, working live apply)** — nested configuration
   and direct raw events share `handle_quality()`. The live tier is written to
-  `/etc/prusa-cam/quality.live.env`, then the fixed `prusa-priv quality-restart` action restarts the
+  `/etc/pibuddycam/quality.live.env`, then the fixed `pibuddycam-priv quality-restart` action restarts the
   source/RTSP pipeline; persistence is a separate write to `quality.env`. Resolutions in `quality.py` are
   correct: SD 640×480 / HD 1280×720 / FHD 1920×1080. The raw
   `change_video_size`/`save_video_size` handler now maps bytes correctly (`{5:1,6:2,7:3}`,
@@ -393,7 +393,7 @@ rollout). See [`protocol.md` §5 (server-side gate) and §10 (enable gate)](prot
 
 ## Confirmed protocol knowledge (reference)
 
-All corrected and matched against a real camera / the buddy3d-proxy captures. Full spec in
+All corrected and matched against a real camera / the pibuddycam-proxy captures. Full spec in
 [`protocol.md`](protocol.md); firmware derivation in [`journal/findings.md`](journal/findings.md).
 
 - **Two auth paths:** `camera_authentication` (camera: fingerprint+token) vs.
@@ -414,7 +414,7 @@ All corrected and matched against a real camera / the buddy3d-proxy captures. Fu
   `webrtc_status` bytes must be set before any offer is processed.
 - **WebRtcSignal schema** — confirmed field layout (token/session/peer/body/msg_type/direction/
   ice_config) in [`protocol.md` §6](protocol.md).
-- **Field semantics fixed from buddy3d-proxy captures:** `status` field 10 = Socket.IO sid;
+- **Field semantics fixed from pibuddycam-proxy captures:** `status` field 10 = Socket.IO sid;
   `features` field 7 = MD5 of the features JSON (used as WebRTC `peer_id`); Socket.IO CONNECT
   must carry `auth={token}` and `Origin: https://connect.prusa3d.com`.
 - **No device certificate or asymmetric key to forge** — auth is `fingerprint = MD5(MAC)` plus
@@ -431,18 +431,18 @@ All corrected and matched against a real camera / the buddy3d-proxy captures. Fu
 ## Current deployment state
 
 **Hardware:** Raspberry Pi Zero 2 W, Debian 13 (trixie), OV5647 (Pi Cam v1, mounted inverted).
-The appliance launcher runs the signed release under `/data/prusa-cam/releases/current` and keeps
-the immutable factory application under `/opt/prusa-cam` as fallback. Configuration is durable TOML
-under `/data/prusa-cam/config`; no live identifiers or secrets belong in this document.
+The appliance launcher runs the signed release under `/data/pibuddycam/releases/current` and keeps
+the immutable factory application under `/opt/pibuddycam` as fallback. Configuration is durable TOML
+under `/data/pibuddycam/config`; no live identifiers or secrets belong in this document.
 
 **Services (systemd, `enabled`, survive reboot):**
 
 | Service | Role |
 |---|---|
-| `prusa-cam.service` | `main.py` — `/c/info`, snapshot loop, Socket.IO signaling, WebRTC answer logic |
-| `rpicam-source.service` | `launcher.sh camera_source.py` → `rpicam-vid` (0/180°) or `libcamerasrc` GStreamer (90/270°) → `stream_mux.py` H.264 fan-out on TCP :8888; resolution from `EnvironmentFile=/etc/prusa-cam/quality.env` (tier-switchable), rotation from `/etc/prusa-cam/rotation.env`, `--intra 30 --flush` |
-| `prusa-rtsp.service` | GStreamer RTSP → `rtsp://<pi>:8554/live`, pulls from rpicam-source |
-| `prusa-ha-rtsp.service` | Always-on Home Assistant RTSP → `rtsp://<pi>:8555/live`, pulls from the same source |
+| `pibuddycam.service` | `main.py` — `/c/info`, snapshot loop, Socket.IO signaling, WebRTC answer logic |
+| `rpicam-source.service` | `launcher.sh camera_source.py` → `rpicam-vid` (0/180°) or `libcamerasrc` GStreamer (90/270°) → `stream_mux.py` H.264 fan-out on TCP :8888; resolution from `EnvironmentFile=/etc/pibuddycam/quality.env` (tier-switchable), rotation from `/etc/pibuddycam/rotation.env`, `--intra 30 --flush` |
+| `pibuddycam-rtsp.service` | GStreamer RTSP → `rtsp://<pi>:8554/live`, pulls from rpicam-source |
+| `pibuddycam-ha-rtsp.service` | Always-on Home Assistant RTSP → `rtsp://<pi>:8555/live`, pulls from the same source |
 
 The Home Assistant endpoint and ONVIF/WS-Discovery facade were deployed and camera-side verified on
 2026-09-20: discovery, SOAP, JPEG, and H.264 playback work, and Connect snapshots continued at their
@@ -486,14 +486,14 @@ what actually populates the UI. **[assumption]**
 Design to make an abrupt cut a non-event, layered:
 
 1. **No continuous SD writes** — `main.py` logs stdout-only at INFO (dropped the
-   `/var/log/prusa-cam/main.log` `FileHandler`); journald `Storage=volatile` (RAM). **[done]**
+   `/var/log/pibuddycam/main.log` `FileHandler`); journald `Storage=volatile` (RAM). **[done]**
 2. **Crash-safe rare writes** — `quality.py write_current()` fsyncs the temp file + directory
    before/after the atomic rename; `read_current()` already falls back to FHD on a corrupt file.
    **[done]**
 3. **FS/boot hardening** — ext4 `fsck.repair=yes`, `noatime`, zram swap (already); `/boot/firmware`
    → `ro`. **[partial]**
 4. **Read-only ROOT + explicit tmpfs** — hardware acceptance found `overlayroot` did not activate.
-   ROOT is the real ext4 filesystem mounted `ro`; `/var` and `/etc/prusa-cam` carry volatile state
+   ROOT is the real ext4 filesystem mounted `ro`; `/var` and `/etc/pibuddycam` carry volatile state
    on tmpfs, while `/data` carries durable state. Signed application releases avoid routine ROOT
    writes. **[done, corrected 2026-09-25]**
 5. Hardware UPS/GPIO clean-shutdown — optional, documented only.

@@ -65,15 +65,15 @@ class SourceConfiguredTests(unittest.TestCase):
         self.assertFalse(update_control.update_source_configured('/nonexistent'))
 
     def test_empty_and_commented_are_false(self):
-        path = self._write('# PRUSA_UPDATE_MANIFEST_URL=https://x\n')
+        path = self._write('# PIBUDDYCAM_UPDATE_MANIFEST_URL=https://x\n')
         self.assertFalse(update_control.update_source_configured(path))
 
     def test_non_empty_is_true_without_returning_the_url(self):
-        path = self._write('PRUSA_UPDATE_MANIFEST_URL=https://updates.example/m.json\n')
+        path = self._write('PIBUDDYCAM_UPDATE_MANIFEST_URL=https://updates.example/m.json\n')
         self.assertTrue(update_control.update_source_configured(path))
 
     def test_quoted_value_is_true(self):
-        path = self._write('PRUSA_UPDATE_MANIFEST_URL="https://updates.example/m.json"\n')
+        path = self._write('PIBUDDYCAM_UPDATE_MANIFEST_URL="https://updates.example/m.json"\n')
         self.assertTrue(update_control.update_source_configured(path))
 
 

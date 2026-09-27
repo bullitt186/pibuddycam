@@ -59,8 +59,8 @@ class ConstantTests(unittest.TestCase):
     def test_pinned_constants(self):
         self.assertEqual(boot_mode.MODE_PROVISIONING, 'provisioning')
         self.assertEqual(boot_mode.MODE_CAMERA, 'camera')
-        self.assertEqual(boot_mode.PROVISIONING_UNIT, 'prusa-provisioning.service')
-        self.assertEqual(boot_mode.CAMERA_TARGET, 'prusa-camera.target')
+        self.assertEqual(boot_mode.PROVISIONING_UNIT, 'pibuddycam-provisioning.service')
+        self.assertEqual(boot_mode.CAMERA_TARGET, 'pibuddycam.target')
 
 
 class ResolveModeTests(unittest.TestCase):
@@ -164,7 +164,7 @@ class StartUnitTests(unittest.TestCase):
         self.assertEqual(reason, '')
         self.assertEqual(
             runner.calls[0][0],
-            ['systemctl', '--no-block', 'start', 'prusa-camera.target'],
+            ['systemctl', '--no-block', 'start', 'pibuddycam.target'],
         )
 
     def test_start_unit_requires_a_name(self):

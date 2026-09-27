@@ -5,10 +5,10 @@ unclaimed it serves the setup hotspot + captive-portal wizard; once claimed it
 starts the camera runtime. This module is the single, explicit decision point
 that encodes that ordering (master AC-12)::
 
-    data-ready.target -> prusa-provisioning.service   (unclaimed)
-                      -> prusa-camera.target          (claimed)
+    data-ready.target -> pibuddycam-provisioning.service   (unclaimed)
+                      -> pibuddycam.target          (claimed)
 
-``prusa-boot-mode.service`` runs ``boot_mode.py --apply`` at
+``pibuddycam-boot-mode.service`` runs ``boot_mode.py --apply`` at
 ``multi-user.target``; the selected unit is started with ``systemctl --no-block``
 so the selector exits immediately and never gates boot.
 
@@ -31,17 +31,17 @@ import sys
 
 import provisioning
 
-log = logging.getLogger('prusa-cam.boot_mode')
+log = logging.getLogger('pibuddycam.boot_mode')
 
 #: Boot modes.
 MODE_PROVISIONING = 'provisioning'
 MODE_CAMERA = 'camera'
 
 #: The unit that serves the setup hotspot + wizard while unclaimed.
-PROVISIONING_UNIT = 'prusa-provisioning.service'
+PROVISIONING_UNIT = 'pibuddycam-provisioning.service'
 
 #: The target that starts the camera runtime after claim.
-CAMERA_TARGET = 'prusa-camera.target'
+CAMERA_TARGET = 'pibuddycam.target'
 
 #: Provisioning states at/after which the camera runtime is selected. Deliberately
 #: the same set :func:`admin_app.resolve_mode` uses, so the UI surface and the
@@ -152,7 +152,7 @@ def start_camera(runner=None):
 
 
 def main(argv=None, runner=None):
-    """CLI entry point used by ``prusa-boot-mode.service``.
+    """CLI entry point used by ``pibuddycam-boot-mode.service``.
 
     Without ``--apply`` the resolved mode and its unit are printed. With
     ``--apply`` the selected unit is started; exit status is 0 on success and 1
@@ -163,7 +163,7 @@ def main(argv=None, runner=None):
         format='%(asctime)s %(levelname)s %(name)s: %(message)s',
         stream=sys.stderr,
     )
-    parser = argparse.ArgumentParser(description='Buddy3D boot-mode selector')
+    parser = argparse.ArgumentParser(description='PiBuddyCam boot-mode selector')
     parser.add_argument(
         '--apply', action='store_true',
         help='start the selected unit (default: print the decision only)',

@@ -14,7 +14,7 @@ real reboot.
 import logging
 import time
 
-log = logging.getLogger('prusa-cam.device')
+log = logging.getLogger('pibuddycam.device')
 
 # GAP-DEVICE-01: minimum spacing between accepted reboot requests. The trigger
 # dispatcher is the only caller, but a burst of triggers (or a retrying client)

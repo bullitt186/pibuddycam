@@ -1,7 +1,7 @@
 # Persistent H264 camera source. rpicam-vid writes to stdout; stream_mux.py multiplexes
 # that stream to any number of TCP clients on port 8888 (RTSP server, snapshot code, etc.)
 # Resolution is driven by the VideoQuality tier:
-# main.py writes /etc/prusa-cam/quality.env (CAM_WIDTH/CAM_HEIGHT) and restarts this unit.
+# main.py writes /etc/pibuddycam/quality.env (CAM_WIDTH/CAM_HEIGHT) and restarts this unit.
 # quality.live.env is an ephemeral live override (GAP-QUALITY-02); it is read last so a
 # live change moves the encoder without touching the persisted tier.
 # rotation.env (CAM_ROTATION, 0/90/180/270 clockwise) is the web-console rotation
@@ -18,12 +18,12 @@ Requires=data-ready.target
 
 [Service]
 Type=simple
-User=prusa-cam
+User=pibuddycam
 Environment=CAM_WIDTH=1920 CAM_HEIGHT=1080 CAM_ROTATION=0
-EnvironmentFile=-/etc/prusa-cam/quality.env
-EnvironmentFile=-/etc/prusa-cam/quality.live.env
-EnvironmentFile=-/etc/prusa-cam/rotation.env
-ExecStart=/opt/prusa-cam/launcher.sh camera_source.py
+EnvironmentFile=-/etc/pibuddycam/quality.env
+EnvironmentFile=-/etc/pibuddycam/quality.live.env
+EnvironmentFile=-/etc/pibuddycam/rotation.env
+ExecStart=/opt/pibuddycam/launcher.sh camera_source.py
 Restart=always
 RestartSec=2
 

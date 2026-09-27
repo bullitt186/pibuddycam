@@ -462,7 +462,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "buddy3d-proxy"
+name = "pibuddycam-proxy"
 version = "0.2.3"
 dependencies = [
  "anyhow",

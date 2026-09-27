@@ -257,11 +257,11 @@ class ProbeSecretHygieneTests(unittest.TestCase):
 
     def test_cli_never_accepts_a_password_on_argv(self):
         # argv is world-readable (/proc/<pid>/cmdline) and shell history; the
-        # manual CLI takes the password from a file or PRUSA_MQTT_PASSWORD.
+        # manual CLI takes the password from a file or PIBUDDYCAM_MQTT_PASSWORD.
         source = (PI_DIR / 'mqtt_probe.py').read_text(encoding='utf-8')
         self.assertNotIn("add_argument('--password'", source)
         self.assertIn('--password-file', source)
-        self.assertIn('PRUSA_MQTT_PASSWORD', source)
+        self.assertIn('PIBUDDYCAM_MQTT_PASSWORD', source)
 
 
 class ProbeImportSafetyTests(unittest.TestCase):

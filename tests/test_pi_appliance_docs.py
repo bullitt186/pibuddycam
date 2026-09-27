@@ -31,7 +31,7 @@ REQUIRED_TOPICS = {
     "install/flash": ("install", "flash"),
     "first-boot onboarding": ("first-boot onboarding", "setup hotspot"),
     "home-assistant/onvif/rtsp": ("onvif", "rtsp", "8555"),
-    "mqtt": ("mqtt", "buddy3d/<device-id>"),
+    "mqtt": ("mqtt", "pibuddycam/<device-id>"),
     "backup": ("backup",),
     "reflash/recovery/factory-reset": ("reflash", "recovery", "factory reset"),
     "security": ("security", "scrypt", "ssh is disabled by default"),
@@ -123,11 +123,11 @@ class DeferredDocCleanupTests(unittest.TestCase):
     def test_pi_readme_no_longer_has_user_pi_templating(self):
         text = PI_README.read_text(encoding="utf-8")
         # The stale per-user templating against User=pi / /home/pi/ is gone.
-        self.assertNotIn("User=pi", text)
-        self.assertNotIn(r"/home/pi/", text)
+        self.assertNotRegex(text, r"User=pi\b")
+        self.assertNotRegex(text, r"/home/pi/")
         # The current service-account layout is documented instead.
-        self.assertIn("User=prusa-cam", text)
-        self.assertIn("prusa-cam", text)
+        self.assertIn("User=pibuddycam", text)
+        self.assertIn("pibuddycam", text)
 
 
 if __name__ == "__main__":

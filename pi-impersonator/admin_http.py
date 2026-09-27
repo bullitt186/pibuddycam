@@ -109,7 +109,7 @@ import ssh_control
 import timelapse
 import update_control
 
-log = logging.getLogger('prusa-cam.admin_http')
+log = logging.getLogger('pibuddycam.admin_http')
 
 # --------------------------------------------------------------------------- #
 # Trusted-LAN labelling (source §4.5)
@@ -1116,8 +1116,8 @@ class AdminApp:
             return (
                 '<!doctype html><html lang="en"><head><meta charset="utf-8">'
                 '<meta name="viewport" content="width=device-width, initial-scale=1">'
-                '<title>Buddy3D Camera</title></head><body>'
-                '<h1>Buddy3D Camera</h1>'
+                '<title>PiBuddyCam</title></head><body>'
+                '<h1>PiBuddyCam</h1>'
                 '<p>The local application assets are missing. Sign in through the '
                 'admin API to continue.</p>'
                 '<p>' + lan_warning() + '</p>'
@@ -2390,8 +2390,8 @@ class AdminApp:
         total = len(setup_wizard.STEP_ORDER)
         html = (
             '<!doctype html><html><head><meta charset="utf-8">'
-            '<title>Buddy3D Setup</title></head><body>'
-            f'<h1>Buddy3D Camera setup</h1><p>Step {index} of {total}: {title}</p>'
+            '<title>PiBuddyCam Setup</title></head><body>'
+            f'<h1>PiBuddyCam setup</h1><p>Step {index} of {total}: {title}</p>'
             '<p>Submit this step through the setup API.</p>'
             '</body></html>'
         )

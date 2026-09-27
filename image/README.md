@@ -1,4 +1,4 @@
-# `image/` — Buddy3D camera appliance image build
+# `image/` — PiBuddyCam appliance image build
 
 Canonical, pinned source of truth for the public Raspberry Pi Zero 2 W SD-card
 image. This subtree contains **only host-side scaffolding**: the composition,
@@ -36,25 +36,25 @@ RPI_IMAGE_GEN_DIR=/path/to/rpi-image-gen image/scripts/build-image.sh
 image/
   README.md                         this file
   rpi-image-gen.lock                pinned upstream revision
-  config/buddy3d-pi-zero2w.yaml     complete image composition
+  config/pibuddycam-pi-zero2w.yaml     complete image composition
   layer/
-    buddy3d-suite.yaml              rpios suite with NetworkManager (source §3.2)
-    buddy3d-image.yaml              custom MBR 3-partition image layer
+    pibuddycam-suite.yaml              rpios suite with NetworkManager (source §3.2)
+    pibuddycam-image.yaml              custom MBR 3-partition image layer
     genimage.cfg.in.ext4            genimage layout template
     setup.sh                        per-partition cmdline/fstab/PERSIST seeding
     pre-image.sh                    renders genimage.cfg
     post-build.sh                   strips build-time identity
     mke2fs.conf                     deterministic ext4 parameters
-    bdebstrap/customize95-buddy3d-python  no-op (venv built by install-factory-app.sh)
+    bdebstrap/customize95-pibuddycam-python  no-op (venv built by install-factory-app.sh)
   assets/
-    prusa-data-grow.sh              first-boot PERSIST growth (AC-11)
-    systemd/prusa-data-grow.service image-only grow unit
-    systemd/prusa-camera.target     runtime target (AC-12)
+    pibuddycam-data-grow.sh              first-boot PERSIST growth (AC-11)
+    systemd/pibuddycam-data-grow.service image-only grow unit
+    systemd/pibuddycam.target     runtime target (AC-12)
     systemd/data-ready.target.d/10-data-grow.conf
     systemd/NetworkManager.service.d/10-data-ready.conf
     install-factory-app.sh          factory app/unit/layout hook
     build-info.py                   build-info.json generator (stdlib only)
-    icon/buddy3d-camera.png         placeholder icon
+    icon/pibuddycam.png         placeholder icon
   scripts/build-image.sh            deterministic build entry point
 ```
 
@@ -75,7 +75,7 @@ signature is a build constant, not device identity.
 
 `ROOT` is mounted directly read-only. Hardware bring-up proved that the configured `overlayroot`
 did not activate, so correctness must not depend on a tmpfs overlay upper. Writable operating state
-is explicit: `/var` and `/etc/prusa-cam` are tmpfs; durable configuration, network profiles, media,
+is explicit: `/var` and `/etc/pibuddycam` are tmpfs; durable configuration, network profiles, media,
 and signed application releases live on `PERSIST` at `/data`. The legacy overlayroot configuration
 still present in the composition should be treated as inert compatibility scaffolding until it is
 removed in a dedicated image change.
@@ -84,17 +84,17 @@ removed in a dedicated image change.
 
 ```text
 local-fs.target
-  -> prusa-data-grow.service
+  -> pibuddycam-data-grow.service
   -> data-ready.target
      -> NetworkManager.service
-     -> prusa-camera.target
-        -> pi-persist -> rpicam-source -> prusa-rtsp -> prusa-ha-rtsp -> prusa-cam
+     -> pibuddycam.target
+        -> pi-persist -> rpicam-source -> pibuddycam-rtsp -> pibuddycam-ha-rtsp -> pibuddycam
 ```
 
 The grow unit and target are image-only. The application units are **reused
 verbatim** from `pi-impersonator/systemd/` (never copied or diverged). The extra
 ordering is added with drop-ins under `assets/systemd/`. Auxiliary units such as admin, updater,
-and optional MQTT integration must be `Wants=` under `prusa-camera.target`, never `Requires=`, so
+and optional MQTT integration must be `Wants=` under `pibuddycam.target`, never `Requires=`, so
 their failures stay isolated.
 
 ## Local verification (no image build, no root)
@@ -107,10 +107,10 @@ python3 -m compileall -q image/assets
 # Validate the custom layer against the real pinned metadata parser:
 RPI_IMAGE_GEN_DIR=/tmp/opencode/rpi-image-gen \
   /tmp/opencode/rpi-image-gen/rpi-image-gen \
-  metadata --lint image/layer/buddy3d-image.yaml
+  metadata --lint image/layer/pibuddycam-image.yaml
 RPI_IMAGE_GEN_DIR=/tmp/opencode/rpi-image-gen \
   /tmp/opencode/rpi-image-gen/rpi-image-gen \
-  metadata --lint image/layer/buddy3d-suite.yaml
+  metadata --lint image/layer/pibuddycam-suite.yaml
 ```
 
 ## Upstream basis (rpi-image-gen v2.8.0)
@@ -146,10 +146,10 @@ revision, not invented syntax:
 3. **Hash-locked Python deps (WP-R3).** `requirements.lock` pins the direct
    deps (aiohttp, python-socketio, paho-mqtt) and their transitive closure with
    `--hash=sha256` entries. `install-factory-app.sh` copies it to
-   `/opt/prusa-cam/requirements.lock` and builds `/opt/prusa-cam/venv` with
+   `/opt/pibuddycam/requirements.lock` and builds `/opt/pibuddycam/venv` with
    `python3 -m venv --system-site-packages` + `pip install --require-hashes
    --no-cache-dir`; the lock digest is recorded in `build-info.json` as
-   `python_lock_sha256`. The bdebstrap `customize95-buddy3d-python` hook is an
+   `python_lock_sha256`. The bdebstrap `customize95-pibuddycam-python` hook is an
    explicit no-op. The SBOM is still owned by WP-5.
 4. **Release automation** lives in `.github/workflows/release.yml` (see
    `docs/releasing.md`): a `vX.Y.Z` tag builds this image on the self-hosted arm64 runner, then
@@ -182,12 +182,12 @@ image/scripts/make-release.sh \
 It produces, in `--out-dir`:
 
 ```text
-buddy3d-camera-pi-zero2w-<version>.img.xz          deterministic xz -T1 -9e
-buddy3d-camera-pi-zero2w-<version>.img.xz.sha256   sha256 of the compressed image
-buddy3d-camera-pi-zero2w-<version>.img.xz.minisig  only when --key is supplied
-buddy3d-camera-pi-zero2w-<version>.spdx.json       SPDX 2.3 SBOM
-buddy3d-camera-pi-zero2w-<version>.packages.txt    normalized installed-package manifest
-buddy3d-camera-os-list.json                        rendered Raspberry Pi Imager manifest
+pibuddycam-pi-zero2w-<version>.img.xz          deterministic xz -T1 -9e
+pibuddycam-pi-zero2w-<version>.img.xz.sha256   sha256 of the compressed image
+pibuddycam-pi-zero2w-<version>.img.xz.minisig  only when --key is supplied
+pibuddycam-pi-zero2w-<version>.spdx.json       SPDX 2.3 SBOM
+pibuddycam-pi-zero2w-<version>.packages.txt    normalized installed-package manifest
+pibuddycam-os-list.json                        rendered Raspberry Pi Imager manifest
 ```
 
 The `.sha256` file is `sha256sum`-compatible (`<hash>  <name>`). The extracted
@@ -207,8 +207,8 @@ numeric/array tokens are emitted as numbers/arrays:
 
 | Token | Rendered value |
 |---|---|
-| `{{IMAGE_URL}}` | `--url-base` + `/buddy3d-camera-pi-zero2w-<version>.img.xz` |
-| `{{ICON_URL}}` | `--icon` (defaults to `<url-base>/buddy3d-camera.png`) |
+| `{{IMAGE_URL}}` | `--url-base` + `/pibuddycam-pi-zero2w-<version>.img.xz` |
+| `{{ICON_URL}}` | `--icon` (defaults to `<url-base>/pibuddycam.png`) |
 | `{{WEBSITE}}` | `--website` |
 | `{{RELEASE_DATE}}` | `--release-date` (default: UTC date of `SOURCE_DATE_EPOCH`) |
 | `{{EXTRACT_SIZE}}` | uncompressed `.img` size in bytes |
@@ -271,7 +271,7 @@ produced artifact, and fails the release if anything matches. It flags private
 keys, minisign secret keys, SSH host private keys, a non-empty machine-id,
 Wi-Fi PSK values and `.nmconnection` profiles, Prusa tokens, MQTT passwords,
 `password_hash` values, and personal usernames/home paths (service-account
-homes such as `prusa-cam` are allowed). Matches are printed as `file:line`;
+homes such as `pibuddycam` are allowed). Matches are printed as `file:line`;
 binary files are skipped for content patterns but secret-bearing filenames are
 still flagged. Override the personal-username pattern with
 `SCAN_PERSONAL_USER_PATTERN` when scanning a different contributor's tree. The
@@ -293,7 +293,7 @@ record the exclusion in the release-candidate report.
    first-boot script and expects writable ROOT. Bridging Imager-supplied Wi-Fi/hostname/SSH customization into the
    durable DATA partition is a provisioning (WP-3) task. The exact
    `init_format` must be reconfirmed against the released image before publish;
-   `PRUSA_IMAGER_INIT_FORMAT` overrides the rendered value.
+   `PIBUDDYCAM_IMAGER_INIT_FORMAT` overrides the rendered value.
 2. **No release signing key in this checkout (intentional).** Signing is live-accepted end to end
    with a private key held outside the repository; the committed public key verifies bundles on
    the appliance. Never add the private key or its location to tracked documentation.

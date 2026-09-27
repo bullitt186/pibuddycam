@@ -1,7 +1,7 @@
 """WP-R4c: hermetic host tests for ``image/assets/launcher.sh``.
 
 The launcher resolves what the runtime units execute: a complete signed release
-under ``/data/prusa-cam/releases/current`` (and its per-release venv) when one
+under ``/data/pibuddycam/releases/current`` (and its per-release venv) when one
 is installed, otherwise the immutable factory application. These tests never
 touch ``/opt`` or ``/data``: the real script is copied into a temp directory
 with its ``APP_ROOT``/``RELEASES`` constants rewritten, and the interpreters are
@@ -29,8 +29,8 @@ class LauncherTests(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
 
-        self.app_root = self.tmp / "opt" / "prusa-cam"
-        self.releases = self.tmp / "data" / "prusa-cam" / "releases"
+        self.app_root = self.tmp / "opt" / "pibuddycam"
+        self.releases = self.tmp / "data" / "pibuddycam" / "releases"
         self.record = self.tmp / "record.txt"
 
         self.launcher = self.tmp / "launcher.sh"
@@ -48,9 +48,9 @@ class LauncherTests(unittest.TestCase):
     def _install_launcher(self):
         text = LAUNCHER.read_text(encoding="utf-8")
         rewritten = text.replace(
-            "APP_ROOT=/opt/prusa-cam", f"APP_ROOT={self.app_root}"
+            "APP_ROOT=/opt/pibuddycam", f"APP_ROOT={self.app_root}"
         ).replace(
-            "RELEASES=/data/prusa-cam/releases", f"RELEASES={self.releases}"
+            "RELEASES=/data/pibuddycam/releases", f"RELEASES={self.releases}"
         )
         # Guard against a silent rewrite failure if the constants move.
         self.assertIn(str(self.app_root), rewritten)

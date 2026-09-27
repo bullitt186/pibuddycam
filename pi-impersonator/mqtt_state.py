@@ -92,11 +92,11 @@ _PATH_RE = re.compile(r'(?:(?:[A-Za-z]:)?[\\/][^\s,;]+)')
 # Discovery constants (source §6.4)
 # --------------------------------------------------------------------------- #
 
-ORIGIN_NAME = 'prusa-buddy3d-camera'
-MANUFACTURER = 'Prusa Community'
-MODEL = 'Buddy3D Raspberry Pi Camera'
+ORIGIN_NAME = 'pibuddycam'
+MANUFACTURER = 'PiBuddyCam community'
+MODEL = 'PiBuddyCam'
 DEVICE_NAME_SUFFIX = ' Controls'
-DEFAULT_CAMERA_NAME = 'Buddy3D Camera'
+DEFAULT_CAMERA_NAME = 'PiBuddyCam'
 
 #: The 18 component unique-id suffixes in §6.4 table order.
 COMPONENT_KEYS = (

@@ -23,7 +23,7 @@ class SentinelTestBase(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = self._tmp.name
-        self.sentinel = os.path.join(self.root, 'boot', 'buddy3d-recovery')
+        self.sentinel = os.path.join(self.root, 'boot', 'pibuddycam-recovery')
 
 
 class ImportSafetyTests(unittest.TestCase):
@@ -39,7 +39,7 @@ class ImportSafetyTests(unittest.TestCase):
 class ContractPinTests(unittest.TestCase):
     def test_sentinel_path_is_documented(self):
         self.assertEqual(
-            recovery.RECOVERY_SENTINEL, '/boot/firmware/buddy3d-recovery'
+            recovery.RECOVERY_SENTINEL, '/boot/firmware/pibuddycam-recovery'
         )
 
     def test_boot_targets_are_pinned(self):

@@ -4,8 +4,8 @@ The version reported in the retained MQTT state/discovery documents (and later
 surfaced in the web UI) is resolved from, in order:
 
 1. the optional ``version`` field of the image's ``build-info.json``
-   (``/usr/share/prusa-buddy3d-camera/build-info.json``),
-2. the ``PRUSA_APP_VERSION`` environment variable,
+   (``/usr/share/pibuddycam/build-info.json``),
+2. the ``PIBUDDYCAM_APP_VERSION`` environment variable,
 3. the development default ``0.0.0+dev``.
 
 The build-info file is written by ``image/assets/build-info.py``. This module
@@ -23,10 +23,10 @@ import os
 DEFAULT_VERSION = '0.0.0+dev'
 
 #: Environment override, used when build-info.json has no ``version`` field.
-ENV_VAR = 'PRUSA_APP_VERSION'
+ENV_VAR = 'PIBUDDYCAM_APP_VERSION'
 
 #: In-image build-info document.
-BUILD_INFO_PATH = '/usr/share/prusa-buddy3d-camera/build-info.json'
+BUILD_INFO_PATH = '/usr/share/pibuddycam/build-info.json'
 
 #: Bound the build-info read so a corrupt/huge file cannot stall startup.
 MAX_BUILD_INFO_BYTES = 64 * 1024
@@ -37,11 +37,11 @@ MAX_BUILD_INFO_BYTES = 64 * 1024
 #: -- not the immutable factory image's build-info. This is what keeps the
 #: dashboard from reporting the image version (``0.0.0+local``) after an OTA
 #: application update.
-RELEASE_METADATA_PATH = '/data/prusa-cam/releases/current/release.json'
+RELEASE_METADATA_PATH = '/data/pibuddycam/releases/current/release.json'
 
 #: Root-written HA update state; its ``installed_version`` is the fallback when
 #: a release predates the bundled metadata file.
-RELEASE_STATE_PATH = '/data/prusa-cam/update-state.json'
+RELEASE_STATE_PATH = '/data/pibuddycam/update-state.json'
 
 #: Bound the release/update-state reads so a corrupt file cannot stall startup.
 MAX_RELEASE_METADATA_BYTES = 64 * 1024
@@ -176,7 +176,7 @@ def application_version(build_info_path=BUILD_INFO_PATH, env=None,
 
     Precedence: the active signed release (``release.json``), then the updater's
     recorded ``installed_version``, then the factory image ``build-info.json``,
-    then the ``PRUSA_APP_VERSION`` environment variable, then
+    then the ``PIBUDDYCAM_APP_VERSION`` environment variable, then
     :data:`DEFAULT_VERSION`. The release paths and ``env`` are injectable so the
     precedence is host-testable.
     """

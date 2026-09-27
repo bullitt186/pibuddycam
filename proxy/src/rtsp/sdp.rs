@@ -20,7 +20,7 @@ pub struct H264Params {
 /// Build an SDP for a video-only H.264 stream.
 ///
 /// `session_name` is shown in some clients (e.g. VLC's title bar). Pass
-/// the camera display name (or "Buddy3D Proxy" if unknown).
+/// the camera display name (or "PiBuddyCam Proxy" if unknown).
 ///
 /// If `sprop_parameter_sets` is empty, the corresponding `fmtp` key is
 /// omitted entirely — clients then extract SPS/PPS from in-band NAL units

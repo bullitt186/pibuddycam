@@ -214,7 +214,7 @@ mod tests {
                 packetization_mode: 1,
                 payload_type: 96,
             })),
-            expected_path: "buddy3d-camera",
+            expected_path: "pibuddycam",
             new_session_id: "TESTSESSION",
         }
     }
@@ -243,7 +243,7 @@ mod tests {
         let mut s = Session::new();
         let ctx = ctx();
         let (resp, _) = s.handle(
-            &req(b"DESCRIBE rtsp://h/buddy3d-camera RTSP/1.0\r\nCSeq: 2\r\n\r\n"),
+            &req(b"DESCRIBE rtsp://h/pibuddycam RTSP/1.0\r\nCSeq: 2\r\n\r\n"),
             &ctx,
         );
         assert_eq!(resp.status, 200);
@@ -258,7 +258,7 @@ mod tests {
         let mut s = Session::new();
         let ctx = ctx();
         let (resp, _) = s.handle(
-            &req(b"SETUP rtsp://h/buddy3d-camera/streamid=0 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n"),
+            &req(b"SETUP rtsp://h/pibuddycam/streamid=0 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n"),
             &ctx,
         );
         assert_eq!(resp.status, 200);
@@ -274,7 +274,7 @@ mod tests {
         let mut s = Session::new();
         let ctx = ctx();
         let (resp, _) = s.handle(
-            &req(b"SETUP rtsp://h/buddy3d-camera/streamid=0 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP;unicast;client_port=8000-8001\r\n\r\n"),
+            &req(b"SETUP rtsp://h/pibuddycam/streamid=0 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP;unicast;client_port=8000-8001\r\n\r\n"),
             &ctx,
         );
         assert_eq!(resp.status, 461);
@@ -285,7 +285,7 @@ mod tests {
         let mut s = Session::new();
         let ctx = ctx();
         let (resp, _) = s.handle(
-            &req(b"PLAY rtsp://h/buddy3d-camera RTSP/1.0\r\nCSeq: 4\r\n\r\n"),
+            &req(b"PLAY rtsp://h/pibuddycam RTSP/1.0\r\nCSeq: 4\r\n\r\n"),
             &ctx,
         );
         assert_eq!(resp.status, 455);
@@ -296,11 +296,11 @@ mod tests {
         let mut s = Session::new();
         let ctx = ctx();
         s.handle(
-            &req(b"SETUP rtsp://h/buddy3d-camera/streamid=0 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n"),
+            &req(b"SETUP rtsp://h/pibuddycam/streamid=0 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n"),
             &ctx,
         );
         let (resp, action) = s.handle(
-            &req(b"PLAY rtsp://h/buddy3d-camera RTSP/1.0\r\nCSeq: 4\r\nSession: TESTSESSION\r\n\r\n"),
+            &req(b"PLAY rtsp://h/pibuddycam RTSP/1.0\r\nCSeq: 4\r\nSession: TESTSESSION\r\n\r\n"),
             &ctx,
         );
         assert_eq!(resp.status, 200);
@@ -316,11 +316,11 @@ mod tests {
         let mut s = Session::new();
         let ctx = ctx();
         s.handle(
-            &req(b"SETUP rtsp://h/buddy3d-camera/streamid=0 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n"),
+            &req(b"SETUP rtsp://h/pibuddycam/streamid=0 RTSP/1.0\r\nCSeq: 3\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n"),
             &ctx,
         );
         let (resp, action) = s.handle(
-            &req(b"TEARDOWN rtsp://h/buddy3d-camera RTSP/1.0\r\nCSeq: 5\r\nSession: TESTSESSION\r\n\r\n"),
+            &req(b"TEARDOWN rtsp://h/pibuddycam RTSP/1.0\r\nCSeq: 5\r\nSession: TESTSESSION\r\n\r\n"),
             &ctx,
         );
         assert_eq!(resp.status, 200);
@@ -332,7 +332,7 @@ mod tests {
         let mut s = Session::new();
         let ctx = ctx();
         let (resp, _) = s.handle(
-            &req(b"PAUSE rtsp://h/buddy3d-camera RTSP/1.0\r\nCSeq: 9\r\n\r\n"),
+            &req(b"PAUSE rtsp://h/pibuddycam RTSP/1.0\r\nCSeq: 9\r\n\r\n"),
             &ctx,
         );
         assert_eq!(resp.status, 501);

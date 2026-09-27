@@ -91,29 +91,29 @@ import urllib.request
 import app_version
 import updater
 
-log = logging.getLogger('prusa-cam.updater_install')
+log = logging.getLogger('pibuddycam.updater_install')
 
 # --------------------------------------------------------------------------- #
 # Paths and bounds
 # --------------------------------------------------------------------------- #
 
 #: Durable DATA root. Releases live on the PERSIST partition, never in ROOT.
-DATA_ROOT = '/data/prusa-cam'
+DATA_ROOT = '/data/pibuddycam'
 DEFAULT_RELEASES_DIR = DATA_ROOT + '/releases'
 DEFAULT_CURRENT_LINK = DEFAULT_RELEASES_DIR + '/current'
 DEFAULT_PREVIOUS_LINK = DEFAULT_RELEASES_DIR + '/previous'
 #: The immutable factory application is the fallback when DATA has no valid
 #: active release (and the initial ``previous`` target before the first update).
-DEFAULT_FACTORY_APP = '/opt/prusa-cam'
+DEFAULT_FACTORY_APP = '/opt/pibuddycam'
 DEFAULT_STATE_DIR = DATA_ROOT
 DEFAULT_LAST_CHECK_PATH = DEFAULT_STATE_DIR + '/last-update-check.json'
 DEFAULT_PUBLIC_KEY_PATH = updater.DEFAULT_PUBLIC_KEY_PATH
 
 #: HA update-state document read by the MQTT service and written by the root
 #: updater after every ``check``/``install`` run. It lives directly under the
-#: durable ``/data/prusa-cam`` state area (root-owned releases aside, this file is
+#: durable ``/data/pibuddycam`` state area (root-owned releases aside, this file is
 #: written only by the root updater with mode 0644, so the unprivileged
-#: ``prusa-cam`` app can read it but never needs to write it).
+#: ``pibuddycam`` app can read it but never needs to write it).
 DEFAULT_UPDATE_STATE_PATH = DATA_ROOT + '/update-state.json'
 #: Hard bound on the state document (both read and write); a larger file is
 #: treated as corrupt so a runaway writer cannot feed the MQTT publisher.
@@ -175,18 +175,18 @@ DOWNLOAD_TIMEOUT_SECONDS = 300.0
 COMMAND_TIMEOUT_SECONDS = 300.0
 HEALTH_PROBE_TIMEOUT_SECONDS = 5.0
 
-#: The runtime units that exec ``/opt/prusa-cam/launcher.sh`` and therefore must
+#: The runtime units that exec ``/opt/pibuddycam/launcher.sh`` and therefore must
 #: be restarted (or stopped) for a switched release to actually run. They are
 #: addressed by name because the launcher units are ``WantedBy=multi-user.target``
-#: with no ``PartOf=``, so ``systemctl restart prusa-camera.target`` restarts none
+#: with no ``PartOf=``, so ``systemctl restart pibuddycam.target`` restarts none
 #: of them (empirically confirmed live). ``rpicam-source.service`` is deliberately
 #: excluded (it execs the factory ``stream_mux.py`` directly, not the launcher),
-#: as are the ``prusa-updater*`` units.
+#: as are the ``pibuddycam-updater*`` units.
 RUNTIME_LAUNCHER_UNITS = (
-    'prusa-cam.service',
-    'prusa-rtsp.service',
-    'prusa-ha-rtsp.service',
-    'prusa-admin.service',
+    'pibuddycam.service',
+    'pibuddycam-rtsp.service',
+    'pibuddycam-ha-rtsp.service',
+    'pibuddycam-admin.service',
 )
 
 #: Absolute binaries for the root service. The systemd unit also pins a fixed
@@ -196,12 +196,12 @@ SYSTEMCTL_BINARY = '/usr/bin/systemctl'
 PYTHON_BINARY = '/usr/bin/python3'
 
 #: Environment overrides used by the real CLI callables. ``MANIFEST_URL_ENV`` is
-#: supplied by the root-owned ``/etc/prusa-updater.conf`` (``EnvironmentFile=``),
+#: supplied by the root-owned ``/etc/pibuddycam-updater.conf`` (``EnvironmentFile=``),
 #: never by a service-writable path. The signing public key is deliberately NOT
 #: configurable: the updater always trusts :data:`DEFAULT_PUBLIC_KEY_PATH`
 #: (AC-32), so a compromised service account cannot redirect verification.
-MANIFEST_URL_ENV = 'PRUSA_UPDATE_MANIFEST_URL'
-HEALTH_ENDPOINTS_ENV = 'PRUSA_UPDATE_HEALTH_ENDPOINTS'
+MANIFEST_URL_ENV = 'PIBUDDYCAM_UPDATE_MANIFEST_URL'
+HEALTH_ENDPOINTS_ENV = 'PIBUDDYCAM_UPDATE_HEALTH_ENDPOINTS'
 #: Local-only health endpoints. The default is the release app's own local
 #: HTTP/ONVIF facade on port 80 (started by the release ``main.py``), so a pass
 #: proves the newly activated release is actually serving -- not an unrelated
@@ -223,7 +223,7 @@ PREFLIGHT_IMPORT_MODULES = ('config_schema', 'mqtt_service', 'updater', 'setting
 #: §7.2 step 7). Mirrors :data:`config_schema.DEVICE_TOML_PATH`; kept as a plain
 #: string so this module does not need to import :mod:`config_schema` on the host
 #: (the dry-run imports it *inside* the release interpreter).
-DEFAULT_DEVICE_CONFIG_PATH = '/data/prusa-cam/config/device.toml'
+DEFAULT_DEVICE_CONFIG_PATH = '/data/pibuddycam/config/device.toml'
 #: Bounded wall-clock timeout for each preflight subprocess (compile, import,
 #: migration dry-run).
 PREFLIGHT_TIMEOUT_SECONDS = 60.0
@@ -243,8 +243,8 @@ _REDACTED = '<redacted>'
 class InstallPaths:
     """Filesystem layout for the updater.
 
-    Defaults match the appliance: releases under ``/data/prusa-cam/releases``
-    (DATA), the factory application under ``/opt/prusa-cam`` (ROOT, immutable).
+    Defaults match the appliance: releases under ``/data/pibuddycam/releases``
+    (DATA), the factory application under ``/opt/pibuddycam`` (ROOT, immutable).
     """
 
     releases_dir: str = DEFAULT_RELEASES_DIR
@@ -1254,7 +1254,7 @@ def write_update_state(document, path=DEFAULT_UPDATE_STATE_PATH):
     """Atomically write the HA update-state document; never raises.
 
     The state area is root-owned (only the root updater writes this file) and the
-    document is written as mode 0644 so the unprivileged ``prusa-cam`` app can
+    document is written as mode 0644 so the unprivileged ``pibuddycam`` app can
     read it. The write goes through a temp file + ``os.replace`` so a concurrent
     reader never observes a partially written document. Returns ``True`` on
     success; a non-dict document, a non-string/empty path, an oversized
@@ -1400,7 +1400,7 @@ def _import_check_script(staging_dir, modules):
 
     The staging directory is prepended to ``sys.path`` explicitly so the check
     resolves the release modules regardless of the service working directory
-    (which stays ``/opt/prusa-cam``).
+    (which stays ``/opt/pibuddycam``).
     """
     imports = '; '.join(f'import {name}' for name in modules)
     return f'import sys; sys.path.insert(0, {str(staging_dir)!r}); {imports}'
@@ -1564,7 +1564,7 @@ def _systemctl_units(action, failure):
     """Run ``systemctl <action>`` on :data:`RUNTIME_LAUNCHER_UNITS`.
 
     Addresses the launcher units by name rather than through
-    ``prusa-camera.target`` (which does not propagate restart/stop because the
+    ``pibuddycam.target`` (which does not propagate restart/stop because the
     units have no ``PartOf=``). Resolves the binary, applies the bounded command
     timeout, and returns ``(ok, reason)``; a non-zero exit or a missing
     ``systemctl`` is a bounded failure. Never raises.
@@ -1589,12 +1589,12 @@ def default_restart_services(version):
 
     Restarts each :data:`RUNTIME_LAUNCHER_UNITS` entry directly: the launcher
     units are ``WantedBy=multi-user.target`` with no ``PartOf=``, so
-    ``systemctl restart prusa-camera.target`` would restart none of them and a
+    ``systemctl restart pibuddycam.target`` would restart none of them and a
     switched release would never run.
 
     ``restart`` (not ``try-restart``) is deliberate: after the quiesce the
     units are stopped, and ``main.py`` re-applies the configured RTSP mode at
-    startup, so briefly starting an intentionally-disabled ``prusa-rtsp`` is
+    startup, so briefly starting an intentionally-disabled ``pibuddycam-rtsp`` is
     self-correcting.
     """
     return _systemctl_units('restart', 'service restart failed')
@@ -1605,7 +1605,7 @@ def default_stop_services():
 
     Stops each :data:`RUNTIME_LAUNCHER_UNITS` entry directly (same reasoning as
     :func:`default_restart_services`). ``rpicam-source.service`` and the
-    ``prusa-updater*`` units are deliberately not touched.
+    ``pibuddycam-updater*`` units are deliberately not touched.
     """
     return _systemctl_units('stop', 'service stop failed')
 
@@ -1661,6 +1661,24 @@ def default_prune(paths, protected_versions):
 # --------------------------------------------------------------------------- #
 # CLI (check / install)
 # --------------------------------------------------------------------------- #
+
+def default_image_version(env=None, build_info_path=None):
+    """Installed image version used to enforce a manifest's ``min_image_version``.
+
+    ``PIBUDDYCAM_IMAGE_VERSION`` wins when set; otherwise the image's own
+    ``build-info.json`` ``version`` is used. Only a strict ``X.Y.Z`` value is
+    returned: a development image (``0.0.0+local``) or a missing file yields
+    ``''``, which skips the comparison instead of rejecting every manifest.
+    """
+    env = os.environ if env is None else env
+    value = env.get('PIBUDDYCAM_IMAGE_VERSION', '') or app_version._build_info_version(
+        build_info_path or app_version.BUILD_INFO_PATH)
+    try:
+        updater.parse_semver(value)
+    except (ValueError, TypeError):
+        return ''
+    return value
+
 
 def _download_to(url, target, limit):
     """Download ``url`` to ``target``, capped at ``limit`` bytes."""
@@ -1762,13 +1780,13 @@ def _cli_check(args):
     recover_interrupted(paths)
     display_version, compare_version = _resolve_versions(args, paths)
     if not args.manifest_url:
-        # No manifest URL configured (the root-owned /etc/prusa-updater.conf is
+        # No manifest URL configured (the root-owned /etc/pibuddycam-updater.conf is
         # unset): a scheduled check is a no-op, never a usage error. The state
         # file is still refreshed so HA reflects the installed version.
         print('updater: no update manifest URL is configured; nothing to check')
         _write_state(args, display_version)
         return 0
-    tmp = tempfile.mkdtemp(prefix='buddy3d-update-check-')
+    tmp = tempfile.mkdtemp(prefix='pibuddycam-update-check-')
     try:
         manifest_path = os.path.join(tmp, 'update-manifest.json')
         sig_path = manifest_path + updater.DEFAULT_SIGNATURE_SUFFIX
@@ -1845,9 +1863,9 @@ def _cli_install(args):
         elif args.manifest_url:
             # The root service starts ``install`` with no positional manifest; it
             # fetches the signed manifest from the configured (root-owned)
-            # PRUSA_UPDATE_MANIFEST_URL. The signature is read from the default
+            # PIBUDDYCAM_UPDATE_MANIFEST_URL. The signature is read from the default
             # ``<manifest>.minisig`` path that ``updater.verify_file`` expects.
-            tmp = tempfile.mkdtemp(prefix='buddy3d-update-install-')
+            tmp = tempfile.mkdtemp(prefix='pibuddycam-update-install-')
             manifest_path = os.path.join(tmp, 'update-manifest.json')
             sig_path = manifest_path + updater.DEFAULT_SIGNATURE_SUFFIX
             try:
@@ -1943,14 +1961,14 @@ def _cli_recover(args):
 
 
 def main(argv=None):
-    """CLI entry point used by ``prusa-updater.service``."""
+    """CLI entry point used by ``pibuddycam-updater.service``."""
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s %(levelname)s %(name)s: %(message)s',
         stream=sys.stderr,
     )
     parser = argparse.ArgumentParser(
-        description='Buddy3D signed application updater')
+        description='PiBuddyCam signed application updater')
     sub = parser.add_subparsers(dest='command', required=True)
 
     recover = sub.add_parser(
@@ -1965,7 +1983,7 @@ def main(argv=None):
     check.add_argument('--current-version', default='')
     check.add_argument(
         '--current-image-version',
-        default=os.environ.get('PRUSA_IMAGE_VERSION', ''))
+        default=default_image_version())
     check.add_argument('--last-check-path', default=DEFAULT_LAST_CHECK_PATH)
     check.add_argument('--data-root', default=DATA_ROOT)
     check.add_argument(
@@ -1991,7 +2009,7 @@ def main(argv=None):
     install.add_argument('--current-version', default='')
     install.add_argument(
         '--current-image-version',
-        default=os.environ.get('PRUSA_IMAGE_VERSION', ''))
+        default=default_image_version())
     install.add_argument(
         '--force-reinstall', action='store_true',
         help='reinstall a version previously marked bad')

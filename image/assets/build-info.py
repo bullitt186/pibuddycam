@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate /usr/share/prusa-buddy3d-camera/build-info.json (AC-14).
+"""Generate /usr/share/pibuddycam/build-info.json (AC-14).
 
 Standard library only, as required for image assets. Records the application
-version (``--version``, defaulting to ``PRUSA_IMAGE_VERSION`` or
+version (``--version``, defaulting to ``PIBUDDYCAM_IMAGE_VERSION`` or
 ``0.0.0+local``), the source commit, the pinned image-builder revision, the OS
 suite, the kernel package, the installed-package manifest, and the sha256 of the
 hash-locked Python dependency set. Output is deterministic: keys are sorted and
@@ -37,9 +37,9 @@ def main(argv=None):
     )
     parser.add_argument(
         "--version",
-        default=os.environ.get("PRUSA_IMAGE_VERSION") or "0.0.0+local",
+        default=os.environ.get("PIBUDDYCAM_IMAGE_VERSION") or "0.0.0+local",
         help="application/image version recorded as 'version' "
-             "(default: $PRUSA_IMAGE_VERSION or 0.0.0+local)",
+             "(default: $PIBUDDYCAM_IMAGE_VERSION or 0.0.0+local)",
     )
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)

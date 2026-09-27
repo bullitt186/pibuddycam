@@ -1,4 +1,4 @@
-# Next Steps Plan — Prusa Buddy3D Camera Impersonator
+# Next Steps Plan — PiBuddyCam
 
 **Created:** 2026-07-07. **Revised 2026-09-25** after appliance OTA and live configuration
 acceptance. Earlier revisions traced token and fingerprint provenance
@@ -37,8 +37,8 @@ See `status.md` before relying on the historical investigation below.
 - Application release `1.0.4`; commits `66d2de4` (signaling recovery) and `c1d3e76` (fixed-verb
   quality restart), documented by `cb2ab83`.
 - Pi Zero 2 W + OV5647; encoder and both RTSP endpoints restored to FHD after live HD/FHD test.
-- ROOT is direct ext4 mounted read-only; `/var` and `/etc/prusa-cam` are tmpfs; `/data` is durable.
-- Active application is `/data/prusa-cam/releases/current`; `/opt/prusa-cam` is factory fallback.
+- ROOT is direct ext4 mounted read-only; `/var` and `/etc/pibuddycam` are tmpfs; `/data` is durable.
+- Active application is `/data/pibuddycam/releases/current`; `/opt/pibuddycam` is factory fallback.
 - Local validation at acceptance: 1,574 Python tests passed, 2 skipped, plus `compileall`.
 
 ## HISTORICAL CURRENT (2026-09-20) — WebRTC worked; timelapse + persistence done
@@ -97,7 +97,7 @@ Already done for timelapse:
   version has no make-video button or file-list view, so the `file_list` sender
   is not app-exercisable.
 - **Persistence live-verified 2026-09-20 (GAP-PERSIST-01, done).**
-  `settings_store.py` atomically stores runtime settings in `/data/prusa-cam/state.json`;
+  `settings_store.py` atomically stores runtime settings in `/data/pibuddycam/state.json`;
   `state.persistable_state`/`apply_persisted` round-trip them; `main` saves at every
   mutation and restores at startup; and `persist_restore.py` (root, `pi-persist.service`)
   bind-mounts `/data/sdcard` → `/mnt/sdcard`, re-materializes `quality.env`/`rtsp.mode`, and
@@ -322,7 +322,7 @@ the gate remains unchanged.
 
 - [ ] **0.4** Verify SSH works end-to-end:
   ```bash
-  ssh pi@<PI_IP> "systemctl status prusa-cam.service | head -20"
+  ssh pi@<PI_IP> "systemctl status pibuddycam.service | head -20"
   ```
   **Pass:** service is `active (running)` and last log line is recent.
 
@@ -386,7 +386,7 @@ there.
   # PrusaLink uses X-Api-Key header
   PRINTER_IP=192.168.0.XXX
   API_KEY=<from printer web UI>
-  CAM_TOKEN=<from ~/prusa-cam/config.ini on Pi>
+  CAM_TOKEN=<from ~/pibuddycam/config.ini on Pi>
 
   # Attempt 1: register camera via printer
   curl -s -X POST http://$PRINTER_IP/api/v1/cameras \
@@ -411,10 +411,10 @@ there.
   ```
   **Pass:** `"origin": "LINK"` (or `"WEB"`). Any change from `"OTHER"` is worth testing.
 
-- [ ] **1.6** If origin changed, restart `prusa-cam.service` on the Pi and open the mobile
+- [ ] **1.6** If origin changed, restart `pibuddycam.service` on the Pi and open the mobile
   app camera page. Watch Pi logs for incoming Socket.IO events:
   ```bash
-  ssh pi@<PI_IP> "journalctl -f -u prusa-cam.service"
+  ssh pi@<PI_IP> "journalctl -f -u pibuddycam.service"
   ```
   **Pass:** Logs show an inbound `webrtc` event within 10–15 seconds of opening the app.
 
@@ -507,7 +507,7 @@ outbound SDP-answer emit. Required before any end-to-end WebRTC test can succeed
 
 ### 3a — Log-first stub (deploy immediately, before full implementation)
 
-- [ ] **3a.1** SSH to Pi and edit `~/prusa-cam/signaling.py`. Add this handler alongside
+- [ ] **3a.1** SSH to Pi and edit `~/pibuddycam/signaling.py`. Add this handler alongside
   the other `@sio.on` handlers:
   ```python
   @sio.on('webrtc')
@@ -519,8 +519,8 @@ outbound SDP-answer emit. Required before any end-to-end WebRTC test can succeed
 
 - [ ] **3a.2** Restart service and verify no errors:
   ```bash
-  sudo systemctl restart prusa-cam.service
-  journalctl -f -u prusa-cam.service | grep -E "ERROR|webrtc|INBOUND"
+  sudo systemctl restart pibuddycam.service
+  journalctl -f -u pibuddycam.service | grep -E "ERROR|webrtc|INBOUND"
   ```
 
 ### 3b — Protobuf decode
@@ -608,7 +608,7 @@ can observe what's happening without blind spots.
       datefmt='%H:%M:%S',
       handlers=[
           logging.StreamHandler(sys.stdout),
-          logging.FileHandler('/var/log/prusa-cam/signaling.log', mode='a'),
+          logging.FileHandler('/var/log/pibuddycam/signaling.log', mode='a'),
       ]
   )
   log = logging.getLogger('signaling')
@@ -695,17 +695,17 @@ can observe what's happening without blind spots.
 
 **No longer applicable.** For power-loss robustness the file log was removed entirely:
 `main.py` now logs stdout-only at INFO → journald with `Storage=volatile` (RAM). There is no
-`/var/log/prusa-cam/*.log` to rotate, so a logrotate config and the log dir are obsolete. Read
-logs with `journalctl -u prusa-cam` (in RAM, cleared on reboot; flip journald to `persistent`
+`/var/log/pibuddycam/*.log` to rotate, so a logrotate config and the log dir are obsolete. Read
+logs with `journalctl -u pibuddycam` (in RAM, cleared on reboot; flip journald to `persistent`
 via the overlay maintenance flow when you need them to survive a reboot for debugging). See the
 power-loss robustness section in `status.md` and `.agent/pi-ops.md`.
   **Pass:** Timestamped lines including `Socket.IO connected`, `SIO OUT [status]`, etc.
 
 - [ ] **4c.4** Quick log monitor alias (add to `~/.bashrc` on Pi):
   ```bash
-  alias camlog='tail -f /var/log/prusa-cam/signaling.log | grep -v "snapshot loop paused"'
-  alias camlog-all='tail -f /var/log/prusa-cam/signaling.log'
-  alias camevents='tail -f /var/log/prusa-cam/signaling.log | grep -E "SIO IN|webrtc|ERROR|WARN"'
+  alias camlog='tail -f /var/log/pibuddycam/signaling.log | grep -v "snapshot loop paused"'
+  alias camlog-all='tail -f /var/log/pibuddycam/signaling.log'
+  alias camevents='tail -f /var/log/pibuddycam/signaling.log | grep -E "SIO IN|webrtc|ERROR|WARN"'
   ```
 
 ---
@@ -754,8 +754,8 @@ eligibility, we need to send a non-zero "enabled/active" value.
 
 - [ ] **5.5** Deploy, restart, and retest with mobile app:
   ```bash
-  sudo systemctl restart prusa-cam.service
-  journalctl -f -u prusa-cam.service | grep -E "status|webrtc|INBOUND"
+  sudo systemctl restart pibuddycam.service
+  journalctl -f -u pibuddycam.service | grep -E "status|webrtc|INBOUND"
   ```
   Note status message byte count before/after (it should increase).
 

@@ -1,6 +1,6 @@
 """Durable runtime-settings store on the ``/data`` partition (GAP-PERSIST-01).
 
-The Pi root is a read-only overlayfs (``overlayroot=tmpfs``), so ``/etc/prusa-cam``
+The Pi root is a read-only overlayfs (``overlayroot=tmpfs``), so ``/etc/pibuddycam``
 and ``/mnt/sdcard`` are volatile. A separate ext4 partition (label ``PERSIST``,
 ``mmcblk0p3``) is mounted at ``/data`` to hold state that must survive a reboot:
 ``state.json`` here, and the bind-mounted timelapse store (see
@@ -32,9 +32,9 @@ import json
 import logging
 import os
 
-log = logging.getLogger('prusa-cam.settings')
+log = logging.getLogger('pibuddycam.settings')
 
-SETTINGS_DIR = '/data/prusa-cam'
+SETTINGS_DIR = '/data/pibuddycam'
 SETTINGS_PATH = SETTINGS_DIR + '/state.json'
 VERSION = 1
 

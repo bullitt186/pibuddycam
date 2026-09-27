@@ -39,7 +39,7 @@ class InstallSambaConfigTests(unittest.TestCase):
             self.assertTrue(migrations._002_install_samba_config(root))
             conf = Path(os.path.join(root, 'etc', 'samba', 'smb-sdcard.conf')).read_text()
             self.assertIn('path = /mnt/sdcard', conf)
-            self.assertIn('force user = prusa-cam', conf)
+            self.assertIn('force user = pibuddycam', conf)
 
     def test_appends_include_to_existing_smb_conf(self):
         with tempfile.TemporaryDirectory() as root:
@@ -66,7 +66,7 @@ class InstallSambaConfigTests(unittest.TestCase):
             os.makedirs(os.path.join(root, 'etc', 'samba'))
             Path(os.path.join(root, 'etc', 'samba', 'smb.conf')).write_text('[global]\n')
             migrations._002_install_samba_config(root)
-            tmpf = Path(os.path.join(root, 'etc', 'tmpfiles.d', 'buddy3d-samba.conf'))
+            tmpf = Path(os.path.join(root, 'etc', 'tmpfiles.d', 'pibuddycam-samba.conf'))
             self.assertTrue(tmpf.exists())
             self.assertIn('/var/lib/samba/private', tmpf.read_text())
 
@@ -111,7 +111,7 @@ class PrusaPrivNoBlockTests(unittest.TestCase):
         #!/bin/bash
         case "$verb" in
            start-camera)
-              exec "$SYSTEMCTL" start prusa-camera.target
+              exec "$SYSTEMCTL" start pibuddycam.target
               ;;
         esac
     """)
@@ -120,37 +120,37 @@ class PrusaPrivNoBlockTests(unittest.TestCase):
         #!/bin/bash
         case "$verb" in
            start-camera)
-              exec "$SYSTEMCTL" --no-block start prusa-camera.target
+              exec "$SYSTEMCTL" --no-block start pibuddycam.target
               ;;
         esac
     """)
 
     def test_patches_blocking_start(self):
         with tempfile.TemporaryDirectory() as root:
-            helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
+            helper = os.path.join(root, 'usr', 'libexec', 'pibuddycam', 'pibuddycam-priv')
             os.makedirs(os.path.dirname(helper))
             Path(helper).write_text(self.ORIGINAL)
-            self.assertTrue(migrations._005_prusa_priv_no_block(root))
+            self.assertTrue(migrations._005_pibuddycam_priv_no_block(root))
             self.assertIn('--no-block', Path(helper).read_text())
 
     def test_already_patched(self):
         with tempfile.TemporaryDirectory() as root:
-            helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
+            helper = os.path.join(root, 'usr', 'libexec', 'pibuddycam', 'pibuddycam-priv')
             os.makedirs(os.path.dirname(helper))
             Path(helper).write_text(self.FIXED)
-            self.assertTrue(migrations._005_prusa_priv_no_block(root))
+            self.assertTrue(migrations._005_pibuddycam_priv_no_block(root))
 
     def test_missing_helper_returns_false(self):
         with tempfile.TemporaryDirectory() as root:
-            self.assertFalse(migrations._005_prusa_priv_no_block(root))
+            self.assertFalse(migrations._005_pibuddycam_priv_no_block(root))
 
     def test_idempotent(self):
         with tempfile.TemporaryDirectory() as root:
-            helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
+            helper = os.path.join(root, 'usr', 'libexec', 'pibuddycam', 'pibuddycam-priv')
             os.makedirs(os.path.dirname(helper))
             Path(helper).write_text(self.ORIGINAL)
-            migrations._005_prusa_priv_no_block(root)
-            migrations._005_prusa_priv_no_block(root)
+            migrations._005_pibuddycam_priv_no_block(root)
+            migrations._005_pibuddycam_priv_no_block(root)
             content = Path(helper).read_text()
             self.assertEqual(content.count('--no-block'), 1)
 
@@ -159,15 +159,15 @@ class RuntimeDirectoryMigrationTests(unittest.TestCase):
     ORIGINAL = textwrap.dedent("""\
         [Service]
         Type=simple
-        User=prusa-cam
-        WorkingDirectory=/opt/prusa-cam
-        ExecStart=/opt/prusa-cam/launcher.sh main.py
+        User=pibuddycam
+        WorkingDirectory=/opt/pibuddycam
+        ExecStart=/opt/pibuddycam/launcher.sh main.py
     """)
 
     def _write_unit(self, root, text):
         systemd = os.path.join(root, 'etc', 'systemd', 'system')
         os.makedirs(systemd, exist_ok=True)
-        unit = os.path.join(systemd, 'prusa-cam.service')
+        unit = os.path.join(systemd, 'pibuddycam.service')
         Path(unit).write_text(text)
         return unit
 
@@ -181,10 +181,10 @@ class RuntimeDirectoryMigrationTests(unittest.TestCase):
             finally:
                 migrations.subprocess.run = orig
             content = Path(unit).read_text()
-            self.assertIn('RuntimeDirectory=prusa-cam', content)
+            self.assertIn('RuntimeDirectory=pibuddycam', content)
             self.assertIn('RuntimeDirectoryMode=0750', content)
             # Unrelated unit content is preserved.
-            self.assertIn('ExecStart=/opt/prusa-cam/launcher.sh main.py', content)
+            self.assertIn('ExecStart=/opt/pibuddycam/launcher.sh main.py', content)
 
     def test_idempotent(self):
         with tempfile.TemporaryDirectory() as root:
@@ -197,7 +197,7 @@ class RuntimeDirectoryMigrationTests(unittest.TestCase):
             finally:
                 migrations.subprocess.run = orig
             content = Path(unit).read_text()
-            self.assertEqual(content.count('RuntimeDirectory=prusa-cam'), 1)
+            self.assertEqual(content.count('RuntimeDirectory=pibuddycam'), 1)
 
     def test_missing_unit_returns_false(self):
         with tempfile.TemporaryDirectory() as root:
@@ -224,7 +224,7 @@ class PrusaPrivSystemVerbsTests(unittest.TestCase):
         #!/bin/bash
         case "$verb" in
            start-camera)
-              exec "$SYSTEMCTL" --no-block start prusa-camera.target
+              exec "$SYSTEMCTL" --no-block start pibuddycam.target
               ;;
            *)
               exit 2
@@ -233,7 +233,7 @@ class PrusaPrivSystemVerbsTests(unittest.TestCase):
     """)
 
     def _write(self, root, text):
-        helper = os.path.join(root, 'usr', 'libexec', 'prusa-cam', 'prusa-priv')
+        helper = os.path.join(root, 'usr', 'libexec', 'pibuddycam', 'pibuddycam-priv')
         os.makedirs(os.path.dirname(helper), exist_ok=True)
         Path(helper).write_text(text)
         return helper
@@ -241,10 +241,10 @@ class PrusaPrivSystemVerbsTests(unittest.TestCase):
     def test_adds_the_system_verbs_before_the_fallback(self):
         with tempfile.TemporaryDirectory() as root:
             helper = self._write(root, self.ORIGINAL)
-            self.assertTrue(migrations._007_prusa_priv_system_verbs(root))
+            self.assertTrue(migrations._007_pibuddycam_priv_system_verbs(root))
             content = Path(helper).read_text()
             self.assertIn('check-update)', content)
-            self.assertIn('exec "$SYSTEMCTL" start prusa-updater.service', content)
+            self.assertIn('exec "$SYSTEMCTL" start pibuddycam-updater.service', content)
             self.assertIn('reboot)', content)
             self.assertIn('exec "$SYSTEMCTL" reboot', content)
             # The verbs precede the catch-all so dispatch order is preserved.
@@ -254,36 +254,36 @@ class PrusaPrivSystemVerbsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             patched = self.ORIGINAL.replace(
                 '   *)\n',
-                '   check-update)\n      exec "$SYSTEMCTL" start prusa-updater.service\n      ;;\n'
+                '   check-update)\n      exec "$SYSTEMCTL" start pibuddycam-updater.service\n      ;;\n'
                 '   reboot)\n      exec "$SYSTEMCTL" reboot\n      ;;\n'
                 '   *)\n',
             )
             helper = self._write(root, patched)
-            self.assertTrue(migrations._007_prusa_priv_system_verbs(root))
+            self.assertTrue(migrations._007_pibuddycam_priv_system_verbs(root))
             self.assertEqual(Path(helper).read_text(), patched)
 
     def test_missing_helper_returns_false(self):
         with tempfile.TemporaryDirectory() as root:
-            self.assertFalse(migrations._007_prusa_priv_system_verbs(root))
+            self.assertFalse(migrations._007_pibuddycam_priv_system_verbs(root))
 
     def test_missing_marker_returns_false_without_writing(self):
         with tempfile.TemporaryDirectory() as root:
             helper = self._write(root, '#!/bin/bash\nexit 0\n')
-            self.assertFalse(migrations._007_prusa_priv_system_verbs(root))
+            self.assertFalse(migrations._007_pibuddycam_priv_system_verbs(root))
             self.assertEqual(Path(helper).read_text(), '#!/bin/bash\nexit 0\n')
 
     def test_idempotent(self):
         with tempfile.TemporaryDirectory() as root:
             helper = self._write(root, self.ORIGINAL)
-            migrations._007_prusa_priv_system_verbs(root)
-            migrations._007_prusa_priv_system_verbs(root)
+            migrations._007_pibuddycam_priv_system_verbs(root)
+            migrations._007_pibuddycam_priv_system_verbs(root)
             content = Path(helper).read_text()
             self.assertEqual(content.count('reboot)'), 1)
             self.assertEqual(content.count('check-update)'), 1)
 
     def test_registered_in_the_registry(self):
         names = [name for name, _fn in migrations.MIGRATIONS]
-        self.assertIn('007_prusa_priv_system_verbs', names)
+        self.assertIn('007_pibuddycam_priv_system_verbs', names)
 
 
 class StateTests(unittest.TestCase):
@@ -303,13 +303,13 @@ class RunPendingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             state = os.path.join(root, 'migrations.json')
             # Create the files the migrations expect
-            helper_dir = os.path.join(root, 'usr', 'libexec', 'prusa-cam')
+            helper_dir = os.path.join(root, 'usr', 'libexec', 'pibuddycam')
             os.makedirs(helper_dir)
-            Path(os.path.join(helper_dir, 'prusa-priv')).write_text(
+            Path(os.path.join(helper_dir, 'pibuddycam-priv')).write_text(
                 '#!/bin/bash\n'
                 'case "$verb" in\n'
                 '   start-camera)\n'
-                '      exec "$SYSTEMCTL" start prusa-camera.target\n'
+                '      exec "$SYSTEMCTL" start pibuddycam.target\n'
                 '      ;;\n'
                 '   *)\n'
                 '      exit 2\n'
@@ -323,12 +323,12 @@ class RunPendingTests(unittest.TestCase):
             os.makedirs(systemd_dir)
             Path(os.path.join(systemd_dir, 'pi-persist.service')).write_text(
                 '[Service]\n'
-                'ExecStart=/opt/prusa-cam/venv/bin/python /opt/prusa-cam/persist_restore.py\n'
+                'ExecStart=/opt/pibuddycam/venv/bin/python /opt/pibuddycam/persist_restore.py\n'
             )
-            Path(os.path.join(systemd_dir, 'prusa-cam.service')).write_text(
+            Path(os.path.join(systemd_dir, 'pibuddycam.service')).write_text(
                 '[Service]\n'
-                'User=prusa-cam\n'
-                'ExecStart=/opt/prusa-cam/launcher.sh main.py\n'
+                'User=pibuddycam\n'
+                'ExecStart=/opt/pibuddycam/launcher.sh main.py\n'
             )
 
             # Patch out remount and daemon-reload (test runs unprivileged)
@@ -372,11 +372,11 @@ if __name__ == '__main__':
 class PiPersistUseLauncherTests(unittest.TestCase):
     ORIGINAL = (
         '[Service]\n'
-        'ExecStart=/opt/prusa-cam/venv/bin/python /opt/prusa-cam/persist_restore.py\n'
+        'ExecStart=/opt/pibuddycam/venv/bin/python /opt/pibuddycam/persist_restore.py\n'
     )
     FIXED = (
         '[Service]\n'
-        'ExecStart=/opt/prusa-cam/launcher.sh persist_restore.py\n'
+        'ExecStart=/opt/pibuddycam/launcher.sh persist_restore.py\n'
     )
 
     def test_patches_exec_start(self):

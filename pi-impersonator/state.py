@@ -45,7 +45,7 @@ def snapshot_interval_from_config(raw):
 class CameraState:
     """One mutable runtime state object shared by handlers and status encoders."""
 
-    def __init__(self, camera_name='Buddy3D Camera', quality=DEFAULT_QUALITY,
+    def __init__(self, camera_name='PiBuddyCam', quality=DEFAULT_QUALITY,
                  snapshot_interval=SNAPSHOT_INTERVAL_MIN,
                  snapshot_upload_enabled=True):
         self.camera_name = camera_name

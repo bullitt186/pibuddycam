@@ -1,6 +1,6 @@
 """Readiness gate for the durable ``/data`` (PERSIST) partition (AC-7).
 
-Runs as root from ``prusa-data-ready.service`` before any camera or application
+Runs as root from ``pibuddycam-data-ready.service`` before any camera or application
 unit. It must **never** create ``/data`` itself: a look-alike directory on the
 volatile overlay root would let the app "succeed" while every write is discarded
 on the next reboot. If the real partition is absent, unlabelled, read-only, or
@@ -28,7 +28,7 @@ import tempfile
 
 DEFAULT_MOUNT = '/data'
 DEFAULT_LABEL_PATH = '/dev/disk/by-label/PERSIST'
-WRITE_PROBE_PREFIX = '.prusa-cam-data-ready-'
+WRITE_PROBE_PREFIX = '.pibuddycam-data-ready-'
 
 
 def _mount_device(mount):
@@ -58,7 +58,7 @@ def _write_probe(mount):
         return False, f'{mount} is not writable: {e}'
     try:
         try:
-            os.write(fd, b'prusa-cam data-ready probe\n')
+            os.write(fd, b'pibuddycam data-ready probe\n')
             os.fsync(fd)
         finally:
             os.close(fd)

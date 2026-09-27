@@ -27,8 +27,8 @@ PI_USER="${PI%@*}"
 # Dedicated non-login service identity and application root (AC-1). The SSH
 # transport user above is only used for the maintenance connection; the deployed
 # code and units always run as $SERVICE_USER from $APP_ROOT.
-SERVICE_USER="${SERVICE_USER:-prusa-cam}"
-APP_ROOT="${APP_ROOT:-/opt/prusa-cam}"
+SERVICE_USER="${SERVICE_USER:-pibuddycam}"
+APP_ROOT="${APP_ROOT:-/opt/pibuddycam}"
 SRC="$(cd "$(dirname "$0")" && pwd)"
 SSH=(ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=accept-new "$PI")
 
@@ -98,9 +98,9 @@ push_and_restart() {  # the actual deploy — assumes root is writable (dev mode
   "${SSH[@]}" "sudo chown -R $SERVICE_USER:$SERVICE_USER $APP_ROOT && \
     sudo chmod +x $APP_ROOT/bootlog.sh"
 
-  log "provision /etc/prusa-cam + quality.env (idempotent)"
-  "${SSH[@]}" "sudo install -d -o $SERVICE_USER -g $SERVICE_USER /etc/prusa-cam && \
-    { [ -f /etc/prusa-cam/quality.env ] || printf 'CAM_WIDTH=1920\nCAM_HEIGHT=1080\n' | sudo tee /etc/prusa-cam/quality.env >/dev/null; }"
+  log "provision /etc/pibuddycam + quality.env (idempotent)"
+  "${SSH[@]}" "sudo install -d -o $SERVICE_USER -g $SERVICE_USER /etc/pibuddycam && \
+    { [ -f /etc/pibuddycam/quality.env ] || printf 'CAM_WIDTH=1920\nCAM_HEIGHT=1080\n' | sudo tee /etc/pibuddycam/quality.env >/dev/null; }"
 
   # WebRTC live view needs webrtcbin's ICE plugin (libgstnice.so). Install it here
   # so it lands on the real disk (this runs with the overlay disabled / in dev),
@@ -125,17 +125,17 @@ push_and_restart() {  # the actual deploy — assumes root is writable (dev mode
     sudo systemctl enable --now smbd >/dev/null 2>&1 || true"
 
   # Units are installed verbatim from the repo templates: they hard-code
-  # User=prusa-cam / /opt/prusa-cam, so no per-host sed templating remains.
+  # User=pibuddycam / /opt/pibuddycam, so no per-host sed templating remains.
   log "install systemd units (verbatim) + data-ready gate"
-  for u in rpicam-source.service prusa-ha-rtsp.service prusa-rtsp.service \
-           prusa-cam.service bootlog.service pi-persist.service \
-           prusa-data-ready.service data-ready.target; do
+  for u in rpicam-source.service pibuddycam-ha-rtsp.service pibuddycam-rtsp.service \
+           pibuddycam.service bootlog.service pi-persist.service \
+           pibuddycam-data-ready.service data-ready.target; do
     install_unit "$u"
   done
   "${SSH[@]}" "sudo systemctl daemon-reload && \
-    sudo systemctl enable data-ready.target prusa-data-ready.service \
-      rpicam-source.service prusa-ha-rtsp.service prusa-rtsp.service \
-      prusa-cam.service pi-persist.service bootlog.service >/dev/null 2>&1 || true"
+    sudo systemctl enable data-ready.target pibuddycam-data-ready.service \
+      rpicam-source.service pibuddycam-ha-rtsp.service pibuddycam-rtsp.service \
+      pibuddycam.service pi-persist.service bootlog.service >/dev/null 2>&1 || true"
   # Persist a boot-reason/throttle snapshot to the real vfat boot partition: the
   # root overlay + volatile journal otherwise erase all evidence of an unexpected
   # reboot (see the reboot/throttling investigation in the gap tracker).
@@ -152,16 +152,16 @@ push_and_restart() {  # the actual deploy — assumes root is writable (dev mode
         echo \"added /data fstab entry for \$uuid\"
       fi
       sudo install -d -m 0755 /data/sdcard /data/sdcard/timelapse
-      sudo install -d -m 0750 /data/prusa-cam /data/prusa-cam/config /data/prusa-cam/releases /data/prusa-cam/backups /data/network/system-connections
-      sudo chown -R $SERVICE_USER:$SERVICE_USER /data/sdcard /data/prusa-cam /data/network
+      sudo install -d -m 0750 /data/pibuddycam /data/pibuddycam/config /data/pibuddycam/releases /data/pibuddycam/backups /data/network/system-connections
+      sudo chown -R $SERVICE_USER:$SERVICE_USER /data/sdcard /data/pibuddycam /data/network
     else
       echo 'no /data partition yet; skipping persistence activation'
     fi"
 
   log "restart services"
-  "${SSH[@]}" 'sudo systemctl restart data-ready.target rpicam-source.service prusa-ha-rtsp.service && \
-    sudo systemctl try-restart prusa-rtsp.service && \
-    sudo systemctl restart prusa-cam.service'
+  "${SSH[@]}" 'sudo systemctl restart data-ready.target rpicam-source.service pibuddycam-ha-rtsp.service && \
+    sudo systemctl try-restart pibuddycam-rtsp.service && \
+    sudo systemctl restart pibuddycam.service'
   sleep 5
 }
 
@@ -169,10 +169,10 @@ verify() {
   log "verify"
   "${SSH[@]}" 'set -e
     echo -n "required services: "
-    systemctl is-active rpicam-source prusa-ha-rtsp prusa-cam | tr "\n" " "
+    systemctl is-active rpicam-source pibuddycam-ha-rtsp pibuddycam | tr "\n" " "
     echo
     echo -n "Prusa RTSP mode-dependent service: "
-    systemctl is-active prusa-rtsp || true
+    systemctl is-active pibuddycam-rtsp || true
     onvif_ok=
     for _ in $(seq 1 15); do
       if curl -fsS --max-time 5 -H "Content-Type: application/soap+xml" \
@@ -185,7 +185,7 @@ verify() {
     done
     [ "$onvif_ok" = 1 ]
     echo "ONVIF: ok"
-    journalctl -u prusa-cam -n 20 --no-pager | grep -iE "Snapshot: 200|/c/info response" | tail -1 || echo "  (no snapshot line yet)"'
+    journalctl -u pibuddycam -n 20 --no-pager | grep -iE "Snapshot: 200|/c/info response" | tail -1 || echo "  (no snapshot line yet)"'
 }
 
 enable_overlay() {
