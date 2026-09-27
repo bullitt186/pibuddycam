@@ -91,6 +91,17 @@ jobs:
               ;;
           esac
 
+      # A runner service inherits a non-root PATH without the sbin
+      # directories, but the image build needs mkdosfs/sfdisk/mke2fs from them.
+      - name: Put the sbin tool directories on PATH
+        run: |
+          for d in /usr/local/sbin /usr/sbin /sbin; do
+            case ":$PATH:" in
+              *":$d:"*) ;;
+              *) echo "$d" >> "$GITHUB_PATH" ;;
+            esac
+          done
+
       - name: Derive version and channel from the tag
         id: meta
         run: |
