@@ -20,6 +20,7 @@ from typing import Optional
 
 import quality
 import quality_control
+import rotation
 import rtsp_control
 import settings_store
 import timelapse
@@ -34,6 +35,7 @@ log = logging.getLogger('prusa-cam.settings')
 MUTATION_FIELDS = (
     'camera_name',
     'quality',
+    'rotation',
     'snapshot_upload_enabled',
     'snapshot_interval',
     'timelapse_enabled',
@@ -52,6 +54,7 @@ _WEBRTC_NAMES = {'disabled': 0, 'enabled': 1}
 
 # The durable settings key each transition updates, in ``state.json`` spelling.
 _KEY_QUALITY = 'quality_tier'
+_KEY_ROTATION = 'rotation'
 _KEY_CAMERA_NAME = 'camera_name'
 _KEY_SNAPSHOT_INTERVAL = 'snapshot_interval'
 _KEY_SNAPSHOT_UPLOAD = 'snapshot_upload_enabled'
@@ -103,6 +106,7 @@ class SettingsCoordinator:
 
     def __init__(self, state, *, persist=None, publish=None,
                  quality_apply=None, quality_persist=None,
+                 rotation_apply=None,
                  rtsp_start=None, rtsp_stop=None, rtsp_query=None,
                  webrtc_start=None, webrtc_stop=None,
                  timelapse_enable=None):
@@ -111,6 +115,7 @@ class SettingsCoordinator:
         self._publish = publish if publish is not None else state.mark_info_dirty
         self._quality_apply = quality_apply
         self._quality_persist = quality_persist
+        self._rotation_apply = rotation_apply
         self._rtsp_start = rtsp_start
         self._rtsp_stop = rtsp_stop
         self._rtsp_query = rtsp_query
@@ -200,6 +205,29 @@ class SettingsCoordinator:
             self._publish_state()
             return self._result(True, None, [_KEY_QUALITY])
         return self._commit([_KEY_QUALITY])
+
+    # -- rotation ----------------------------------------------------------
+
+    def set_rotation(self, degrees):
+        """Apply an absolute clockwise image rotation (0/90/180/270).
+
+        ``rotation_apply(degrees)`` writes the source unit's env file and
+        restarts the camera pipeline, returning True on success; the shared
+        state and ``state.json`` change only after it succeeds.
+        """
+        if rotation.valid_rotation(degrees) is None:
+            return self._result(False, 'rotation must be one of 0, 90, 180, 270')
+        if self._rotation_apply is None:
+            return self._result(False, 'live apply unavailable')
+        try:
+            ok = self._rotation_apply(degrees)
+        except Exception as e:
+            log.warning(f'settings: rotation apply raised: {e}')
+            ok = False
+        if not ok:
+            return self._result(False, 'live apply failed')
+        self.state.set_rotation(degrees)
+        return self._commit([_KEY_ROTATION])
 
     # -- snapshots ---------------------------------------------------------
 
@@ -314,6 +342,9 @@ class SettingsCoordinator:
             return self._result(False, 'quality must be one of sd, hd, fhd')
         # The firmware path consumes the raw event byte (5/6/7).
         return self.set_quality(ENUM_TO_RAW[_QUALITY_NAMES[value]], persist=True)
+
+    def _mutate_rotation(self, value):
+        return self.set_rotation(value)
 
     def _mutate_snapshot_upload_enabled(self, value):
         return self.set_snapshot_upload(value)

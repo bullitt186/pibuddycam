@@ -45,6 +45,7 @@ from proto import (
 import device_control
 import quality
 import quality_control
+import rotation
 import rtsp_control
 import trigger
 import webrtc_control
@@ -101,6 +102,15 @@ def apply_live_quality(raw_byte):
 def persist_quality(qenum):
     """Persist tier `qenum` for rpicam-source's boot EnvironmentFile (GAP-QUALITY-02)."""
     quality_control.persist_quality(qenum)
+
+
+def apply_rotation(degrees):
+    """Write rotation.env and restart the shared camera pipeline; True on success.
+
+    Reuses the quality restart helper: it restarts exactly the units that read
+    the source (rpicam-source + HA RTSP, try-restart Prusa RTSP).
+    """
+    return rotation.apply(degrees, quality_control.restart_services)
 
 
 def handle_quality(raw_byte, persist):
@@ -412,7 +422,7 @@ def build_timelapse_video():
     failure is logged and reported as ``False``.
     """
     try:
-        width, height = state.resolution()
+        width, height = state.oriented_resolution()
         path = timelapse.build_avi(
             timelapse.TIMELAPSE_DIR, fps=state.timelapse_fps,
             width=width, height=height,
@@ -603,6 +613,7 @@ async def main():
         publish=state.mark_info_dirty,
         quality_apply=apply_live_quality,
         quality_persist=persist_quality,
+        rotation_apply=apply_rotation,
         rtsp_start=rtsp_service_start,
         rtsp_stop=rtsp_service_stop,
         rtsp_query=rtsp_service_active,
@@ -615,6 +626,9 @@ async def main():
     state.set_quality(qenum)
     width, height = state.resolution()
     log.info(f'Loaded persisted quality enum {qenum} ({width}x{height})')
+    # The source unit reads rotation.env (restored by pi-persist.service).
+    state.set_rotation(rotation.read_current())
+    log.info(f'Loaded image rotation {state.rotation} degrees')
 
     # Review fix 3: the old snapshot loop read cfg['upload']['interval']; seed the
     # shared state so a configured interval is honored (validated 10..600).

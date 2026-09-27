@@ -195,7 +195,7 @@ class CoordinatorMutationTests(unittest.TestCase):
         self.assertEqual(
             set(settings_coordinator.MUTATION_FIELDS),
             {
-                'camera_name', 'quality', 'snapshot_upload_enabled',
+                'camera_name', 'quality', 'rotation', 'snapshot_upload_enabled',
                 'snapshot_interval', 'timelapse_enabled', 'timelapse_interval',
                 'timelapse_fps', 'rtsp_mode', 'webrtc_mode',
             },

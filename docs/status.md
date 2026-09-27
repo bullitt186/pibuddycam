@@ -270,7 +270,7 @@ This is necessary for an offer to work after enrollment is unblocked, but cannot
 | Camera identity / auth (Socket.IO) | ✅ Working | `camera_authentication` → ACK `0` **[confirmed]** |
 | Camera info / metadata (`/c/info`) | ✅ Working | 200; name, firmware, model, Wi-Fi shown in app **[confirmed]** |
 | Appears online & paired, survives reboot | ✅ Working | web + mobile app; `Restart=always` **[confirmed]** |
-| Local RTSP live view | ✅ Working | `rtsp://<pi>:8554/live` in VLC, 1080p, `--rotation 180` **[confirmed]**; the firmware default is `554` (`FUN_000b04d4`), so `8554` is a documented privileged-port Pi exception that Connect consumes (GAP-RTSP-01 closed) |
+| Local RTSP live view | ✅ Working | `rtsp://<pi>:8554/live` in VLC, 1080p, rotated per the console's image-rotation setting (was hardcoded `--rotation 180`, **[confirmed]** for 0/180) **[confirmed]**; the firmware default is `554` (`FUN_000b04d4`), so `8554` is a documented privileged-port Pi exception that Connect consumes (GAP-RTSP-01 closed) |
 | Dynamic video-quality tier-switching | ✅ Device path working (live-verified 2026-09-25) | authenticated nested `configuration` changed the real encoder FHD→HD→FHD on release 1.0.4 through `prusa-priv quality-restart`; Connect currently hides its settings UI because of the registry/classification state. The unresolved GAP-QUALITY-02 persist flag remains separate. |
 | Classified as a genuine Buddy camera | ❌ No | currently listed under “Other cameras” **[confirmed 2026-09-25]**. `origin: OTHER` alone is not proof of invalidity because genuine Buddy3D registration also uses OTHER, but the current UI classification accompanies registry 404. |
 | Live WebRTC stream (app + browser) | ⚠️ Implementation verified; current UI blocked | offer/answer/ICE and video played in app/browser on 2026-09-19/20. On 2026-09-25 the current and formerly working tokens both returned registry 404 and Connect exposed no play control. A control viewer ACKed 0 and delivered configuration, but full WebRTC was not re-established. |
@@ -290,8 +290,13 @@ This is necessary for an offer to work after enrollment is unblocked, but cannot
   and live-verified after reboot on 2026-09-18. Full body in [`protocol.md` §8](protocol.md).
 - **Local RTSP** — `rpicam-vid` (userspace HW H.264) → TCP → GStreamer `GstRtspServer`.
   Continuous video (needs `do-timestamp=true` on `tcpclientsrc`). Single upstream client;
-  see [RTSP notes in `protocol.md` §12](protocol.md). Default **1080p @ 30 fps**, `--rotation 180`
-  (camera mounted inverted).
+  see [RTSP notes in `protocol.md` §12](protocol.md). Default **1080p @ 30 fps**. Image rotation
+  is the web-console setting (`rotation.env`, default 0°). It was previously hardcoded to
+  `--rotation 180` for an inverted mount, so such devices must now select 180° once.
+  0°/180° use `rpicam-vid --rotation` (**confirmed** zero cost). 90°/270° use a
+  `libcamerasrc` GStreamer source that rotates in the bcm2835 ISP (`v4l2convert`) when it exposes
+  `V4L2_CID_ROTATE`, otherwise with `videoflip` at 10 fps. That path is an **assumption**
+  until it is verified on hardware.
 - **Dynamic video-quality plumbing (partial parity, working live apply)** — nested configuration
   and direct raw events share `handle_quality()`. The live tier is written to
   `/etc/prusa-cam/quality.live.env`, then the fixed `prusa-priv quality-restart` action restarts the
@@ -435,7 +440,7 @@ under `/data/prusa-cam/config`; no live identifiers or secrets belong in this do
 | Service | Role |
 |---|---|
 | `prusa-cam.service` | `main.py` — `/c/info`, snapshot loop, Socket.IO signaling, WebRTC answer logic |
-| `rpicam-source.service` | `rpicam-vid` → `stream_mux.py` H.264 fan-out on TCP :8888; resolution from `EnvironmentFile=/etc/prusa-cam/quality.env` (tier-switchable), `--rotation 180 --intra 30 --flush` |
+| `rpicam-source.service` | `launcher.sh camera_source.py` → `rpicam-vid` (0/180°) or `libcamerasrc` GStreamer (90/270°) → `stream_mux.py` H.264 fan-out on TCP :8888; resolution from `EnvironmentFile=/etc/prusa-cam/quality.env` (tier-switchable), rotation from `/etc/prusa-cam/rotation.env`, `--intra 30 --flush` |
 | `prusa-rtsp.service` | GStreamer RTSP → `rtsp://<pi>:8554/live`, pulls from rpicam-source |
 | `prusa-ha-rtsp.service` | Always-on Home Assistant RTSP → `rtsp://<pi>:8555/live`, pulls from the same source |
 

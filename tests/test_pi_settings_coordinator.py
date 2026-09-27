@@ -160,6 +160,58 @@ class QualityTests(CoordinatorTestCase):
         self.assertEqual(state.quality, 1)
 
 
+class RotationTests(CoordinatorTestCase):
+    """Rotation applies live first; a rejection changes nothing."""
+
+    def test_success_applies_persists_and_publishes(self):
+        apply = Recorder(True)
+        state, coordinator, persist, publish, _q, _l = self._make(rotation_apply=apply)
+
+        result = coordinator.apply_mutation('rotation', 90)
+
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(result.changed, ['rotation'])
+        self.assertEqual(apply.calls, [((90,), {})])
+        self.assertEqual(state.rotation, 90)
+        self.assertEqual(result.state['rotation'], 90)
+        self.assertEqual(len(persist.calls), 1)
+        self.assertEqual(len(publish.calls), 1)
+
+    def test_invalid_values_reject_without_apply_or_persist(self):
+        apply = Recorder(True)
+        state, coordinator, persist, publish, _q, _l = self._make(rotation_apply=apply)
+        for value in (45, -90, 360, '90', 90.0, True, None):
+            with self.subTest(value=value):
+                result = coordinator.apply_mutation('rotation', value)
+                self.assertFalse(result.ok)
+                self.assertIn('0, 90, 180, 270', result.reason)
+        self.assertEqual(apply.calls, [])
+        self.assertEqual(persist.calls, [])
+        self.assertEqual(publish.calls, [])
+        self.assertEqual(state.rotation, 0)
+
+    def test_failed_apply_rejects_without_state_change(self):
+        state = CameraState()
+        state.set_rotation(180)
+        state, coordinator, persist, publish, _q, _l = self._make(
+            state=state, rotation_apply=Recorder(False))
+
+        result = coordinator.set_rotation(270)
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reason, 'live apply failed')
+        self.assertEqual(state.rotation, 180)
+        self.assertEqual(result.state['rotation'], 180)
+        self.assertEqual(persist.calls, [])
+        self.assertEqual(publish.calls, [])
+
+    def test_missing_apply_is_rejected(self):
+        state, coordinator, persist, _p, _q, _l = self._make()
+        result = coordinator.set_rotation(90)
+        self.assertFalse(result.ok)
+        self.assertEqual(persist.calls, [])
+
+
 class OtherSetterTests(CoordinatorTestCase):
     """Each remaining setter validates, commits once, or rejects cleanly."""
 

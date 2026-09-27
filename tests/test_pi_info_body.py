@@ -20,6 +20,15 @@ def _nested(decoded, field):
 
 
 class InfoBodyTests(unittest.TestCase):
+
+    def test_rotated_body_reports_portrait_resolution(self):
+        state = CameraState()
+        state.set_quality(3)
+        state.set_rotation(90)
+        body = info_body.build_info_body(state)
+        self.assertEqual(body['config']['resolution'], {'width': 1080, 'height': 1920})
+        self.assertEqual(body['options']['available_resolutions'],
+                         [{'width': 1080, 'height': 1920}])
     """GAP-INFO-02: one CameraState drives /c/info and status consistently."""
 
     def test_body_uses_state_name_and_quality_resolution(self):

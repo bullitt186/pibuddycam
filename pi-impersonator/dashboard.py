@@ -147,7 +147,9 @@ def _version_view(application_version, build_identity):
 
 def _resolution_view(state):
     try:
-        width, height = state.resolution()
+        # Delivered size: swapped for a 90/270-degree rotation.
+        resolve = getattr(state, 'oriented_resolution', None) or state.resolution
+        width, height = resolve()
     except Exception:  # noqa: BLE001 - a broken state object must not crash
         return {'width': None, 'height': None, 'label': 'unknown'}
     try:

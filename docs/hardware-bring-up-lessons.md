@@ -129,6 +129,24 @@ A fresh-image boot and setup-hotspot regression remain to be exercised when a
 new card is built and user-flashed; offline tests and image validation cover
 those paths in the meantime.
 
+## Image rotation setting (implemented 2026-09-27; hardware verification pending)
+
+- `rpicam-source.service` no longer hardcodes `--rotation 180`. It runs `launcher.sh
+  camera_source.py`, so the pipeline ships with the signed app release. It reads `CAM_ROTATION`
+  from `/etc/prusa-cam/rotation.env`, which `pi-persist` restores from `state.json` `rotation`.
+  **Behavior change:** the default is 0°, so a device mounted upside down must select 180° once
+  in the console.
+- The unit change and the new `gstreamer1.0-libcamera` package are image-owned. An app bundle
+  alone keeps the old unit, and that unit still hardcodes 180° and ignores the setting.
+- Before trusting 90°/270° on a Pi Zero 2 W, verify three things:
+  1. `libcamerasrc` exists: `gst-inspect-1.0 libcamerasrc`.
+  2. The bcm2835 ISP m2m node exposes `rotate`: run `v4l2-ctl -d /dev/video12 -l` on the node
+     named `bcm2835-codec-isp`. `camera_source.detect_rotation_backend` uses the same
+     `VIDIOC_QUERYCTRL` probe.
+  3. The encoder accepts 1080×1920 portrait NV12 at 30 fps.
+
+  Without ISP rotation the software `videoflip` fallback runs at 10 fps. Measure its CPU cost.
+
 ## Defects found only on hardware
 
 | # | Symptom on device | Root cause | Fix |

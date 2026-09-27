@@ -624,11 +624,23 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
 
     def test_camera_view_has_a_form_for_every_confirmed_setting(self):
         for field in (
-            'camera_name', 'quality', 'snapshot_upload_enabled',
+            'camera_name', 'quality', 'rotation', 'snapshot_upload_enabled',
             'snapshot_interval', 'timelapse_enabled', 'timelapse_interval',
             'timelapse_fps', 'rtsp_mode', 'webrtc_mode',
         ):
             self.assertIn(f'data-setting="{field}"', self.html, field)
+
+    def test_rotation_form_offers_four_angles_with_a_transpose_warning(self):
+        for value in ('0', '90', '180', '270'):
+            self.assertIn(f'name="rotation" value="{value}"', self.html, value)
+        # The 90/270 cost warning is present but hidden until selected.
+        self.assertIn('id="rotation-warning"', self.html)
+        self.assertRegex(self.html, r'id="rotation-warning"[^>]*hidden')
+        code = _strip_js_comments(self.js)
+        self.assertIn('updateRotationWarning', code)
+        self.assertIn("settings.rotation", code)
+        # Rotation is sent as an int, like the coordinator's validator expects.
+        self.assertIn("field === 'rotation'", code)
 
     def test_camera_view_explains_unsupported_hardware_non_interactively(self):
         self.assertIn('Unsupported hardware', self.html)

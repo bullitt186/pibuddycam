@@ -68,6 +68,7 @@ packages:
   - gstreamer1.0-plugins-bad
   - gstreamer1.0-nice
   - gstreamer1.0-rtsp
+  - gstreamer1.0-libcamera
   - gir1.2-gst-rtsp-server-1.0
   - gir1.2-gst-plugins-bad-1.0
   # Read-only overlay root + initramfs (AC-10). overlayroot is the mechanism

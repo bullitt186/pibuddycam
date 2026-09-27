@@ -94,6 +94,8 @@ mmdebstrap:
     - gstreamer1.0-plugins-bad
     - gstreamer1.0-nice
     - gstreamer1.0-rtsp
+    # libcamerasrc: the 90/270-degree rotation source (camera_source.py).
+    - gstreamer1.0-libcamera
     - gir1.2-gst-rtsp-server-1.0
     - gir1.2-gst-plugins-bad-1.0
     - overlayroot

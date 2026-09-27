@@ -194,6 +194,7 @@ class PersistedStateTests(unittest.TestCase):
         state.webrtc_mode = 0
         self.assertEqual(state.persistable_state(), {
             'quality_tier': 2,
+            'rotation': 0,
             'camera_name': 'Print Room',
             'snapshot_interval': 30,
             'snapshot_upload_enabled': False,
@@ -205,6 +206,43 @@ class PersistedStateTests(unittest.TestCase):
         })
         # The store version is owned by settings_store.save, not CameraState.
         self.assertNotIn('version', state.persistable_state())
+
+    def test_rotation_default_validation_and_round_trip(self):
+        state = CameraState()
+        self.assertEqual(state.rotation, 0)
+        for bad in (45, '90', 90.0, True, None):
+            self.assertFalse(state.set_rotation(bad), bad)
+        self.assertEqual(state.rotation, 0)
+        self.assertTrue(state.set_rotation(270))
+        restored = CameraState()
+        self.assertEqual(restored.apply_persisted(state.persistable_state()).count('rotation'), 1)
+        self.assertEqual(restored.rotation, 270)
+
+    def test_missing_or_invalid_persisted_rotation_keeps_default(self):
+        for data in ({}, {'rotation': 45}, {'rotation': '90'}):
+            with self.subTest(data=data):
+                state = CameraState()
+                self.assertNotIn('rotation', state.apply_persisted(data))
+                self.assertEqual(state.rotation, 0)
+
+    def test_oriented_resolution_swaps_for_90_and_270(self):
+        state = CameraState()
+        state.set_quality(2)
+        for degrees, expected in ((0, (1280, 720)), (90, (720, 1280)),
+                                  (180, (1280, 720)), (270, (720, 1280))):
+            with self.subTest(degrees=degrees):
+                state.set_rotation(degrees)
+                self.assertEqual(state.oriented_resolution(), expected)
+                # The encoder tier size itself never changes with rotation.
+                self.assertEqual(state.resolution(), (1280, 720))
+
+    def test_rotation_change_republishes_info(self):
+        state = CameraState()
+        state.info_dirty = False
+        state.set_rotation(0)
+        self.assertFalse(state.info_dirty)
+        state.set_rotation(90)
+        self.assertTrue(state.info_dirty)
 
     def test_apply_persisted_applies_valid_keys(self):
         state = CameraState()

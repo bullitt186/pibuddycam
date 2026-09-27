@@ -107,7 +107,7 @@ class OnvifContext:
 
     @property
     def resolution(self):
-        return self.state.resolution()
+        return self.state.oriented_resolution()
 
     @property
     def scopes(self):

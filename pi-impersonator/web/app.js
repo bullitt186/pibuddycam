@@ -1508,6 +1508,15 @@ function wireTimelapse() {
 /* Camera settings (WP-UI3; AC-5/AC-6/AC-7)                            */
 /* ------------------------------------------------------------------ */
 const QUALITY_NAMES = { 1: 'sd', 2: 'hd', 3: 'fhd' };
+const ROTATIONS = [0, 90, 180, 270];
+
+/** Show the 90°/270° cost warning while a transposing rotation is selected. */
+function updateRotationWarning() {
+  const warning = document.getElementById('rotation-warning');
+  if (!warning) return;
+  const checked = document.querySelector('input[name="rotation"]:checked');
+  warning.hidden = !(checked && (checked.value === '90' || checked.value === '270'));
+}
 
 function settingForm(field) {
   return document.querySelector(`.setting-form[data-setting="${field}"]`);
@@ -1554,6 +1563,7 @@ function readSettingValue(form, field) {
     return box ? box.checked : undefined;
   }
   const radio = form.querySelector('input[type="radio"]:checked');
+  if (radio && field === 'rotation') return Number(radio.value);
   if (radio) return radio.value;
   const number = form.querySelector('input[type="number"]');
   if (number) {
@@ -1604,6 +1614,10 @@ function applySettings(settings) {
   if (anyFormPending()) return;
   setTextValue('camera-name', settings.camera_name);
   setRadioValue('quality', QUALITY_NAMES[settings.quality_tier]);
+  if (ROTATIONS.includes(settings.rotation)) {
+    setRadioValue('rotation', String(settings.rotation));
+  }
+  updateRotationWarning();
   setCheckboxValue('snapshot_upload_enabled', settings.snapshot_upload_enabled);
   setNumberValue('snapshot-interval', settings.snapshot_interval);
   setCheckboxValue('timelapse_enabled', settings.timelapse_enabled);
@@ -2519,6 +2533,9 @@ function wireForms() {
   }
   els.settingForms.forEach((form) => {
     form.addEventListener('submit', submitSettingForm);
+  });
+  document.querySelectorAll('input[name="rotation"]').forEach((input) => {
+    input.addEventListener('change', updateRotationWarning);
   });
   if (els.mqttTest) els.mqttTest.addEventListener('click', testMqtt);
   if (els.mqttForm) {

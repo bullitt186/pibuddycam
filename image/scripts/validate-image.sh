@@ -1234,9 +1234,10 @@ PY
        [prusa-rtsp.service]=rtsp_server.py
        [prusa-ha-rtsp.service]=rtsp_server.py
        [prusa-admin.service]=admin_app.py
+       [rpicam-source.service]=camera_source.py
     )
     for unit in prusa-cam.service prusa-rtsp.service prusa-ha-rtsp.service \
-                prusa-admin.service; do
+                prusa-admin.service rpicam-source.service; do
       file="$SYSTEMD_DIR/$unit"
       [ -f "$file" ] || continue
       want_script="${launcher_script[$unit]}"

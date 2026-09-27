@@ -12,7 +12,8 @@ Runs as root from ``pi-persist.service`` before the camera/RTSP units. It:
 3. provisions the durable admin self-signed keypair and recreates the volatile
    ``/etc/prusa-cam/admin.env`` so ``prusa-admin.service`` can serve HTTPS
    (appliance image/security defect; see :mod:`admin_tls`);
-4. restores ``quality.env`` and ``rtsp.mode`` from ``state.json``;
+4. restores ``quality.env``, ``rotation.env`` and ``rtsp.mode`` from
+   ``state.json``;
 5. prunes the oldest timelapse JPEG frames when ``/data`` free space is low
    (``.avi`` and the CSV index are never deleted).
 
@@ -30,6 +31,7 @@ import sys
 import admin_tls
 import migrations
 import quality
+import rotation
 import rtsp_control
 import settings_store
 
@@ -204,7 +206,7 @@ def _provision_admin_tls(service_user=DEFAULT_SERVICE_USER):
 
 
 def _restore_settings(service_user=DEFAULT_SERVICE_USER):
-    """Materialize quality.env and rtsp.mode from the persisted state.json.
+    """Materialize quality.env, rotation.env and rtsp.mode from state.json.
 
     pi-persist runs as root, so the files it creates are root-owned. The
     service account must be able to overwrite them at runtime, so each
@@ -222,6 +224,14 @@ def _restore_settings(service_user=DEFAULT_SERVICE_USER):
             log.info(f'persist: restored quality tier {tier} to {quality.QUALITY_ENV}')
         except OSError as e:
             log.warning(f'persist: could not restore quality tier {tier}: {e}')
+    degrees = data.get('rotation')
+    if rotation.valid_rotation(degrees) is not None:
+        try:
+            rotation.write_current(degrees)
+            _chown(rotation.ROTATION_ENV, service_user)
+            log.info(f'persist: restored rotation {degrees} to {rotation.ROTATION_ENV}')
+        except OSError as e:
+            log.warning(f'persist: could not restore rotation {degrees}: {e}')
     mode = data.get('rtsp_mode')
     if mode in (rtsp_control.RTSP_DISABLED, rtsp_control.RTSP_ENABLED):
         if rtsp_control.write_mode(mode):

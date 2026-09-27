@@ -84,6 +84,7 @@ class FakeRuntime:
         self.settings = {
             'camera_name': 'E2E Camera',
             'quality_tier': 2,            # HD
+            'rotation': 0,
             'snapshot_upload_enabled': True,
             'snapshot_interval': 60,
             'timelapse_enabled': True,
@@ -124,6 +125,10 @@ class FakeRuntime:
                     'quality change refused: a WebRTC viewer holds the TURN '
                     'quality lock; raise it after the stream ends')
             settings['quality_tier'] = tier
+        elif field == 'rotation':
+            if type(value) is not int or value not in (0, 90, 180, 270):
+                return self._reject('rotation must be one of 0, 90, 180, 270')
+            settings['rotation'] = value
         elif field == 'snapshot_upload_enabled':
             if not isinstance(value, bool):
                 return self._reject('snapshot upload must be true or false')

@@ -209,6 +209,7 @@ each form waits for the authoritative response before reporting success.
 |---|---|---|
 | Camera name | text | Shown in Prusa Connect and Home Assistant. |
 | Video quality | SD 640×480 / HD 1280×720 / FHD 1920×1080 | A raise refused by the WebRTC **TURN quality lock** is explained and the current value is restored automatically. |
+| Image rotation | 0° / 90° / 180° / 270° (clockwise) | Applied once at the camera source, so every stream (RTSP, HA RTSP, WebRTC, local live view), snapshot and timelapse frame is rotated. Default 0°. It persists across reboots and quality changes. Applying it restarts the video streams briefly. 90°/270° show a warning: they use a slower GStreamer rotation path (higher CPU, possibly a lower frame rate) and produce portrait output. |
 | Snapshot upload | on/off | Periodic uploads to Prusa Connect. |
 | Snapshot interval | 10–600 s | |
 | Timelapse capture | on/off | |

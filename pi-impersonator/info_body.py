@@ -13,10 +13,11 @@ from features import FEATURES_LIST, FIRMWARE_VERSION, MANUFACTURER, MODEL, TRIGG
 def build_info_body(state, *, mac='', ip='', ssid=''):
     """Return the firmware-shaped ``/c/info`` payload as a dict.
 
-    Resolution comes from ``state.resolution()`` (the shared quality enum), not
-    from independent width/height arguments.
+    Resolution comes from ``state.oriented_resolution()`` (the shared quality
+    enum, swapped for a 90/270-degree rotation), not from independent
+    width/height arguments.
     """
-    width, height = state.resolution()
+    width, height = state.oriented_resolution()
     resolution = {'width': width, 'height': height}
     return {
         'config': {

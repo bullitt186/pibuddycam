@@ -201,6 +201,24 @@
             </fieldset>
           </form>
 
+          <form class="setting-form" data-setting="rotation" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Image rotation</legend>
+              <div class="segmented" role="radiogroup" aria-label="Image rotation">
+                <label class="segmented__option"><input type="radio" name="rotation" value="0"> 0°</label>
+                <label class="segmented__option"><input type="radio" name="rotation" value="90"> 90°</label>
+                <label class="segmented__option"><input type="radio" name="rotation" value="180"> 180°</label>
+                <label class="segmented__option"><input type="radio" name="rotation" value="270"> 270°</label>
+              </div>
+              <p class="field__hint">Clockwise rotation of the sensor image, applied to every stream, snapshot and timelapse frame. Applying restarts the video streams briefly; the setting survives reboots and quality changes.</p>
+              <p id="rotation-warning" class="notice notice--warn" hidden>90° and 270° use a slower rotation path: higher CPU load, possibly a reduced frame rate and higher latency, and portrait output (width and height swap).</p>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Apply rotation</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
           <form class="setting-form" data-setting="snapshot_upload_enabled" novalidate>
             <fieldset class="card">
               <legend class="card__title">Snapshot upload</legend>

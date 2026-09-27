@@ -14,6 +14,7 @@ sys.path.insert(0, str(PI_DIR))
 
 import persist_restore  # noqa: E402
 import quality  # noqa: E402
+import rotation  # noqa: E402
 
 
 class FramesToPruneTests(unittest.TestCase):
@@ -55,6 +56,43 @@ class QualityEnvValuesTests(unittest.TestCase):
             persist_restore.quality_env_values(99),
             persist_restore.quality_env_values(quality.DEFAULT_QUALITY),
         )
+
+
+class RestoreSettingsTests(unittest.TestCase):
+    """state.json -> tmpfs env files, so settings survive a reboot."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+        for target, name, value in (
+            (quality, 'QUALITY_ENV', 'quality.env'),
+            (rotation, 'ROTATION_ENV', 'rotation.env'),
+        ):
+            p = patch.object(target, name, os.path.join(self.dir, value))
+            p.start()
+            self.addCleanup(p.stop)
+        for p in (patch.object(persist_restore, '_chown'),
+                  patch.object(persist_restore.rtsp_control, 'write_mode',
+                               return_value=True)):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _restore(self, data):
+        with patch.object(persist_restore.settings_store, 'load', return_value=data):
+            persist_restore._restore_settings('svc')
+
+    def test_rotation_is_materialized_next_to_quality(self):
+        self._restore({'quality_tier': 2, 'rotation': 270})
+        self.assertEqual(rotation.read_current(), 270)
+        self.assertEqual(quality.read_current()[0], 2)
+        persist_restore._chown.assert_any_call(rotation.ROTATION_ENV, 'svc')
+
+    def test_invalid_or_missing_rotation_writes_nothing(self):
+        for data in ({'quality_tier': 2}, {'rotation': 45}, {'rotation': '90'}):
+            with self.subTest(data=data):
+                self._restore(data)
+                self.assertFalse(os.path.exists(rotation.ROTATION_ENV))
 
 
 class PruneTimelapseTests(unittest.TestCase):

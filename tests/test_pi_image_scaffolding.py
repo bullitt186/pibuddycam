@@ -230,6 +230,7 @@ class ImageScaffoldingTests(unittest.TestCase):
             "python3-gi",
             "gstreamer1.0-tools",
             "gstreamer1.0-nice",
+            "gstreamer1.0-libcamera",
             "gir1.2-gst-rtsp-server-1.0",
             "overlayroot",
             "cloud-guest-utils",
@@ -463,6 +464,7 @@ class ImageScaffoldingTests(unittest.TestCase):
             "prusa-rtsp.service": "rtsp_server.py",
             "prusa-ha-rtsp.service": "rtsp_server.py",
             "prusa-admin.service": "admin_app.py",
+            "rpicam-source.service": "camera_source.py",
         }
         for name, script in expected.items():
             with self.subTest(unit=name):

@@ -386,6 +386,18 @@ const TESTS = [
       await waitForText(qualityForm.locator('.form-status'), 'Saved');
       assert(await qualityForm.locator('input[value="sd"]').isChecked(), 'accepted quality is SD');
 
+      const rotationForm = page.locator('.setting-form[data-setting="rotation"]');
+      const rotationWarning = page.locator('#rotation-warning');
+      assert(await rotationForm.locator('input[value="0"]').isChecked(), '0° is authoritative');
+      assert(await rotationWarning.isHidden(), 'no warning at 0°');
+      await rotationForm.locator('input[value="90"]').check();
+      assert(await rotationWarning.isVisible(), '90° shows the cost warning');
+      await rotationForm.getByRole('button', { name: 'Apply rotation' }).click();
+      await waitForText(rotationForm.locator('.form-status'), 'Saved');
+      assert(await rotationForm.locator('input[value="90"]').isChecked(), 'accepted rotation is 90°');
+      await rotationForm.locator('input[value="180"]').check();
+      assert(await rotationWarning.isHidden(), 'no warning at 180°');
+
       const intervalForm = page.locator('.setting-form[data-setting="snapshot_interval"]');
       await page.locator('#snapshot-interval').fill('5');
       await intervalForm.getByRole('button', { name: 'Save interval' }).click();

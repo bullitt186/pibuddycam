@@ -16,6 +16,7 @@ ignored by readers):
 
     version                  int   store schema version (always written)
     quality_tier             int   1=SD, 2=HD, 3=FHD (protobuf enum)
+    rotation                 int   0/90/180/270 clockwise image rotation (missing = 0)
     camera_name              str   non-empty stripped camera name
     snapshot_interval        int   10..600 seconds
     snapshot_upload_enabled  bool  periodic snapshot uploader on/off

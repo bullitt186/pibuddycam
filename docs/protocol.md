@@ -761,7 +761,10 @@ Notes:
   real hardware may report something else here), `registered`, `team_id`,
   `printer_uuid`. **`rotation` is not in the OpenAPI `camera_response` schema at all** —
   either an undocumented field the live backend added since the spec was last updated, or
-  the spec (v0.22.0) is simply incomplete here.
+  the spec (v0.22.0) is simply incomplete here. The Pi's local image-rotation setting (web
+  console → Camera) is unrelated to it. That setting rotates the encoded stream at the source,
+  has no firmware equivalent, and never writes this server-side field. At 90°/270° the Pi
+  reports the portrait size (for example `1080x1920`) in `/c/info` `resolution`.
 - **`features` (the top-level array in this request body) has no corresponding field in the
   OpenAPI `camera_request` schema either** — that schema only defines `config`, `options`,
   `capabilities`. We send it anyway because it was traced directly out of firmware

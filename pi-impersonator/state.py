@@ -15,6 +15,7 @@ Quality representations recovered from firmware 3.1.6
 """
 import asyncio
 
+import rotation as rotation_mod
 import timelapse
 
 # Exact firmware raw-event-byte -> protobuf-enum mapping (GAP-QUALITY-01).
@@ -49,6 +50,9 @@ class CameraState:
                  snapshot_upload_enabled=True):
         self.camera_name = camera_name
         self.quality = quality
+        # Pi-local absolute clockwise image rotation (0/90/180/270), applied by
+        # the camera source to every stream and still.
+        self.rotation = rotation_mod.DEFAULT_ROTATION
         self.snapshot_interval = snapshot_interval
         self.snapshot_upload_enabled = snapshot_upload_enabled
         # GAP-RTSP-02 (configured mode vs actual service state) is still open, so
@@ -100,6 +104,21 @@ class CameraState:
     def resolution(self):
         """Return the (width, height) for the current protobuf quality enum."""
         return RESOLUTIONS.get(self.quality, RESOLUTIONS[DEFAULT_QUALITY])
+
+    def oriented_resolution(self):
+        """Return the delivered (width, height): the tier size after rotation."""
+        width, height = self.resolution()
+        return rotation_mod.oriented(width, height, self.rotation)
+
+    def set_rotation(self, degrees):
+        """Set the image rotation; accepts only int 0/90/180/270."""
+        if rotation_mod.valid_rotation(degrees) is None:
+            return False
+        if degrees != self.rotation:
+            self.rotation = degrees
+            # The published resolution swaps for 90/270.
+            self.mark_info_dirty()
+        return True
 
     def set_quality(self, quality):
         """Set the protobuf enum (1..3). Returns True only for a valid tier."""
@@ -157,6 +176,7 @@ class CameraState:
         """
         return {
             'quality_tier': self.quality,
+            'rotation': self.rotation,
             'camera_name': self.camera_name,
             'snapshot_interval': self.snapshot_interval,
             'snapshot_upload_enabled': self.snapshot_upload_enabled,
@@ -182,6 +202,10 @@ class CameraState:
         value = data.get('quality_tier')
         if value is not None and self.set_quality(value):
             applied.append('quality_tier')
+
+        value = data.get('rotation')
+        if value is not None and self.set_rotation(value):
+            applied.append('rotation')
 
         value = data.get('camera_name')
         if value is not None and self.set_camera_name(value):
