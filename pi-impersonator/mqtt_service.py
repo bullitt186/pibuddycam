@@ -36,6 +36,7 @@ the camera entity) and ``<camera name> Controls`` (MQTT, settings + diagnostics)
 
 Stdlib only, and no file/network/thread side effects on import.
 """
+import concurrent.futures
 import json
 import logging
 import os
@@ -49,6 +50,7 @@ from typing import Optional, Protocol, runtime_checkable
 import admin_auth
 import mqtt_state
 import mqtt_topics
+import settings_dispatch
 
 log = logging.getLogger('prusa-cam.mqtt')
 
@@ -506,11 +508,20 @@ class MqttService:
     def __init__(self, coordinator, config, backend=None, *, clock=None,
                  sleeper=None, jitter=None, secrets=(), application_version='',
                  serial=None, mac=None, build_timelapse=None, restart=None,
-                 metrics_provider=None, dispatcher=None,
+                 metrics_provider=None, dispatcher=None, loop=None,
                  update_state_provider=None, update_install=None):
         self._coordinator = coordinator
         self._config = config
         self._backend = backend
+        # The coordinator/CameraState is owned by the camera runtime's event
+        # loop (it holds asyncio.Events the loop's own tasks await), but
+        # inbound MQTT commands arrive on paho's own network thread. When
+        # `loop` is supplied, coordinator setter calls are marshalled onto it
+        # (see `_run_on_loop`) instead of racing it directly, mirroring the
+        # fix `settings_dispatch.EventLoopMutationDispatcher` already applies
+        # to the admin-HTTP thread. `loop=None` (e.g. host tests with no
+        # running loop) keeps the previous inline-call behavior.
+        self._loop = loop
         self._clock = clock or time.monotonic
         self._sleeper = sleeper or time.sleep
         self._jitter = jitter or random.uniform
@@ -903,17 +914,53 @@ class MqttService:
     def _apply_command(self, name, payload):
         try:
             if name in ('timelapse_build', 'restart'):
+                # A button action never touches the coordinator/CameraState
+                # (it calls the injected build/restart callable directly), so
+                # it stays on this thread; marshalling it onto the loop would
+                # block RTSP/WebRTC/signaling for the action's full duration.
                 return self._apply_button(name, payload)
             text = _decode_payload(payload)
             handler = self._handlers().get(name)
             if handler is None:
                 return CommandResult(False, 'unsupported command')
-            return handler(text)
+            return self._run_on_loop(lambda: handler(text))
         except CommandError as e:
             return CommandResult(False, str(e))
         except Exception as e:
             self._log('mqtt: command %s failed: %s', name, e)
             return CommandResult(False, 'command failed')
+
+    def _run_on_loop(self, func):
+        """Run one coordinator-mutating callable on the owning event loop.
+
+        Bounded wait mirroring `settings_dispatch.EventLoopMutationDispatcher`:
+        a wedged loop can never pin the paho network thread forever, and a
+        timeout is reported truthfully rather than claiming success. Runs
+        inline when no loop was supplied (see `__init__`).
+        """
+        if self._loop is None:
+            return func()
+        future = concurrent.futures.Future()
+
+        def _run():
+            try:
+                future.set_result(func())
+            except Exception as e:  # noqa: BLE001 - reported to the caller below
+                future.set_exception(e)
+
+        try:
+            self._loop.call_soon_threadsafe(_run)
+        except RuntimeError:
+            self._log('mqtt: event loop is not running; applying command inline')
+            return func()
+        # Retrieve any late exception so a post-timeout failure is not
+        # reported as "never retrieved".
+        future.add_done_callback(lambda done: done.exception())
+        try:
+            return future.result(timeout=settings_dispatch.DEFAULT_MUTATION_TIMEOUT)
+        except concurrent.futures.TimeoutError:
+            self._log('mqtt: command mutation deadline exceeded')
+            return CommandResult(False, 'command timed out')
 
     def _handlers(self):
         return {

@@ -169,16 +169,12 @@ def load_config():
         # Bridge them into the legacy cfg shape this module consumes, otherwise
         # startup dies with KeyError: 'identity' on a freshly claimed device
         # (hardware-found: prusa-cam crash-looped and the camera target failed).
-        try:
-            device = config_schema.load_device()
-            secrets = config_schema.load_secrets()
-        except Exception as e:  # noqa: BLE001 - config must never be fatal
-            log.warning(f'appliance config unavailable: {type(e).__name__}')
-            device, secrets = {}, {}
-        if not isinstance(device, dict):
-            device = {}
-        if not isinstance(secrets, dict):
-            secrets = {}
+        device, secrets, errors = config_schema.load_appliance_config()
+        for path, error in errors:
+            # A missing file is not in `errors` (see load_appliance_config); this
+            # is always a real problem (unreadable/corrupt/too-new document), so
+            # it must be loud, not a silent fallback to an empty Prusa token.
+            log.error(f'config: {path} failed to load, running without it: {error}')
         cfg.add_section('identity')
         cfg.set(
             'identity', 'token',
@@ -718,6 +714,10 @@ async def main():
                 build_timelapse=build_timelapse_video,
                 restart=reboot_device,
                 metrics_provider=app_metrics.metrics_provider,
+                # Command messages arrive on paho's own network thread; the
+                # loop is required so coordinator mutations run on the thread
+                # that owns CameraState (see MqttService._run_on_loop).
+                loop=loop,
                 secrets=(token,),
                 # AC-31: the HA update entity's retained state is read from the
                 # root-written /data/prusa-cam/update-state.json; the install

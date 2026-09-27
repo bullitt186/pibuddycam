@@ -33,13 +33,20 @@ class ApplianceConfigBridgeTests(unittest.TestCase):
 
     def test_load_config_reads_the_durable_documents(self):
         text = ast.unparse(_func(self.tree, 'load_config'))
-        self.assertIn('config_schema.load_device', text)
-        self.assertIn('config_schema.load_secrets', text)
+        self.assertIn('config_schema.load_appliance_config', text)
         # The legacy cfg shape main() consumes.
         self.assertIn("'identity'", text)
         self.assertIn("'upload'", text)
         self.assertIn("'token'", text)
         self.assertIn("'server'", text)
+
+    def test_load_config_logs_real_failures_loudly(self):
+        """A config load failure (root-owned secrets, corrupt TOML, ...) must be
+        logged at ERROR with the real message, never silently swallowed as a
+        bare warning with just the exception type (WSJF review finding #3)."""
+        text = ast.unparse(_func(self.tree, 'load_config'))
+        self.assertIn('log.error', text)
+        self.assertNotIn('except Exception', text)
 
     def test_main_loads_config_before_reading_identity(self):
         main = _func(self.tree, 'main')

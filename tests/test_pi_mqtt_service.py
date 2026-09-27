@@ -7,9 +7,11 @@ state/discovery), command mapping and persistence ordering, rejection state,
 bounded payloads, retained-command rejection, HA birth republish, bounded
 reconnect backoff, failure isolation, secret hygiene, and import-safety.
 """
+import asyncio
 import importlib
 import json
 import sys
+import threading
 import unittest
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,7 +23,9 @@ sys.path.insert(0, str(PI_DIR))
 import config_schema  # noqa: E402
 import mqtt_service  # noqa: E402
 import mqtt_topics  # noqa: E402
+import settings_dispatch  # noqa: E402
 import state as state_module  # noqa: E402
+from settings_coordinator import SettingsCoordinator  # noqa: E402
 from state import CameraState  # noqa: E402
 
 DEVICE_SEED = 'appliance-seed-01'
@@ -208,6 +212,26 @@ class RecordingDispatcher:
         for task in tasks:
             task()
         return len(tasks)
+
+
+class FakeLoop:
+    """Minimal ``call_soon_threadsafe`` double for ``MqttService._run_on_loop``.
+
+    ``immediate=True`` (default) runs the scheduled callback synchronously, as
+    a loop that is free right now would -- enough to prove a command is
+    marshalled through the loop object rather than applied inline on the
+    calling thread. ``immediate=False`` never runs it, simulating a wedged
+    loop for the timeout path.
+    """
+
+    def __init__(self, immediate=True):
+        self.immediate = immediate
+        self.scheduled = []
+
+    def call_soon_threadsafe(self, callback):
+        self.scheduled.append(callback)
+        if self.immediate:
+            callback()
 
 
 class Action:
@@ -544,6 +568,123 @@ class CommandMappingTests(ServiceTestCase):
         result = service.handle_command(service.command_topic('restart'), b'on')
         self.assertFalse(result.ok)
         self.assertEqual(restart.calls, 0)
+
+
+class EventLoopDispatchTests(ServiceTestCase):
+    """WSJF review finding: a setting mutated by an MQTT command touches
+    ``CameraState``, which holds ``asyncio.Event``s the camera runtime's event
+    loop awaits (e.g. ``snapshot_interval_changed``). Calling ``.set()`` on one
+    from paho's own network thread is unsafe, so a setter command must be
+    marshalled onto the supplied loop instead of applied inline."""
+
+    def test_setter_command_is_marshalled_through_the_supplied_loop(self):
+        loop = FakeLoop()
+        service, coordinator, _, _, _ = self.make(loop=loop)
+        service.start()
+
+        result = service.handle_command(service.command_topic('snapshot_interval'), b'42')
+
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(len(loop.scheduled), 1)
+        self.assertEqual(coordinator.calls, [('set_snapshot_interval', (42,))])
+
+    def test_no_loop_keeps_the_previous_inline_behavior(self):
+        # Default `loop=None` (host tests, no running loop): applied inline,
+        # exactly as before this fix.
+        service, coordinator, _, _, _ = self.make()
+        service.start()
+
+        result = service.handle_command(service.command_topic('snapshot_interval'), b'42')
+
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(coordinator.calls, [('set_snapshot_interval', (42,))])
+
+    def test_button_actions_bypass_the_loop(self):
+        # Buttons call the injected build/restart callable directly and never
+        # touch the coordinator, so routing them through the loop would only
+        # block RTSP/WebRTC/signaling for no reason.
+        loop = FakeLoop()
+        restart = Action()
+        service, coordinator, _, _, _ = self.make(loop=loop, restart=restart)
+        service.start()
+
+        result = service.handle_command(service.command_topic('restart'), b'press')
+
+        self.assertTrue(result.ok)
+        self.assertEqual(restart.calls, 1)
+        self.assertEqual(loop.scheduled, [])
+        self.assertEqual(coordinator.calls, [])
+
+    def test_command_error_from_the_handler_survives_the_loop(self):
+        loop = FakeLoop()
+        service, coordinator, _, _, _ = self.make(loop=loop)
+        service.start()
+
+        result = service.handle_command(
+            service.command_topic('snapshot_interval'), b'not-a-number')
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reason, 'snapshot interval must be an integer')
+        self.assertEqual(coordinator.calls, [])
+
+    def test_wedged_loop_reports_a_truthful_timeout_instead_of_hanging(self):
+        loop = FakeLoop(immediate=False)
+        service, coordinator, _, _, _ = self.make(loop=loop)
+        service.start()
+
+        with patch.object(settings_dispatch, 'DEFAULT_MUTATION_TIMEOUT', 0.05):
+            result = service.handle_command(service.command_topic('snapshot_interval'), b'42')
+
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reason, 'command timed out')
+        self.assertEqual(coordinator.calls, [])  # never ran; not silently reported "ok"
+
+
+class RealEventLoopThreadSafetyTests(unittest.TestCase):
+    """Exercise the fix against a real event loop and a real ``CameraState``.
+
+    ``EventLoopDispatchTests`` above proves the dispatch mechanism is wired;
+    this proves the original hazard is actually gone: calling
+    ``handle_command`` from a thread that is not the loop must not raise, and
+    the mutation (including ``asyncio.Event.set()`` inside
+    ``CameraState.set_snapshot_interval``) must land correctly.
+    """
+
+    def setUp(self):
+        self.state = CameraState()
+        self.coordinator = SettingsCoordinator(
+            self.state, persist=lambda state: True, publish=lambda: None)
+        self.loop = asyncio.new_event_loop()
+        self.thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self._stop_loop)
+
+    def _stop_loop(self):
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join(timeout=5)
+        self.loop.close()
+
+    def _await_on_loop(self, coro, timeout=5):
+        return asyncio.run_coroutine_threadsafe(coro, self.loop).result(timeout=timeout)
+
+    def test_command_from_a_foreign_thread_sets_the_event_without_racing_the_loop(self):
+        service = mqtt_service.MqttService(
+            self.coordinator, valid_config(), backend=FakeBackend(),
+            clock=FakeClock(), sleeper=RecordingSleeper(),
+            jitter=lambda low, high: low, dispatcher=lambda func: None,
+            loop=self.loop)
+        service.start()
+
+        # Simulates paho's own network thread invoking the message callback;
+        # this test's own thread is not the loop thread.
+        result = service.handle_command(service.command_topic('snapshot_interval'), b'42')
+
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(self.state.snapshot_interval, 42)
+        # The event loop itself observes the Event as set -- proof `.set()`
+        # was not corrupted by running on the wrong thread.
+        self.assertTrue(self._await_on_loop(
+            asyncio.wait_for(self.state.snapshot_interval_changed.wait(), timeout=1)))
 
 
 class CommandRejectionTests(ServiceTestCase):

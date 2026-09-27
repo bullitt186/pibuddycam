@@ -341,6 +341,63 @@ class SaveLoadTests(unittest.TestCase):
             config_schema.save_secrets({'rogue': {'x': 'y'}}, path=self.secrets_path)
         self.assertFalse(os.path.exists(self.secrets_path))
 
+    def test_appliance_config_missing_files_is_not_an_error(self):
+        device, secrets, errors = config_schema.load_appliance_config(
+            self.device_path, self.secrets_path)
+        self.assertEqual(device, config_schema.default_device())
+        self.assertEqual(secrets, {})
+        self.assertEqual(errors, [])
+
+    def test_appliance_config_reports_corrupt_device_without_masking_secrets(self):
+        with open(self.device_path, 'w', encoding='utf-8') as f:
+            f.write('camera_name = "unterminated\n')
+        config_schema.save_secrets({'prusa': {'token': 'tok-123'}}, path=self.secrets_path)
+
+        device, secrets, errors = config_schema.load_appliance_config(
+            self.device_path, self.secrets_path)
+
+        self.assertEqual(device, config_schema.default_device())
+        self.assertEqual(secrets, {'prusa': {'token': 'tok-123'}})
+        self.assertEqual(len(errors), 1)
+        path, error = errors[0]
+        self.assertEqual(path, self.device_path)
+        self.assertIsInstance(error, config_schema.ValidationError)
+
+    def test_appliance_config_reports_unreadable_secrets_without_leaking_content(self):
+        config_schema.save_device(config_schema.default_device(), path=self.device_path)
+        with open(self.secrets_path, 'w', encoding='utf-8') as f:
+            f.write('[prusa]\ntoken = "should-not-be-used"\n')
+        os.chmod(self.secrets_path, 0o000)
+        self.addCleanup(os.chmod, self.secrets_path, 0o600)
+
+        try:
+            device, secrets, errors = config_schema.load_appliance_config(
+                self.device_path, self.secrets_path)
+        finally:
+            os.chmod(self.secrets_path, 0o600)
+
+        if not errors:
+            self.skipTest('running as a user unaffected by file permissions (e.g. root)')
+        self.assertEqual(device['camera_name'], config_schema.default_device()['camera_name'])
+        self.assertEqual(secrets, {})
+        path, error = errors[0]
+        self.assertEqual(path, self.secrets_path)
+        self.assertIsInstance(error, OSError)
+        self.assertNotIn('should-not-be-used', str(error))
+
+    def test_appliance_config_reports_both_failures_independently(self):
+        with open(self.device_path, 'w', encoding='utf-8') as f:
+            f.write('schema_version = 2\n')
+        with open(self.secrets_path, 'w', encoding='utf-8') as f:
+            f.write('[rogue]\nkey = "x"\n')
+
+        device, secrets, errors = config_schema.load_appliance_config(
+            self.device_path, self.secrets_path)
+
+        self.assertEqual(device, config_schema.default_device())
+        self.assertEqual(secrets, {})
+        self.assertEqual({path for path, _ in errors}, {self.device_path, self.secrets_path})
+
     def test_load_too_new_does_not_modify_file(self):
         text = 'schema_version = 2\ncamera_name = "Future"\n'
         with open(self.device_path, 'w', encoding='utf-8') as f:

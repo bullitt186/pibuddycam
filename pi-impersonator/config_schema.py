@@ -646,6 +646,40 @@ def load_secrets(path=SECRETS_TOML_PATH):
     return parse_secrets(text)
 
 
+def load_appliance_config(device_path=DEVICE_TOML_PATH, secrets_path=SECRETS_TOML_PATH):
+    """Load the device+secrets pair, classifying any real load failure.
+
+    A missing document (first boot, or the offline repartition hasn't created
+    ``/data`` yet) is not an error: :func:`load_device`/:func:`load_secrets`
+    already return a default/empty document for that case. Anything else --
+    a permission error on a root-owned ``secrets.toml``, corrupt TOML, an
+    unknown key, a too-new schema -- is caught *here* instead of by the
+    caller, so a caller can never collapse "no config yet" and "config is
+    broken" into the same silent fallback (the root-owned-secrets scenario
+    previously resolved the Prusa token to an empty string with no signal
+    that anything was wrong).
+
+    Returns ``(device, secrets, errors)``. ``device``/``secrets`` are always a
+    usable document (defaults/empty on failure) so the appliance can keep
+    serving snapshots/RTSP/admin while the operator fixes the on-disk
+    document. ``errors`` is a list of ``(path, exception)`` pairs, non-empty
+    only for a real failure; exception messages from this module never
+    contain secret values (see module docstring), so they are safe to log.
+    """
+    device = default_device()
+    secrets = {}
+    errors = []
+    try:
+        device = load_device(device_path)
+    except Exception as e:  # noqa: BLE001 - classified for the caller, not swallowed
+        errors.append((device_path, e))
+    try:
+        secrets = load_secrets(secrets_path)
+    except Exception as e:  # noqa: BLE001 - classified for the caller, not swallowed
+        errors.append((secrets_path, e))
+    return device, secrets, errors
+
+
 def _fsync_dir(directory):
     """Best-effort fsync of ``directory`` so a rename survives a power cut."""
     try:
