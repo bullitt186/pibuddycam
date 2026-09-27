@@ -19,7 +19,7 @@ stays stdlib-only. Only 2 tests are expected to skip. They are mutually exclusiv
 
 ## Keeping CI green
 
-- Run `python3 -m unittest discover -s tests` and `python3 -m compileall -q app tests`
+- Run `python3 -m unittest discover -s tests -t .` and `python3 -m compileall -q app tests`
   before pushing (see `CLAUDE.md`).
 - **A local pass is not enough if a file is only on your disk.** `.gitignore` excludes `*.png`,
   `*.img`, `*.env` and similar patterns. A file the build or tests need must be tracked, with a

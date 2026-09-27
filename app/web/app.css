@@ -5,7 +5,7 @@
  * and a single orange accent. No Prusa assets, no external fonts, no CDN.
  * The palette is chosen so the documented pairings meet WCAG AA contrast
  * (>= 4.5:1 for normal text, >= 3:1 for UI/large text); see
- * tests/test_pi_admin_web.py, which computes the ratios from these tokens.
+ * tests/app/test_admin_web.py, which computes the ratios from these tokens.
  */
 
 :root {

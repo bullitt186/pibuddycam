@@ -49,7 +49,7 @@ jobs:
           python3 -m pip install PyYAML==6.0.2
 
       - name: Unit tests
-        run: python3 -m unittest discover -s tests
+        run: python3 -m unittest discover -s tests -t .
 
       - name: Byte-compile app and tests
         run: python3 -m compileall -q app tests

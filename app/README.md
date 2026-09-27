@@ -136,7 +136,7 @@ The source-level tests use only the Python standard library and run without Pi/G
 packages:
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -t . -v
 python3 -m compileall -q app tests
 ```
 

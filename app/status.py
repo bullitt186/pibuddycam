@@ -1,7 +1,7 @@
 """Pure construction of the ``CameraInfoMessage`` status payload.
 
 Stdlib-only and free of ``socketio``/``gi``/GStreamer so the field construction
-can be unit-tested on the host (``tests/test_pi_messages.py``). ``signaling.py``
+can be unit-tested on the host (``tests/app/test_messages.py``). ``signaling.py``
 supplies live system telemetry; the shared ``CameraState`` supplies the
 command-driven values (GAP-STATUS-01).
 """

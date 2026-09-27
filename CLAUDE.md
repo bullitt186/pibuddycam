@@ -61,7 +61,7 @@ speaker, fan, or MicroSD behavior. Do not make that product decision implicitly.
 The Python tests use the standard library and do not require the Pi runtime dependencies:
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -t . -v
 python3 -m compileall -q app tests
 ```
 

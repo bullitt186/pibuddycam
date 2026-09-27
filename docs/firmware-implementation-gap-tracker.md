@@ -44,7 +44,7 @@ following is the completion contract for each `GAP-*` item:
 5. Run:
 
    ```bash
-   python3 -m unittest discover -s tests -v
+   python3 -m unittest discover -s tests -t . -v
    python3 -m compileall -q app tests
    ```
 
@@ -546,7 +546,7 @@ closing the gap.
   start/stop through `rtsp_control.apply_mode` with persistence. The policy actions `fw_update`,
   `reboot`, and `timelapse_enable/disable/make/file_list` are recognized and logged as not
   implemented; they no longer cause an unrelated response or a fake success. Tag 13 is decoded
-  and logged only. Tests: `test_pi_trigger.py`. Remaining: per-action `client_trigger`
+  and logged only. Tests: `test_trigger.py`. Remaining: per-action `client_trigger`
   result/error codes (GAP-SIO-01) and the policy decisions for OTA/reboot/timelapse
   (GAP-OTA-01/GAP-DEVICE-01/GAP-TIMELAPSE-01). Trigger result acks are not sent because the
   installed `python-socketio` trigger handler signature carries no ack callback.
@@ -679,7 +679,7 @@ closing the gap.
   resumes periodic snapshots. Viewer trickle candidates are extracted by the host-testable
   [`proto.find_webrtc_candidate`](../app/proto.py), which also unwraps the
   UTF-8-collapsed tag4 `str` (the live 14-of-21 drop). Tests:
-  `test_pi_proto.py::FindWebRtcCandidateTests`, `test_pi_webrtc_lifecycle.py`. The firmware's
+  `test_proto.py::FindWebRtcCandidateTests`, `test_webrtc_lifecycle.py`. The firmware's
   exact peer TTL worker remains untraced, so the watchdog is explicitly Pi-side policy.
   **Live-verified (app and browser, 2026-09-19):** connect, media, and teardown (ICE failed/closed/
   disconnected clears `state.streaming` and resumes snapshots). Only explicit TTL-expiry tests
@@ -710,7 +710,7 @@ closing the gap.
   and exposes the `FUN_000b996c` gate (`offer_allowed`). `main.py`'s offer handler consults the gate,
   and `set_webrtc_mode` / `configuration.webrtc` start/stop the `PrusaWebRTC` GLib loop with
   `state.webrtc_mode` and `state.webrtc_status` tracked separately. Tests:
-  `test_pi_webrtc_control.py`. **Correction:** the paired rule where `configuration.webrtc=on` also
+  `test_webrtc_control.py`. **Correction:** the paired rule where `configuration.webrtc=on` also
   forces RTSP disabled **is implemented** (`main.py` `handle_event`, `Config: webrtc on → RTSP
   forced disabled (paired rule)`), consistent with GAP-CONFIG-01; WebRTC mode is persisted via
   `settings_store` / `state.json` (GAP-PERSIST-01), not memory-only.
@@ -745,7 +745,7 @@ closing the gap.
   [`quality.quality_change_allowed`](../app/quality.py): while a TURN client is online a
   raise (`requested > current`) is rejected with the recovered warning log and no live/persist
   effect; lowering/equal and the no-TURN case are unchanged. Tests:
-  `tests/test_pi_turn_quality_lock.py`.
+  `tests/app/test_turn_quality_lock.py`.
 - **Firmware behavior:** consumes inbound fields for transport policy, TTL, video configuration,
   plan, quality, FPS, scope/lifetime, and ICE configuration. It applies per-client quality limits
   and locks incompatible quality changes while a TURN client is active. **[confirmed]**
@@ -763,7 +763,7 @@ closing the gap.
   enforced**; leave the rest documented as unenforced.
 - **Acceptance:** parameterized tests demonstrate distinct ALL/RELAY, TTL, SD/HD/FHD, and FPS
   behavior; TURN sessions block global quality changes like firmware (covered by
-  `tests/test_pi_turn_quality_lock.py`).
+  `tests/app/test_turn_quality_lock.py`).
 - **Code:** [`proto.py`](../app/proto.py#L100-L113),
   [`webrtc.py`](../app/webrtc.py#L56-L72)
 
@@ -811,7 +811,7 @@ closing the gap.
   sender in
   [`signaling.py`](../app/signaling.py) (`send_webrtc_connection_info`), wired from
   [`main.py`](../app/main.py) (`on_connection_info`). Tests:
-  `tests/test_pi_webrtc_connection_info.py`. **Assumption:** the exact GStreamer `get-stats`
+  `tests/app/test_webrtc_connection_info.py`. **Assumption:** the exact GStreamer `get-stats`
   structure shape is version-dependent; the extractor is a best-effort recursive scan and skips
   the event when the selected pair cannot be identified (never guesses).
 
@@ -896,7 +896,7 @@ closing the gap.
   `state.snapshot_upload_enabled` that `periodic_snapshot_allowed` already reads. Immediate
   get-snapshot is independent of that switch and keeps only the existing WebRTC pause. Status has
   no recovered field for this flag, so none is emitted rather than inventing one. Tests:
-  `test_pi_trigger.py` (`SnapshotControlTests`). Live cadence verification on the Pi remains
+  `test_trigger.py` (`SnapshotControlTests`). Live cadence verification on the Pi remains
   pending.
 
 ### GAP-INFO-01 — Refresh and retry `/c/info`
@@ -923,7 +923,7 @@ closing the gap.
   dirty/countdown loop (`next_info_action`, reload to 10 on failure); `main.info_service_loop`
   ticks every second and marks dirty on camera-name, quality, snapshot-interval, and RTSP/WebRTC
   mode changes. Retry is bounded by `http_result.MAX_INFO_RETRIES` (the task contract's finite
-  bound; firmware itself retries indefinitely). Tests: `test_pi_info_service.py`
+  bound; firmware itself retries indefinitely). Tests: `test_info_service.py`
   (`NextInfoActionTests`, `DirtyAfterResultTests`, `ServiceLoopRecoveryTests`).
 
 ### GAP-CAP-01 — Stop overpromising unsupported features, or implement their wire behavior
@@ -1069,7 +1069,7 @@ closing the gap.
   (`PIBUDDYCAM_RTSP_MODE_FILE` override) and is read at startup. On the appliance, persistence is owned
   by `/data/pibuddycam/state.json`; `/etc/pibuddycam` is tmpfs re-materialized at boot. The older
   lower-filesystem/`deploy.sh` statement applied only to the legacy developer install. Tests:
-  `test_pi_rtsp_control.py`. Default mode when the file is absent is `2` (enabled), matching the
+  `test_rtsp_control.py`. Default mode when the file is absent is `2` (enabled), matching the
   shipped unit; the firmware's shipped default remains unrecovered. Client tracking is unchanged
   (`/proc/net/tcp`).
 
@@ -1098,8 +1098,8 @@ closing the gap.
   start-to-start deadline (`next_deadline`), so capture/upload duration no longer inflates cadence
   and an interval change catches up immediately. `CameraState.periodic_snapshot_allowed()` now
   reflects only the configured snapshot-upload enable flag, and the explicit trigger path has no
-  streaming guard. Tests: `test_pi_scheduling.py`, `test_pi_state.py`, and
-  `test_pi_onvif.py::MainWiringTests`.
+  streaming guard. Tests: `test_scheduling.py`, `test_state.py`, and
+  `test_onvif.py::MainWiringTests`.
 - **Connect impact:** normal snapshot cadence during local RTSP is now live-verified; the same path
   has source-level coverage for WebRTC but still needs a simultaneous live Connect/App session.
 - **Partial live verification (2026-09-20, `312b59b`):** while a GStreamer client held the deployed
@@ -1153,7 +1153,7 @@ closing the gap.
   exactly `403`: snapshot handler `FUN_0005c568` compares the response text to `"200"`, `"204"`,
   `"403"` and logs `Upload image BLOCKED by server!` (lp_app.strings:8304); `/c/info`
   `FUN_00062d74` accepts only `"200"`. Redirects are classified but not auto-followed because
-  firmware shows no redirect handling. Tests: `test_pi_http_result.py`. Log paths redact
+  firmware shows no redirect handling. Tests: `test_http_result.py`. Log paths redact
   token/fingerprint via `main.redact_secrets`.
 
 ### GAP-INFO-02 — Keep `/c/info` dynamic values consistent
@@ -1175,7 +1175,7 @@ closing the gap.
 - **Implementation (staged, commit pending):** [`info_body.py`](../app/info_body.py)
   builds the JSON body from `CameraState` (`state.resolution()`/`state.camera_name`), and
   `upload.upload_info(session, state, ...)` no longer takes independent width/height/name.
-  Tests: `test_pi_info_body.py` (body/status name and resolution consistency).
+  Tests: `test_info_body.py` (body/status name and resolution consistency).
 
 ### GAP-AUTH-01 — Require successful authentication ACK
 
@@ -1229,7 +1229,7 @@ closing the gap.
 
 - [x] **P2 · Closed 2026-09-20: resolved by owner decision (truthful decline), not live-tested**
 - **Resolution:** resolved by owner decision (truthful decline), not live-tested.
-- **Implementation:** `ota.py` (stdlib-only) parses the check-in (`file`/`last_version`/`sha1sum`/`force_upgrade`), compares dotted versions and classifies `up_to_date`/`update_available`/`forced_update`/`invalid`, and verifies integrity by SHA-1. `main.py` runs a periodic `ota_loop` (6 h), classifies and logs, and both `start_fw_update` (configuration) and the `fw_update` trigger return an explicit unsupported result (`decline_firmware_update`, reason `pi_impersonator_does_not_flash_firmware`) — never a silent no-op and never a destructive flash. Tests: `tests/test_pi_ota.py` (no update, available, forced, older, malformed, integrity match/mismatch, policy).
+- **Implementation:** `ota.py` (stdlib-only) parses the check-in (`file`/`last_version`/`sha1sum`/`force_upgrade`), compares dotted versions and classifies `up_to_date`/`update_available`/`forced_update`/`invalid`, and verifies integrity by SHA-1. `main.py` runs a periodic `ota_loop` (6 h), classifies and logs, and both `start_fw_update` (configuration) and the `fw_update` trigger return an explicit unsupported result (`decline_firmware_update`, reason `pi_impersonator_does_not_flash_firmware`) — never a silent no-op and never a destructive flash. Tests: `tests/app/test_ota.py` (no update, available, forced, older, malformed, integrity match/mismatch, policy).
 - **Acceptance:** staged fixtures cover no update / available / integrity failure / remote-start decline; no unsafe installation path exists.
 - **Still open:** a genuine release download+verify+install is intentionally not implemented (owner default); progress `client_trigger` messages remain under `GAP-SIO-01`.
 - **Firmware behavior:** periodically queries the OTA endpoint, compares release/version metadata,
@@ -1252,9 +1252,9 @@ closing the gap.
 
 - [~] **P2 · Firmware-named frames/AVI live-verified; make-video verified directly; file_list not app-exercisable**
 - **2026-09-19 (live symptom + descriptor re-trace):** Connect shows *"Time lapse not available, camera storage not detected, insert SD card"*. The app reads storage from the **`status` message**, specifically the `extended_status.4` storage block (descriptor `0x3f72b0`; firmware labels it the "video/timelapse mode/storage block"). The descriptor was recovered exactly as **tags 1-4 uvarint + tag 5 callback string**: tag 1 = SD mounted state (`FUN_000744ac`, translated `0->2`, `1->1`, else `0`; i.e. **1 = mounted/present, 2 = not mounted**), tags 2/3/4 = total/free/used MB (`FUN_000745e0`, `(f_bsize * f_blocks) >> 20` etc. via `statvfs64("/mnt/sdcard")`), tag 5 = mount-mode string (`FUN_00073914` -> `"RW"`/`"RO"`/`"UNKNOWN"`). **Correction:** the earlier note mapping `FUN_000abcb0`/`FUN_000abaf4` into this block was wrong — those are TimelapseService singleton getters that belong to top-level `timelapse_status` (field 2), and the `MODEL` string previously emitted on tag 5 was a misread.
-- **Implementation (2026-09-19, local; not live-verified):** [`timelapse.py`](../app/timelapse.py) provides the Pi storage policy — `sd_present` (`os.path.isdir` + `os.access(R_OK)` over `/mnt/sdcard`, matching the firmware's `FUN_00071bc0` accessibility check; the Pi has no block device), `sd_space` (`statvfs` MB with the firmware shift), `sd_mode` (`RW`/`RO`/`UNKNOWN`), and `storage_status` (the 5-tuple). [`status.py`](../app/status.py) encodes it on `extended_status.4` and wires `timelapse_status` tags 1/2 to `state.timelapse_enabled`/`state.timelapse_interval` (`FUN_000abcdc`/`FUN_000abcb0`); [`signaling.py`](../app/signaling.py) supplies live telemetry. `deploy.sh` now chowns the `/mnt/sdcard` mountpoint itself to the service user (not just `/mnt/sdcard/timelapse`) so the mode reports `RW`, and installs samba before writing its config. Tests: `tests/test_pi_timelapse.py` (`StorageStatusTests`), `tests/test_pi_status_schema.py` (storage-block and timelapse enable/interval).
+- **Implementation (2026-09-19, local; not live-verified):** [`timelapse.py`](../app/timelapse.py) provides the Pi storage policy — `sd_present` (`os.path.isdir` + `os.access(R_OK)` over `/mnt/sdcard`, matching the firmware's `FUN_00071bc0` accessibility check; the Pi has no block device), `sd_space` (`statvfs` MB with the firmware shift), `sd_mode` (`RW`/`RO`/`UNKNOWN`), and `storage_status` (the 5-tuple). [`status.py`](../app/status.py) encodes it on `extended_status.4` and wires `timelapse_status` tags 1/2 to `state.timelapse_enabled`/`state.timelapse_interval` (`FUN_000abcdc`/`FUN_000abcb0`); [`signaling.py`](../app/signaling.py) supplies live telemetry. `deploy.sh` now chowns the `/mnt/sdcard` mountpoint itself to the service user (not just `/mnt/sdcard/timelapse`) so the mode reports `RW`, and installs samba before writing its config. Tests: `tests/app/test_timelapse.py` (`StorageStatusTests`), `tests/app/test_status_schema.py` (storage-block and timelapse enable/interval).
 - **Emulated SD (done, verified):** `/mnt/sdcard/timelapse` on the Pi (the exact firmware path), shared read/write over SMB as `\\<pi>\sdcard` (share `sdcard`; `smbd` on 139/445). `deploy.sh` provisions the dir + share + samba; `bootstrap.sh` installs samba. `MicroSd` is re-advertised.
-- **Implementation:** `timelapse.py` (stdlib-only) provides interval/FPS validation, timestamped frame naming/storage, ordered listing, a minimal stdlib MJPEG-in-AVI writer, the `<name>:<status>` `.timelapse_videos.csv` index, and the firmware-shaped `file_list` fragmenter under `/mnt/sdcard/timelapse`. `CameraState` carries `timelapse_enabled/interval/fps`; `main.timelapse_loop` captures a frame on the interval while enabled; trigger tags 5 (enable/disable), 14 (make video) and 15 (file list) are wired. `signaling.send_file_list` emits the recovered `0x3f701c` envelope on the `file_list` event (field 1 = `"<page>;<total>\n<chunk>"` where `<chunk>` is one `<name>;<status>\n` per `.avi`, field 2 = HTTP token, field 3 = request_id when present, field 4 omitted); an empty list sends nothing. Tests: `tests/test_pi_timelapse.py`, `tests/test_pi_file_list.py`.
+- **Implementation:** `timelapse.py` (stdlib-only) provides interval/FPS validation, timestamped frame naming/storage, ordered listing, a minimal stdlib MJPEG-in-AVI writer, the `<name>:<status>` `.timelapse_videos.csv` index, and the firmware-shaped `file_list` fragmenter under `/mnt/sdcard/timelapse`. `CameraState` carries `timelapse_enabled/interval/fps`; `main.timelapse_loop` captures a frame on the interval while enabled; trigger tags 5 (enable/disable), 14 (make video) and 15 (file list) are wired. `signaling.send_file_list` emits the recovered `0x3f701c` envelope on the `file_list` event (field 1 = `"<page>;<total>\n<chunk>"` where `<chunk>` is one `<name>;<status>\n` per `.avi`, field 2 = HTTP token, field 3 = request_id when present, field 4 omitted); an empty list sends nothing. Tests: `tests/app/test_timelapse.py`, `tests/app/test_file_list.py`.
 - **Live (Pi-side) 2026-09-19:** deployed via `deploy.sh` (overlay maintenance flow, services `active`); `/mnt/sdcard` is owned by the service user and writable; the deployed `timelapse.storage_status()` returns `(1, <total>, <free>, <used>, 'RW')` (present, RW); `smbd` active; `/c/info` 200 and `status` sent (387 bytes).
 - **Live (app-side) confirmed 2026-09-19:** after the deploy, Connect shows timelapse **available**; the storage page displays SD size/used/free and the interval is configurable.
 - **Live end-to-end test 2026-09-19:** enable/disable works via trigger tag 5 (`Trigger timelapse_enable`/`timelapse_disable`); frame capture works — 9 `frame_NNNNN.jpg` written to `/mnt/sdcard/timelapse` at the capture cadence (that run used the old `frame_NNNNN.jpg` naming, since superseded by `timelapse_<HH-MM-SS-mmm>.jpg`). Changing the app's interval sent `configuration {2: 30}` (previously ignored); now wired to `state.timelapse_interval` via the recovered `set_timelaps_interval` mapping (GAP-CONFIG-01). **Redeployed and re-verified:** the log shows `Config: timelapse_interval → 30s` and 7 frames landed exactly **35 s apart** (30 s interval + ~5 s capture), proving the interval now takes effect live.
@@ -1310,12 +1310,12 @@ closing the gap.
   the oldest `/data/sdcard/timelapse/*.jpg` frames when `/data` free space is below 300 MB
   (`.avi`/CSV never deleted). `deploy.sh` installs+enables the unit and activates the fstab entry
   only when `/dev/mmcblk0p3` exists (derives the real PARTUUID, skips when already present).
-- **Tests:** `tests/test_pi_settings_store.py` (round-trip, version, missing/corrupt→`.bad`,
-  unavailable no-op, atomic-on-replace-failure), `tests/test_pi_state.py::PersistedStateTests`
-  (contents + valid/invalid apply), `tests/test_pi_timelapse.py::MainTimelapseWiringTests`
+- **Tests:** `tests/app/test_settings_store.py` (round-trip, version, missing/corrupt→`.bad`,
+  unavailable no-op, atomic-on-replace-failure), `tests/app/test_state.py::PersistedStateTests`
+  (contents + valid/invalid apply), `tests/app/test_timelapse.py::MainTimelapseWiringTests`
   (AST: `_save_persisted_state` is the injected persist callback; `handle_event` routes
   ≥6 mutations through `settings_coordinator`; startup loads and restores via the coordinator),
-  `tests/test_pi_persist_restore.py` (`frames_to_prune` oldest-first,
+  `tests/app/test_persist_restore.py` (`frames_to_prune` oldest-first,
   `quality_env_values`, import safety).
 - **Live verification 2026-09-20:** the SD was repartitioned offline (p2 → 10.3G, `mmcblk0p3` 4G
   ext4 LABEL `PERSIST` PARTUUID `46f0d7c3-03`), then a deploy added
@@ -1338,7 +1338,7 @@ closing the gap.
   reboot trigger; the Pi rebooted immediately (SSH dropped, uptime reset to ~1 min), came back, all
   services `active`, `/c/info` returned `200` (`origin='OTHER', registered=True`), and
   `/boot/firmware/bootlog.txt` recorded the boot. The 60 s rate limit and the refusal paths remain
-  covered by `test_pi_device_control.py` (`RebootGuardTests`).
+  covered by `test_device_control.py` (`RebootGuardTests`).
 - **Firmware behavior:** remote reboot trigger reboots the device and reports the appropriate result
   before disconnect. **[confirmed]**
 - **Current behavior:** advertises `CameraReboot` but does not dispatch the trigger.
@@ -1356,7 +1356,7 @@ closing the gap.
   `request_reboot` with a narrowly scoped `reboot_device()` that runs only
   `['sudo','systemctl','reboot']`; the outcome is logged and success is never faked. A second
   request inside the window, a `False` return, and a raised exception all return `False` without
-  rebooting. Tests: `test_pi_device_control.py` (`RebootGuardTests`, `MainWiringTests`).
+  rebooting. Tests: `test_device_control.py` (`RebootGuardTests`, `MainWiringTests`).
   **Remaining:** the live
   reboot is obviously unverified, and the firmware-style per-action `client_trigger` result code
   (GAP-SIO-01) is still not sent.
@@ -1389,7 +1389,7 @@ closing the gap.
   (`auto`/`day`/`night` -> 1/2/3, `FW-CONFIG:193-228`), logs that the Pi has no IR illuminator,
   returns `False`, and leaves `ir_mode` unavailable instead of claiming the mode was applied;
   `main.py`'s configuration handler routes `light_control` through it. Tests:
-  `test_pi_device_control.py` (`HardwareAvailabilityTests`). **Closed (Wave 2):** the truthful
+  `test_device_control.py` (`HardwareAvailabilityTests`). **Closed (Wave 2):** the truthful
   `MicroSd` status is the already-correct `extended_status.4` block, and the remaining
   `camera_status` fields are either pruned (`ir_mode`/`speaker_volume`) or moot, so the hardcoded
   IR/speaker bytes in [`status.py`](../app/status.py) are left pinned harmlessly
@@ -1466,7 +1466,7 @@ closing the gap.
   persisted seed. It reports an empty MAC when none is read. **Assumption:** the exact firmware alphabet
   of `FUN_000997f8(..., 10, 1)` is unrecovered; alphanumeric is used. This note describes the
   legacy `config.ini` developer path; appliance identity is stored in durable TOML under `/data`.
-  Tests: `test_pi_identity.py` (`FallbackSeedTests`).
+  Tests: `test_identity.py` (`FallbackSeedTests`).
 
 ### GAP-IDENTITY-02 — Deploy exact fingerprint only with a fresh token
 
@@ -1533,7 +1533,7 @@ closing the gap.
 ### GAP-STATUS-03 — Verify remaining status subfields against fixtures
 
 - [~] **P3 · Nested schema recovered from the descriptor and three mismatches fixed**
-- **Implementation (WP-8):** dumped `CameraInfoMessage` @ `0x3f6e98` and its submessages and fixed three wire-type/tag mismatches in `status.py`: `timelapse_status` (descriptor `0x3f753c`) tag6 = fixed32/float, tag7 = uvarint (were swapped); `extended_status.4` (descriptor `0x3f72b0`) tags 1-4 uvarint + tag 5 string — the block is the SD storage block, not a model string (the earlier "model on tag 5" reading was corrected in GAP-TIMELAPSE-01); `extended_status.6` (descriptor `0x3f7278`) RTSP URL on tag 3 (was 4). Tests: `tests/test_pi_status_schema.py`. Live-verified: `/c/info` 200, snapshots 200, status sent with no errors.
+- **Implementation (WP-8):** dumped `CameraInfoMessage` @ `0x3f6e98` and its submessages and fixed three wire-type/tag mismatches in `status.py`: `timelapse_status` (descriptor `0x3f753c`) tag6 = fixed32/float, tag7 = uvarint (were swapped); `extended_status.4` (descriptor `0x3f72b0`) tags 1-4 uvarint + tag 5 string — the block is the SD storage block, not a model string (the earlier "model on tag 5" reading was corrected in GAP-TIMELAPSE-01); `extended_status.6` (descriptor `0x3f7278`) RTSP URL on tag 3 (was 4). Tests: `tests/app/test_status_schema.py`. Live-verified: `/c/info` 200, snapshots 200, status sent with no errors.
 - **Still open:** a golden fixture captured from a genuine 3.1.6 status (not available offline) and the semantic annotation of every remaining nested tag.
 - **Firmware behavior:** sends the recovered top-level fields 2, 3, 4, 5, 8, 9, 10 conditionally,
   and 11, with many nested values obtained from actual services/configuration. **[confirmed]**
@@ -1553,7 +1553,7 @@ closing the gap.
 
 - [x] **P3 · Implemented and live-verified**
 - **Firmware behavior (WP-8):** `FUN_000b1dc8` detects the timezone from the web API (`timezone.prusa3d.com`, JSON `timezone` when `status == success`, follows a 301 `Location`), `FUN_000b1620` swaps the `UTC+`/`UTC-` prefix into the POSIX form, `FUN_000b170c` writes `/etc/TZ` (64-char cap), and `FUN_000b130c` reads it back for status tag 5.10.1.
-- **Implementation:** `timezone.py` (detect/parse/convert/read/write), `CameraState.tz_name`, `main.detect_timezone` (runs at startup over the shared aiohttp session), `status` reports the detected value; `write_tz_file` falls back to the unit's passwordless `sudo tee` so `/etc/TZ` is actually written. Tests: `tests/test_pi_timezone.py`.
+- **Implementation:** `timezone.py` (detect/parse/convert/read/write), `CameraState.tz_name`, `main.detect_timezone` (runs at startup over the shared aiohttp session), `status` reports the detected value; `write_tz_file` falls back to the unit's passwordless `sudo tee` so `/etc/TZ` is actually written. Tests: `tests/app/test_timezone.py`.
 - **Live-verified 2026-09-19:** `timezone: API 'UTC+2' -> reported 'UTC-2'`, `/etc/TZ` = `UTC-2`, status sent, `/c/info` 200.
 - **Still open:** golden capture from a genuine 3.1.6 device (not available offline); non-UTC± (IANA) values pass through unchanged.
 - **Firmware behavior:** detects timezone through its configured/web timezone service and reports
@@ -1570,7 +1570,7 @@ closing the gap.
 ### GAP-NETWORK-01 — Verify Wi-Fi signal conversion and secondary network block
 
 - [~] **P3 · Signal conversion fixed to the firmware formula**
-- **WP-8/network:** recovered `FUN_00097b38`: the input is the **RSSI (dBm)** `level` column of `/proc/net/wireless`, converted as `rssi==0 || rssi<-99 -> 0`, `rssi>-51 -> 100`, else `(rssi+100)*2`. `network.py` implements `rssi_to_quality`/`parse_wireless_level`/`signal_quality_from_wireless`, and `signaling._signal_quality` now uses it instead of the previous linear 0–70 link-quality mapping. Tests: `tests/test_pi_network.py`.
+- **WP-8/network:** recovered `FUN_00097b38`: the input is the **RSSI (dBm)** `level` column of `/proc/net/wireless`, converted as `rssi==0 || rssi<-99 -> 0`, `rssi>-51 -> 100`, else `(rssi+100)*2`. `network.py` implements `rssi_to_quality`/`parse_wireless_level`/`signal_quality_from_wireless`, and `signaling._signal_quality` now uses it instead of the previous linear 0–70 link-quality mapping. Tests: `tests/app/test_network.py`.
 - **Still open:** a golden live status capture to confirm the exact value against a genuine camera; the empty secondary network submessage stays omitted (fixed earlier).
 - **Firmware behavior:** reports current WLAN identity/address/signal and has descriptor space for
   additional network state. **[confirmed]**
@@ -1604,7 +1604,7 @@ closing the gap.
   `aiohttp.ClientSession` with bounded `ClientTimeout`; `main` creates it once and passes it to
   `upload_snapshot`, `upload_info`, the info service loop, snapshots, and OTA, closing it in a
   `finally`. `upload_snapshot`/`upload_info` never construct a session. Tests:
-  `test_pi_capture_http.py::SessionReuseTests` (AST assertion). Live connection-reuse/close
+  `test_capture_http.py::SessionReuseTests` (AST assertion). Live connection-reuse/close
   recovery still requires the Pi.
 
 ### GAP-SIO-01 — Firmware-style error and progress messages

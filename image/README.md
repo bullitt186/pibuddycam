@@ -100,7 +100,7 @@ their failures stay isolated.
 ## Local verification (no image build, no root)
 
 ```sh
-python3 -m unittest tests.test_pi_image_scaffolding -v
+python3 -m unittest tests.image.test_image_scaffolding -v
 bash -n image/scripts/build-image.sh
 python3 -m compileall -q image/assets
 
