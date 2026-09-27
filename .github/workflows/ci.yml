@@ -26,10 +26,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # The application is stdlib-only; PyYAML is only needed so the image
-      # config/layer tests run instead of being skipped.
+      # The application is stdlib-only. PyYAML and the tools below are only
+      # needed so the image config, signature (minisign) and boot-partition
+      # tests run instead of being skipped on the hosted runner.
       - name: Install test-only dependencies
-        run: python3 -m pip install PyYAML==6.0.2
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq minisign mtools dosfstools zstd
+          python3 -m pip install PyYAML==6.0.2
 
       - name: Unit tests
         run: python3 -m unittest discover -s tests
