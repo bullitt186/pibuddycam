@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 GUIDE = REPO_ROOT / "docs" / "appliance-user-guide.md"
 GAP_TRACKER = REPO_ROOT / "docs" / "firmware-implementation-gap-tracker.md"
-DIST_PLAN = REPO_ROOT / "docs" / "public-appliance-distribution-plan.md"
+DIST_PLAN = REPO_ROOT / "_archive" / "docs" / "public-appliance-distribution-plan.md"
 README = REPO_ROOT / "README.md"
 PI_README = REPO_ROOT / "pi-impersonator" / "README.md"
 

@@ -4,7 +4,7 @@
 # overlay with a RAM upper layer and the journal is volatile, so an unexpected
 # reboot (power cut, watchdog reset, thermal trip) otherwise leaves no trace.
 #
-# Installed by deploy.sh as /etc/systemd/system/bootlog.service (oneshot).
+# Run by bootlog.service (oneshot), installed and enabled by the image.
 LOG=/boot/firmware/bootlog.txt
 {
     echo "=== boot $(date -Is) uptime=$(cut -d. -f1 /proc/uptime)s ==="

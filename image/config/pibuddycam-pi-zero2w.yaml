@@ -51,7 +51,7 @@ layer:
   base: pibuddycam-suite
 
 packages:
-  # Camera + media stack (mirrors pi-impersonator/bootstrap.sh).
+  # Camera + media stack.
   - rpicam-apps
   - python3
   # Versioned venv package: trixie's python3-venv metapackage pins an exact
@@ -71,8 +71,8 @@ packages:
   - gstreamer1.0-libcamera
   - gir1.2-gst-rtsp-server-1.0
   - gir1.2-gst-plugins-bad-1.0
-  # Read-only overlay root + initramfs (AC-10). overlayroot is the mechanism
-  # already proven on the development Pi (pi-impersonator/deploy.sh).
+  # overlayroot is installed but not active: ROOT is mounted read-only directly
+  # and /var + /etc/pibuddycam are tmpfs (see docs/architecture.md).
   - overlayroot
   - initramfs-tools
   # growpart(8) for the first-boot PERSIST growth (AC-11).

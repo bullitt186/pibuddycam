@@ -32,8 +32,6 @@ SERVICE_FILES = (
     'persist_restore.py',
     'quality.py',
     'data_ready.py',
-    'deploy.sh',
-    'bootstrap.sh',
 ) + tuple('systemd/' + name for name in ALL_UNITS)
 
 

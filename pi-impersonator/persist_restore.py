@@ -56,7 +56,7 @@ FRAME_SUFFIX = '.jpg'
 PRUNE_FREE_THRESHOLD_BYTES = 300 * 1024 * 1024
 
 # Dedicated non-login service account that owns every durable directory. The
-# account is created by deploy.sh/bootstrap.sh and is the single identity in the
+# account is created by the image installer and is the single identity in the
 # systemd units; override only for a non-standard install via SERVICE_USER.
 DEFAULT_SERVICE_USER = 'pibuddycam'
 

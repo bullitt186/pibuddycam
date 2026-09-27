@@ -172,40 +172,39 @@ def summarize_info_response(body, token, fingerprint):
     return redact_secrets(summary, token, fingerprint)
 
 def load_config():
+    """Build the runtime config from the durable device.toml/secrets.toml.
+
+    The documents are bridged into the ``identity``/``upload`` sections this
+    module consumes; a freshly claimed device must never die on a missing
+    section (hardware-found: the service crash-looped and the camera target
+    failed).
+    """
     cfg = configparser.ConfigParser()
-    # config.ini sits next to this script — the dev-Pi deployment path.
-    cfg.read(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.ini'))
-    if not cfg.has_section('identity'):
-        # Appliance: the durable device.toml/secrets.toml replace config.ini.
-        # Bridge them into the legacy cfg shape this module consumes, otherwise
-        # startup dies with KeyError: 'identity' on a freshly claimed device
-        # (hardware-found: pibuddycam crash-looped and the camera target failed).
-        device, secrets, errors = config_schema.load_appliance_config()
-        for path, error in errors:
-            # A missing file is not in `errors` (see load_appliance_config); this
-            # is always a real problem (unreadable/corrupt/too-new document), so
-            # it must be loud, not a silent fallback to an empty Prusa token.
-            log.error(f'config: {path} failed to load, running without it: {error}')
-        cfg.add_section('identity')
-        cfg.set(
-            'identity', 'token',
-            str((secrets.get('prusa') or {}).get('token') or ''),
-        )
-        cfg.set('identity', 'fingerprint', str(device.get('fingerprint') or ''))
-        if not cfg.has_section('upload'):
-            cfg.add_section('upload')
-        cfg.set(
-            'upload', 'server',
-            str((device.get('prusa') or {}).get('server')
-                or 'webcam.connect.prusa3d.com'),
-        )
-        cfg.set('upload', 'interval', '10')
+    device, secrets, errors = config_schema.load_appliance_config()
+    for path, error in errors:
+        # A missing file is not in `errors` (see load_appliance_config); this
+        # is always a real problem (unreadable/corrupt/too-new document), so
+        # it must be loud, not a silent fallback to an empty Prusa token.
+        log.error(f'config: {path} failed to load, running without it: {error}')
+    cfg.add_section('identity')
+    cfg.set(
+        'identity', 'token',
+        str((secrets.get('prusa') or {}).get('token') or ''),
+    )
+    cfg.set('identity', 'fingerprint', str(device.get('fingerprint') or ''))
+    cfg.add_section('upload')
+    cfg.set(
+        'upload', 'server',
+        str((device.get('prusa') or {}).get('server')
+            or 'webcam.connect.prusa3d.com'),
+    )
+    cfg.set('upload', 'interval', '10')
     return cfg
 
 def get_network_info(configured_fingerprint=None):
     """Return ``(mac, ip, ssid, fingerprint)``.
 
-    Fingerprint precedence: an explicit ``config.ini`` ``[identity] fingerprint``
+    Fingerprint precedence: an explicit ``device.toml`` ``fingerprint``
     wins (the registered token is bound to it), then the firmware-style
     MAC-derived value, then the persisted fallback seed when the ``wlan0`` MAC is
     unreadable (GAP-IDENTITY-01). ``mac`` is reported empty when there is no
@@ -218,7 +217,7 @@ def get_network_info(configured_fingerprint=None):
         raw_mac = ''
     mac, fingerprint = resolve_fingerprint(configured_fingerprint, raw_mac)
     if configured_fingerprint:
-        log.info('Using fingerprint from config.ini [identity] fingerprint')
+        log.info('Using the configured fingerprint from device.toml')
     elif not mac:
         log.warning(
             'Using persisted fallback identity: fingerprint derived from a stored '

@@ -43,7 +43,7 @@ install -d -m 0755 "$root$APP_ROOT"
 rsync -a --delete \
    --exclude 'venv/' --exclude '__pycache__/' --exclude '*.pyc' \
    --exclude 'config.ini' --exclude '*.example' --exclude 'systemd/' \
-   --exclude 'deploy.sh' --exclude 'bootstrap.sh' --exclude 'README.md' \
+   --exclude 'README.md' \
    --exclude 'backups/' \
     "$repo/pi-impersonator/" "$root$APP_ROOT/"
 chown -R root:root "$root$APP_ROOT"
@@ -216,7 +216,7 @@ chown "$uid:$gid" "$root$APP_ROOT/.ssh"
 # pibuddycam-admin.service and pibuddycam.target are NOT enabled here: the selector
 # starts pibuddycam.target after claim and it pulls them via Wants=
 # (AC-12/AC-17), so nothing camera-related runs while the device is unclaimed.
-# The units' own [Install] sections are left intact for the dev deploy.sh path.
+# The units' own [Install] sections are left intact; they are never used here.
 # pibuddycam-updater.timer (WP-R4b) is enabled here: the daily signed-update check
 # runs independently of claim and is isolated from camera startup (AC-27). Its
 # oneshot service is triggered by the timer and has no [Install] section, so it

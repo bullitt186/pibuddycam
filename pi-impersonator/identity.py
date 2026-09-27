@@ -17,10 +17,9 @@ FALLBACK_SEED_LENGTH = 10
 # narrowest documented choice that reproduces the ten-character seed shape.
 FALLBACK_SEED_ALPHABET = string.ascii_letters + string.digits
 
-# Stable persistence location, overridable for tests. On the production Pi the
-# root filesystem is a read-only overlay, so this file is durable only once it
-# reaches the lower filesystem via deploy.sh; until then the seed is stable for
-# the running session and a restart regenerates it (with a warning).
+# Persistence location, overridable for tests. On the appliance /etc/pibuddycam
+# is tmpfs, so the seed is stable for the running session only; a reboot
+# regenerates it (with a warning). A readable wlan0 MAC makes it unnecessary.
 IDENTITY_FALLBACK_FILE = os.environ.get(
     'PIBUDDYCAM_IDENTITY_FALLBACK', '/etc/pibuddycam/identity.fallback'
 )
@@ -109,8 +108,8 @@ def identity_from_mac_or_fallback(raw_mac, fallback_path=None):
 def resolve_fingerprint(configured, raw_mac, fallback_path=None):
     """Resolve the wire fingerprint, preferring an explicitly configured value.
 
-    The deployed ``config.ini`` stores the fingerprint the registration token was
-    bound to (``[identity] fingerprint``). That value MUST win over the
+    ``device.toml`` can store the fingerprint the registration token was bound
+    to (``fingerprint``). That value MUST win over the
     MAC-derived one: switching a registered token to a different fingerprint is
     rejected by Connect as ``{"detail":"Invalid fingerprint"}`` (observed live
     2026-09-18 after the first deploy dropped the config value). Only when it is

@@ -275,8 +275,6 @@ tar -C "$SOURCE_DIR" \
    --exclude='config.ini' \
    --exclude='*.example' \
    --exclude='venv' \
-   --exclude='deploy.sh' \
-   --exclude='bootstrap.sh' \
    --exclude='README.md' \
    --exclude='backups' \
    --exclude='.git' \

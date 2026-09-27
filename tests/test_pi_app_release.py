@@ -238,8 +238,6 @@ class MakeAppReleaseTests(unittest.TestCase):
         (src / "config.ini").write_text("token = supersecret\n")
         (src / "config.ini.example").write_text("token = <PLACEHOLDER>\n")
         (src / "README.md").write_text("# readme\n")
-        (src / "deploy.sh").write_text("#!/bin/sh\n")
-        (src / "bootstrap.sh").write_text("#!/bin/sh\n")
         (src / "venv").mkdir()
         (src / "venv" / "lib.py").write_text("x\n")
         (src / "backups").mkdir()
@@ -385,7 +383,7 @@ class MakeAppReleaseTests(unittest.TestCase):
 
         # Excluded: tests, caches, local config, dev scripts, backups.
         forbidden_components = {"tests", "__pycache__", "venv", "backups"}
-        forbidden_names = {"config.ini", "README.md", "deploy.sh", "bootstrap.sh"}
+        forbidden_names = {"config.ini", "README.md"}
         for name in names:
             parts = self.components(name)
             for part in parts:

@@ -9,11 +9,10 @@ systemd calls injected, so it can be unit-tested without the Pi.
 Persistence
 -----------
 The configured mode is written to ``/etc/pibuddycam/rtsp.mode`` (override with
-``PIBUDDYCAM_RTSP_MODE_FILE``). On the production Pi the root filesystem is a
-read-only overlay, so a runtime write is visible for the running session but is
-discarded on the next power cycle unless it reaches the lower filesystem via
-``deploy.sh``. ``main`` therefore reads the file at startup and keeps the
-in-memory mode authoritative; deploying the file makes the choice durable.
+``PIBUDDYCAM_RTSP_MODE_FILE``). On the appliance ``/etc/pibuddycam`` is tmpfs:
+the durable mode lives in ``state.json`` and ``pi-persist.service`` writes this
+file again at boot. ``main`` reads it at startup and keeps the in-memory mode
+authoritative.
 """
 import logging
 import os

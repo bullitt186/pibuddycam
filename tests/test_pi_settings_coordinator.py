@@ -407,7 +407,6 @@ class SettingsStoreWriterTests(unittest.TestCase):
     def test_only_coordinator_writes_settings_store(self):
         allowed = {
             'settings_store.py',
-            'legacy_import.py',
             'persist_restore.py',
             'settings_coordinator.py',
         }
