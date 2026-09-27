@@ -300,7 +300,7 @@ class MakeReleaseTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def make_release(self, *extra, version="1.2.3", **kwargs):
+    def make_release(self, *extra, version="1.2.3", icon=True, **kwargs):
         cmd = [
             BASH,
             str(MAKE_RELEASE),
@@ -314,8 +314,7 @@ class MakeReleaseTests(unittest.TestCase):
             "2026-01-02",
             "--url-base",
             "https://example.org/releases/v1.2.3",
-            "--icon",
-            "https://example.org/icon.png",
+            *(["--icon", "https://example.org/icon.png"] if icon else []),
             "--website",
             "https://example.org",
             *extra,
@@ -329,6 +328,20 @@ class MakeReleaseTests(unittest.TestCase):
 
     def read_json(self, name):
         return json.loads((self.out / name).read_text(encoding="utf-8"))
+
+    def test_default_icon_is_shipped_with_the_artifacts(self):
+        result = self.make_release(icon=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        # The default icon URL is <url-base>/buddy3d-camera.png, so the icon
+        # itself must be published next to the image or Imager gets a 404.
+        entry = self.read_json("buddy3d-camera-os-list.json")["os_list"][0]
+        self.assertEqual(entry["icon"], "https://example.org/releases/v1.2.3/buddy3d-camera.png")
+        self.assertTrue((self.out / "buddy3d-camera.png").read_bytes().startswith(b"\x89PNG"))
+
+    def test_explicit_icon_url_is_not_copied(self):
+        result = self.make_release()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.out / "buddy3d-camera.png").exists())
 
     def test_produces_required_artifacts(self):
         result = self.make_release(
@@ -345,9 +358,6 @@ class MakeReleaseTests(unittest.TestCase):
             f"{base}.spdx.json",
             f"{base}.packages.txt",
             "buddy3d-camera-os-list.json",
-            # The default icon URL is <url-base>/buddy3d-camera.png, so the
-            # icon itself must be among the published artifacts.
-            "buddy3d-camera.png",
         ):
             self.assertTrue((self.out / name).is_file(), f"missing {name}")
         # No key supplied: the artifact must remain unsigned, with a warning.
