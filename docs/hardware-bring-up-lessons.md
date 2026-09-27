@@ -11,7 +11,7 @@
 ## Context
 
 - **Target:** Raspberry Pi Zero 2 W Rev 1.0, OV5647 CSI camera (Pi Camera v1),
-  appliance image built by `image/scripts/build-image.sh` on `rpi5.stahmer.lan`
+  appliance image built by `image/scripts/build-image.sh` on the native arm64 build host (see `.agent/pi-ops.md`)
   (native arm64).
 - **Environment quirks:** the image uses a direct read-only ext4 ROOT (`overlayroot` is present but
   did not activate), explicit tmpfs mounts for `/var` and `/etc/prusa-cam`, and durable `/data`.

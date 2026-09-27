@@ -56,7 +56,8 @@ not the current appliance image.
 2. Commit the exact source that will be deployed, so an application manifest can record its
    source commit.
 3. For an application-only change, build a signed application release with
-   `image/scripts/make-app-release.sh` and install it through `prusa-priv install-update` using the
+   `image/scripts/make-app-release.sh` (a published release instead comes from a `vX.Y.Z` tag on
+   the arm64 release runner; see `docs/releasing.md`) and install it through `prusa-priv install-update` using the
    private runbook. For an image-owned file needed in the same authorized session, remount ROOT,
    install the exact repo file with root ownership/mode, then remount ROOT read-only:
    ```sh
@@ -88,7 +89,9 @@ not the current appliance image.
 
 ### Build + flash (only when the change must persist / be validated on a fresh card)
 
-- Build host: `bullitt@rpi5.stahmer.lan` (native arm64). Sync the repo there, run
+- Published images come from the arm64 release runner via a `vX.Y.Z` tag or a
+  `workflow_dispatch` dry run (`docs/releasing.md`). For an ad-hoc build, use the
+  native arm64 build host named in `.agent/pi-ops.md`: sync the repo there, run
   `image/scripts/build-image.sh`, then `image/scripts/validate-image.sh` (run as
   root with a full `PATH` so `dumpe2fs`/`mtools` resolve; `--mount-root` is a
   mounted `root.ext4`).

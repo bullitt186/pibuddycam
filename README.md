@@ -41,6 +41,7 @@ protocol from the ARM firmware and reimplements it so you can:
 | See exactly what changed in firmware 3.1.6 | [`docs/firmware-3.1.6.md`](docs/firmware-3.1.6.md) |
 | See what was tried and failed | [`docs/dead-ends.md`](docs/dead-ends.md) |
 | Know the tools used | [`docs/tools.md`](docs/tools.md) |
+| Understand CI, releases and OTA publishing | [`docs/releasing.md`](docs/releasing.md) |
 | Know the firmware / project sources | [`docs/sources.md`](docs/sources.md) |
 | Check the official REST spec (no WebRTC) | [`docs/openapi.yaml`](docs/openapi.yaml) — pointer to Prusa's source |
 | Understand licensing & IP boundaries | [`NOTICE.md`](NOTICE.md) |

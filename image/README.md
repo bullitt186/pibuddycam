@@ -151,9 +151,10 @@ revision, not invented syntax:
    --no-cache-dir`; the lock digest is recorded in `build-info.json` as
    `python_lock_sha256`. The bdebstrap `customize95-buddy3d-python` hook is an
    explicit no-op. The SBOM is still owned by WP-5.
-4. **Release scripts are out of scope.** `scripts/make-release.sh` and
-   `imager/os-list.template.json` are not part of this increment.
-   `scripts/validate-image.sh` is implemented and asserts the venv/lock above.
+4. **Release automation** lives in `.github/workflows/release.yml` (see
+   `docs/releasing.md`): a `vX.Y.Z` tag builds this image on the self-hosted arm64 runner, then
+   runs `scripts/make-release.sh` and `scripts/make-app-release.sh` and publishes the result.
+   `scripts/validate-image.sh` asserts the venv/lock above.
 5. **Fixed disk signature trade-off.** A fixed MBR signature gives static,
    deterministic PARTUUIDs and simple first-boot validation, at the cost of
    identical PARTUUIDs on every unit. They are never present on one system
@@ -273,7 +274,10 @@ Wi-Fi PSK values and `.nmconnection` profiles, Prusa tokens, MQTT passwords,
 homes such as `prusa-cam` are allowed). Matches are printed as `file:line`;
 binary files are skipped for content patterns but secret-bearing filenames are
 still flagged. Override the personal-username pattern with
-`SCAN_PERSONAL_USER_PATTERN` when scanning a different contributor's tree.
+`SCAN_PERSONAL_USER_PATTERN` when scanning a different contributor's tree. The
+username is allowed in exactly one position: the owner segment of a public
+`github.com/<owner>/` URL, which release manifests must contain. The check runs
+per match, so any other occurrence on the same line still fails.
 
 **Self-match waiver (AC-35).** A repo-wide run will match the scanner's own
 pattern source (`password_hash`, `minisign encrypted secret key`) and the
@@ -294,7 +298,7 @@ record the exclusion in the release-candidate report.
    with a private key held outside the repository; the committed public key verifies bundles on
    the appliance. Never add the private key or its location to tracked documentation.
 3. **Native arm64 builds are remote/controlled.** Release images are produced on the controlled
-   arm64 Trixie runner; ordinary workstations may run host tests and release assembly but must not
+   self-hosted arm64 Trixie runner (`docs/releasing.md`); ordinary workstations may run host tests and release assembly but must not
    claim a supported foreign-architecture image build.
 4. **No byte-identical reproducibility claim.** `xz -T1 -9e` with pinned check
    types produces a stable stream for a given xz version, but reproducibility is

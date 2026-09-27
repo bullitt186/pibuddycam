@@ -17,6 +17,7 @@ plus two working reimplementations. Full orientation is in
 | Appliance image/build/update operations | `image/README.md`, `docs/hardware-bring-up-lessons.md` |
 | Rust cloud-stream proxy + control tool | `proxy/` |
 | Tools / sources | `docs/tools.md`, `docs/sources.md` |
+| CI, releases, arm64 runner, OTA publishing | `docs/releasing.md` |
 
 ## Evidence precedence
 
@@ -74,6 +75,12 @@ cargo test
 The Pi runtime dependencies (`aiohttp`, `python-socketio`, GStreamer, and PyGObject) are provisioned
 by `pi-impersonator/bootstrap.sh`; do not add host-specific virtual environments to the repository.
 There is currently no repository-wide formatter or type checker. Do not claim those checks ran.
+
+CI (`.github/workflows/ci.yml`) runs the same suite on a fresh checkout with PyYAML, minisign,
+mtools and dosfstools installed, so it also catches files that exist only on your disk. Releases
+come from pushing a `vX.Y.Z` tag, which builds on the self-hosted arm64 runner. Read
+`docs/releasing.md` before touching workflows, release scripts or the secret scanner. Never push a
+release tag or change repository/runner settings unless the user asks for it.
 
 ## Working rules
 

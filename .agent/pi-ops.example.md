@@ -86,6 +86,17 @@ This **overwrites the camera's NAND partitions** — a bad image bricks the came
 the camera itself (not the Pi), with known-good images, and a recovery plan. Prefer letting the
 camera OTA itself via `connect-ota.prusa3d.com` unless you specifically need a custom image.
 
+## Release runner (private details)
+
+Record the self-hosted arm64 runner here, not in tracked docs (public contract:
+`docs/releasing.md`):
+
+- Host: `<RUNNER_HOST>`, SSH user `<USER>`; runner directory `<RUNNER_DIR>`, name `<RUNNER_NAME>`.
+- Service: `actions.runner.<owner>-<repo>.<RUNNER_NAME>.service`.
+- Signing key: `<RUNNER_KEY_PATH>` (`0600`); must match the committed public key.
+- Maintenance: `sudo ./svc.sh status|stop|start` in the runner directory; re-register with a fresh
+  registration token only when the user asks.
+
 ## End-of-session checks
 
 - active release points to the expected version and all four services are active;

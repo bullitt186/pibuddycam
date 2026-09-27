@@ -82,9 +82,10 @@ jobs:
           other=()
           for f in "${changed[@]}"; do
             # tests/ and docs/ carry intentional synthetic/example fixtures;
-            # scan-secrets.sh itself defines the patterns and is not content.
+            # scan-secrets.sh defines the patterns and image/README.md
+            # documents them (the AC-35 self-match waiver), so neither is content.
             case "$f" in
-              tests/* | docs/* | image/scripts/scan-secrets.sh) continue ;;
+              tests/* | docs/* | image/scripts/scan-secrets.sh | image/README.md) continue ;;
             esac
             [ -f "$f" ] || continue
             case "$f" in
