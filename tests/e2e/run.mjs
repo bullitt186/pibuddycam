@@ -274,6 +274,99 @@ const TESTS = [
     },
   },
   {
+    // Frontend state-machine coverage only: the harness serves the real
+    // admin_http.AdminApp over stdlib http.server, which has no aiohttp
+    // WebSocket support, so /api/live/webrtc is not reachable here (see
+    // local_webrtc_signaling's module docstring). window.WebSocket is
+    // replaced before navigation so the Connect/Cancel/Disconnect and error
+    // UI states can be exercised deterministically without a real signaling
+    // backend or a fabricated SDP negotiation.
+    name: 'local WebRTC connect/cancel/viewer-limit UI state machine',
+    async run({ page, base }) {
+      await page.addInitScript(() => {
+        window.__wsInstances = [];
+        class FakeWebSocket extends EventTarget {
+          constructor(url) {
+            super();
+            this.url = url;
+            this.readyState = FakeWebSocket.OPEN;
+            this.sent = [];
+            window.__wsInstances.push(this);
+            window.__lastWs = this;
+          }
+
+          send(data) {
+            this.sent.push(data);
+          }
+
+          close() {
+            this.readyState = FakeWebSocket.CLOSED;
+            this.dispatchEvent(new Event('close'));
+          }
+
+          // Test-only helper: simulate one server -> browser signaling frame.
+          __serverSend(message) {
+            this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(message) }));
+          }
+        }
+        FakeWebSocket.CONNECTING = 0;
+        FakeWebSocket.OPEN = 1;
+        FakeWebSocket.CLOSING = 2;
+        FakeWebSocket.CLOSED = 3;
+        window.WebSocket = FakeWebSocket;
+      });
+
+      await login(page, base);
+      await waitForVisible(page.locator('#overview-content'));
+
+      assertIncludes(
+        await page.locator('#live-webrtc-placeholder').textContent(),
+        'not connected',
+        'initial live video placeholder',
+      );
+
+      await page.locator('#live-webrtc-connect').click();
+      await waitForText(page.locator('#live-webrtc-state'), 'Connecting');
+      assertEqual(
+        await page.locator('#live-webrtc-connect').textContent(), 'Cancel',
+        'connect button becomes Cancel while connecting',
+      );
+      assertEqual(
+        await page.evaluate(() => window.__wsInstances.length), 1,
+        'one signaling WebSocket opened',
+      );
+
+      await page.evaluate(() => window.__lastWs.__serverSend({ type: 'error', code: 'viewer_limit' }));
+      await waitForText(page.locator('#live-webrtc-state'), 'Disconnected');
+      assertIncludes(
+        await page.locator('#live-webrtc-detail').textContent(), 'viewer limit',
+        'viewer-limit detail message',
+      );
+      assertEqual(
+        await page.locator('#live-webrtc-connect').textContent(), 'Connect',
+        'connect button resets after the server rejects the viewer',
+      );
+
+      await page.locator('#live-webrtc-connect').click();
+      await waitForText(page.locator('#live-webrtc-state'), 'Connecting');
+      assertEqual(
+        await page.evaluate(() => window.__wsInstances.length), 2,
+        'a fresh signaling WebSocket opens on reconnect',
+      );
+
+      await page.locator('#live-webrtc-connect').click();
+      await waitForText(page.locator('#live-webrtc-state'), 'Idle');
+      assertEqual(
+        await page.evaluate(() => window.__lastWs.readyState), 3,
+        'cancelling closes the in-flight signaling WebSocket',
+      );
+      assertEqual(
+        await page.locator('#live-webrtc-connect').textContent(), 'Connect',
+        'connect button resets after cancel',
+      );
+    },
+  },
+  {
     name: 'camera settings converge authoritatively and TURN lock is honest',
     async run({ page, base }) {
       await login(page, base);

@@ -10,6 +10,9 @@
  *   GET  /api/dashboard      -> authoritative status/metrics/settings (read)
  *   GET  /api/live/frame     -> latest shared-monitor JPEG (WP-UI5, read)
  *   GET  /api/live/status    -> bounded live-monitor metrics (WP-UI5, read)
+ *   WS   /api/live/webrtc        -> local WebRTC signaling (offer/answer/ice
+ *                                   JSON frames); no Prusa cloud involved
+ *   GET  /api/live/webrtc/status -> bounded local-WebRTC viewer metrics (read)
  *   PATCH /api/settings      -> one coordinator mutation; returns authoritative
  *                               settings on success and rejection (WP-UI3)
  *   GET  /api/integrations   -> redacted Prusa/MQTT config + runtime state
@@ -86,6 +89,11 @@ function cacheElements() {
   els.liveToggle = document.getElementById('live-toggle');
   els.liveDownload = document.getElementById('live-download');
   els.liveDetail = document.getElementById('live-detail');
+  els.webrtcState = document.getElementById('live-webrtc-state');
+  els.webrtcVideo = document.getElementById('live-webrtc-video');
+  els.webrtcPlaceholder = document.getElementById('live-webrtc-placeholder');
+  els.webrtcDetail = document.getElementById('live-webrtc-detail');
+  els.webrtcConnect = document.getElementById('live-webrtc-connect');
   els.metricResolution = document.getElementById('metric-resolution');
   els.metricQuality = document.getElementById('metric-quality');
   els.metricWifi = document.getElementById('metric-wifi');
@@ -183,6 +191,7 @@ function showBoot() {
 function showLogin(message) {
   stopDashboardPolling();
   stopLiveMonitor();
+  disconnectLocalWebrtc();
   stopTimelapsePolling();
   if (updatePollTimer) {
     clearTimeout(updatePollTimer);
@@ -320,6 +329,7 @@ function selectView(name) {
     startLiveMonitor();
   } else {
     stopLiveMonitor();
+    disconnectLocalWebrtc();
   }
 }
 
@@ -855,6 +865,205 @@ async function downloadLiveSnapshot() {
     showLiveMessage('Could not download the current snapshot.');
   } finally {
     if (els.liveDownload) els.liveDownload.disabled = false;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Local WebRTC live video                                             */
+/*                                                                     */
+/* Manual connect/disconnect over a same-origin WebSocket signaling    */
+/* channel (GET /api/live/webrtc). Entirely local: no Prusa cloud      */
+/* involvement, and limited to one viewer at a time (server-enforced,  */
+/* returned as a `viewer_limit` error/ended reason). Unlike the        */
+/* snapshot poller above, a failed session is not auto-retried -- a    */
+/* stuck GStreamer pipeline is comparatively expensive to keep         */
+/* respawning, so the viewer must click Connect again.                 */
+/* ------------------------------------------------------------------ */
+
+const localWebrtc = {
+  ws: null,
+  pc: null,
+  connecting: false,
+};
+
+function setWebrtcState(kind, text) {
+  if (!els.webrtcState) return;
+  const classes = {
+    connecting: 'chip chip--warn',
+    live: 'chip chip--ok',
+    idle: 'chip chip--muted',
+    error: 'chip chip--error',
+  };
+  els.webrtcState.className = classes[kind] || 'chip chip--muted';
+  els.webrtcState.textContent = text;
+}
+
+function showWebrtcMessage(message) {
+  if (els.webrtcVideo) els.webrtcVideo.hidden = true;
+  if (els.webrtcPlaceholder) {
+    els.webrtcPlaceholder.textContent = message;
+    els.webrtcPlaceholder.hidden = false;
+  }
+}
+
+function setWebrtcConnectLabel() {
+  if (!els.webrtcConnect) return;
+  els.webrtcConnect.disabled = false;
+  if (localWebrtc.connecting) {
+    els.webrtcConnect.textContent = 'Cancel';
+  } else if (localWebrtc.pc || localWebrtc.ws) {
+    els.webrtcConnect.textContent = 'Disconnect';
+  } else {
+    els.webrtcConnect.textContent = 'Connect';
+  }
+}
+
+function teardownLocalWebrtc() {
+  if (localWebrtc.pc) {
+    localWebrtc.pc.close();
+    localWebrtc.pc = null;
+  }
+  if (localWebrtc.ws) {
+    const ws = localWebrtc.ws;
+    localWebrtc.ws = null;
+    if (ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: 'stop' }));
+      } catch (_error) {
+        /* best-effort; the socket is being closed either way */
+      }
+    }
+    ws.close();
+  }
+  if (els.webrtcVideo) els.webrtcVideo.srcObject = null;
+  localWebrtc.connecting = false;
+}
+
+function disconnectLocalWebrtc() {
+  if (!localWebrtc.pc && !localWebrtc.ws && !localWebrtc.connecting) return;
+  teardownLocalWebrtc();
+  setWebrtcState('idle', 'Idle');
+  showWebrtcMessage('Live video is not connected.');
+  if (els.webrtcDetail) els.webrtcDetail.textContent = '';
+  setWebrtcConnectLabel();
+}
+
+function webrtcEndedMessage(reason) {
+  if (reason === 'viewer_limit') return 'Live video is at its viewer limit.';
+  if (reason === 'ice-failed' || reason === 'no-ice-connection' || reason === 'ice-disconnected') {
+    return 'Could not establish the video connection.';
+  }
+  return 'Live video session ended.';
+}
+
+function webrtcErrorMessage(code) {
+  if (code === 'viewer_limit') return 'Live video is at its viewer limit.';
+  return 'Live video signaling error.';
+}
+
+function failLocalWebrtc(message) {
+  teardownLocalWebrtc();
+  setWebrtcState('error', 'Disconnected');
+  showWebrtcMessage(message);
+  if (els.webrtcDetail) els.webrtcDetail.textContent = message;
+  setWebrtcConnectLabel();
+}
+
+function connectLocalWebrtc() {
+  if (!SESSION_STATE.csrf) return;
+  localWebrtc.connecting = true;
+  setWebrtcState('connecting', 'Connecting…');
+  showWebrtcMessage('Connecting to the camera…');
+  if (els.webrtcDetail) els.webrtcDetail.textContent = '';
+  setWebrtcConnectLabel();
+
+  const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${scheme}//${location.host}/api/live/webrtc`);
+  localWebrtc.ws = ws;
+
+  const pc = new RTCPeerConnection();
+  localWebrtc.pc = pc;
+
+  pc.ontrack = (event) => {
+    if (els.webrtcVideo) {
+      els.webrtcVideo.srcObject = event.streams[0];
+      els.webrtcVideo.hidden = false;
+    }
+    if (els.webrtcPlaceholder) els.webrtcPlaceholder.hidden = true;
+  };
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: 'ice',
+        candidate: event.candidate.candidate,
+        sdpMLineIndex: event.candidate.sdpMLineIndex || 0,
+      }));
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if (localWebrtc.pc !== pc) return;
+    const state = pc.iceConnectionState;
+    if (state === 'connected' || state === 'completed') {
+      localWebrtc.connecting = false;
+      setWebrtcState('live', 'Live');
+      setWebrtcConnectLabel();
+    } else if (state === 'failed' || state === 'closed') {
+      failLocalWebrtc('Connection lost.');
+    }
+  };
+
+  ws.addEventListener('message', async (event) => {
+    if (localWebrtc.ws !== ws) return;
+    let message = null;
+    try {
+      message = JSON.parse(event.data);
+    } catch (_error) {
+      return;
+    }
+    if (!message || typeof message.type !== 'string') return;
+    if (message.type === 'offer') {
+      try {
+        await pc.setRemoteDescription({ type: 'offer', sdp: message.sdp });
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: 'answer', sdp: answer.sdp }));
+      } catch (_error) {
+        failLocalWebrtc('Could not negotiate the video session.');
+      }
+    } else if (message.type === 'ice') {
+      try {
+        await pc.addIceCandidate({
+          candidate: message.candidate,
+          sdpMLineIndex: message.sdpMLineIndex || 0,
+        });
+      } catch (_error) {
+        /* a late/duplicate candidate is not fatal */
+      }
+    } else if (message.type === 'ended') {
+      failLocalWebrtc(webrtcEndedMessage(message.reason));
+    } else if (message.type === 'error') {
+      failLocalWebrtc(webrtcErrorMessage(message.code));
+    }
+  });
+
+  ws.addEventListener('close', () => {
+    if (localWebrtc.ws === ws) failLocalWebrtc('Signaling connection closed.');
+  });
+
+  ws.addEventListener('error', () => {
+    if (localWebrtc.ws === ws) {
+      failLocalWebrtc('Could not reach the local signaling endpoint.');
+    }
+  });
+}
+
+function toggleLocalWebrtc() {
+  if (localWebrtc.pc || localWebrtc.ws || localWebrtc.connecting) {
+    disconnectLocalWebrtc();
+  } else {
+    connectLocalWebrtc();
   }
 }
 
@@ -2321,6 +2530,7 @@ function wireForms() {
   if (els.copyLocalAccess) els.copyLocalAccess.addEventListener('click', copyLocalAccess);
   if (els.liveToggle) els.liveToggle.addEventListener('click', toggleLivePause);
   if (els.liveDownload) els.liveDownload.addEventListener('click', downloadLiveSnapshot);
+  if (els.webrtcConnect) els.webrtcConnect.addEventListener('click', toggleLocalWebrtc);
   if (els.reauthForm) els.reauthForm.addEventListener('submit', submitReauth);
   if (els.reauthCancel) {
     els.reauthCancel.addEventListener('click', () => resolveReauth(false));
@@ -2356,6 +2566,10 @@ function wireVisibility() {
       scheduleDashboard();
     }
     syncLiveMonitor();
+    // Live WebRTC is manual-connect only (no auto-reconnect), but a hidden
+    // tab should not keep costing the Pi a GStreamer pipeline and a viewer
+    // slot the user cannot see.
+    if (document.visibilityState !== 'visible') disconnectLocalWebrtc();
   });
 }
 

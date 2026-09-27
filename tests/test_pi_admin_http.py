@@ -2028,5 +2028,52 @@ class RebootRouteTests(AdminHttpTestBase):
         self.assertEqual(response.status, 503)
 
 
+# --------------------------------------------------------------------------- #
+# Session-token helper shared with the aiohttp adapter's local-WebRTC upgrade
+# --------------------------------------------------------------------------- #
+
+class SessionTokenFromCookieTests(unittest.TestCase):
+    def test_extracts_the_session_cookie_value(self):
+        token = admin_http.session_token_from_cookie(f'{SESSION_COOKIE}=abc123')
+        self.assertEqual(token, 'abc123')
+
+    def test_extracts_among_other_cookies(self):
+        token = admin_http.session_token_from_cookie(
+            f'foo=bar; {SESSION_COOKIE}=abc123; baz=qux')
+        self.assertEqual(token, 'abc123')
+
+    def test_missing_cookie_header_returns_empty(self):
+        for bad in ('', None, 123, []):
+            with self.subTest(bad=bad):
+                self.assertEqual(admin_http.session_token_from_cookie(bad), '')
+
+    def test_header_without_session_cookie_returns_empty(self):
+        self.assertEqual(admin_http.session_token_from_cookie('foo=bar'), '')
+
+    def test_malformed_cookie_header_returns_empty(self):
+        self.assertEqual(admin_http.session_token_from_cookie('\x00garbage'), '')
+
+
+class ValidateSessionTokenTests(AdminHttpTestBase):
+    def test_valid_token_from_login_validates(self):
+        token = self.login()
+        self.assertTrue(self.app.validate_session_token(token, now=NOW))
+
+    def test_unknown_token_does_not_validate(self):
+        self.assertFalse(self.app.validate_session_token('not-a-real-token', now=NOW))
+
+    def test_empty_token_does_not_validate(self):
+        self.assertFalse(self.app.validate_session_token('', now=NOW))
+
+    def test_uses_the_app_clock_when_now_is_omitted(self):
+        token = self.login()
+        self.assertTrue(self.app.validate_session_token(token))
+
+    def test_expired_session_does_not_validate(self):
+        token = self.login()
+        far_future = NOW + 10 * admin_auth.DEFAULT_IDLE_TTL
+        self.assertFalse(self.app.validate_session_token(token, now=far_future))
+
+
 if __name__ == '__main__':
     unittest.main()

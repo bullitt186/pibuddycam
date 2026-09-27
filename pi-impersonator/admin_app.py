@@ -44,11 +44,14 @@ top-level ``aiohttp`` import is intentional and expected.
 import argparse
 import asyncio
 import concurrent.futures
+import json
 import logging
 import os
+from urllib.parse import urlsplit
 
 from aiohttp import web
 
+import admin_auth
 import admin_http
 import admin_tls
 import app_version
@@ -56,6 +59,7 @@ import camera_probe
 import dashboard
 import diagnostics
 import live_monitor
+import local_webrtc_signaling
 import media_build
 import mqtt_probe
 import privileged
@@ -101,6 +105,7 @@ ROUTES = (
     ('GET', '/api/dashboard'),
     ('GET', '/api/live/frame'),
     ('GET', '/api/live/status'),
+    ('GET', '/api/live/webrtc/status'),
     ('GET', '/api/media/timelapses'),
     ('GET', '/api/media/timelapses/{name}'),
     ('GET', '/api/media/frames'),
@@ -220,6 +225,27 @@ _STREAM_CHUNK = 64 * 1024
 _STREAM_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     max_workers=2, thread_name_prefix='admin-stream')
 
+#: Dedicated executor for local-WebRTC pipeline control calls (start/stop/
+#: handle_answer/add_ice_candidate). Kept separate from ``_CORE_EXECUTOR`` so a
+#: GStreamer call (``handle_answer``'s ``promise.wait()`` in particular) can
+#: never serialize behind, or be serialized behind, unrelated admin API
+#: requests.
+_LOCAL_WEBRTC_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix='admin-webrtc')
+
+#: Env var gating the local-WebRTC live-video signaling route. Default on; set
+#: to ``0``/``false``/``no``/``off`` to disable (e.g. a resource-constrained
+#: deployment). When disabled, ``/api/live/webrtc`` is never registered and
+#: GStreamer/PyGObject are never imported by the admin process.
+_LOCAL_WEBRTC_ENABLED_ENV = 'ADMIN_LOCAL_WEBRTC_ENABLED'
+
+
+def _local_webrtc_enabled(env=None):
+    """Return whether the local-WebRTC signaling route should be registered."""
+    env = os.environ if env is None else env
+    raw = (env.get(_LOCAL_WEBRTC_ENABLED_ENV) or '1').strip().lower()
+    return raw not in ('0', 'false', 'no', 'off')
+
 
 async def _stream_response(request, core_response):
     """Stream one core file response in bounded chunks and always close it.
@@ -275,6 +301,109 @@ async def _handle(request):
 
 
 # --------------------------------------------------------------------------- #
+# Local-WebRTC live-video signaling (bypasses the stdlib core; see
+# local_webrtc_signaling's module docstring for why a WS upgrade cannot go
+# through AdminApp.handle())
+# --------------------------------------------------------------------------- #
+
+def _origin_allowed(request):
+    """True only when the WS handshake's ``Origin`` matches this request's host.
+
+    A real browser always sends ``Origin`` on a WebSocket handshake. The
+    session cookie is already ``SameSite=Lax`` (admin_auth.py), which blocks a
+    cross-site page's JS from having it attached to a WS open in the first
+    place; this Origin check is belt-and-braces on top of that, not the
+    primary defense.
+    """
+    origin = request.headers.get('Origin')
+    if not origin:
+        return False
+    try:
+        return urlsplit(origin).netloc == request.host
+    except ValueError:
+        return False
+
+
+async def _handle_local_webrtc_ws(request):
+    """Local-only WebRTC signaling WebSocket for the console's live-video view.
+
+    Does its own session-cookie authentication (reusing the same
+    ``admin_auth.SessionStore`` the core uses, through
+    ``AdminApp.validate_session_token``) and its own Origin check, then hands
+    the connection to a fresh ``local_webrtc.LocalWebRTC`` pipeline for the
+    life of the socket. One viewer slot is held from ``try_acquire()`` until
+    the ``finally`` block's ``release()``, whatever the exit path.
+    """
+    core = request.app['admin_app']
+    registry = core.local_webrtc_viewers
+
+    if not _origin_allowed(request):
+        return web.Response(status=403, text='origin not allowed')
+
+    token = request.cookies.get(admin_auth.SESSION_COOKIE_NAME, '')
+    if not token or not core.validate_session_token(token):
+        return web.Response(status=401, text='authentication required')
+
+    if registry is None or not registry.try_acquire():
+        ws = web.WebSocketResponse(heartbeat=15.0)
+        await ws.prepare(request)
+        await ws.send_str(json.dumps({'type': 'error', 'code': 'viewer_limit'}))
+        await ws.close(code=1008, message=b'viewer limit reached')
+        return ws
+
+    ws = web.WebSocketResponse(heartbeat=15.0)
+    await ws.prepare(request)
+    loop = asyncio.get_running_loop()
+
+    async def send(message):
+        if not ws.closed:
+            await ws.send_str(json.dumps(message))
+
+    async def on_offer(sdp_text):
+        await send({'type': 'offer', 'sdp': sdp_text})
+
+    async def on_ice_candidate(candidate, mline_index):
+        await send({'type': 'ice', 'candidate': candidate, 'sdpMLineIndex': mline_index})
+
+    async def on_ended(reason):
+        await send({'type': 'ended', 'reason': reason})
+        if not ws.closed:
+            await ws.close()
+
+    # Lazy: GStreamer/PyGObject are only imported once a viewer is actually
+    # accepted, mirroring live_monitor.default_producer's lazy camera import.
+    import local_webrtc
+
+    session = local_webrtc.LocalWebRTC(on_offer, on_ice_candidate, on_ended, loop)
+    try:
+        await loop.run_in_executor(_LOCAL_WEBRTC_EXECUTOR, session.start)
+        async for msg in ws:
+            if msg.type == web.WSMsgType.TEXT:
+                try:
+                    msg_type, payload = local_webrtc_signaling.parse_client_message(msg.data)
+                except local_webrtc_signaling.SignalingError as exc:
+                    await send({'type': 'error', 'code': 'bad_message', 'message': str(exc)})
+                    continue
+                if msg_type == 'answer':
+                    await loop.run_in_executor(
+                        _LOCAL_WEBRTC_EXECUTOR, session.handle_answer, payload['sdp'])
+                elif msg_type == 'ice':
+                    await loop.run_in_executor(
+                        _LOCAL_WEBRTC_EXECUTOR, session.add_ice_candidate,
+                        payload['candidate'], payload['sdpMLineIndex'])
+                elif msg_type == 'stop':
+                    break
+            elif msg.type in (
+                web.WSMsgType.ERROR, web.WSMsgType.CLOSE, web.WSMsgType.CLOSING,
+            ):
+                break
+    finally:
+        await loop.run_in_executor(_LOCAL_WEBRTC_EXECUTOR, session.stop)
+        registry.release()
+    return ws
+
+
+# --------------------------------------------------------------------------- #
 # Application factory
 # --------------------------------------------------------------------------- #
 
@@ -301,6 +430,12 @@ def create_app(admin_app: admin_http.AdminApp) -> web.Application:
     app.on_cleanup.append(_cleanup)
     for method, path in ROUTES:
         app.router.add_route(method, path, _handle)
+    # The local-WebRTC signaling WebSocket bypasses the core entirely (see
+    # local_webrtc_signaling's module docstring), so it is deliberately not in
+    # ROUTES; it is only registered when a viewer registry was actually
+    # constructed (ADMIN_LOCAL_WEBRTC_ENABLED, default on).
+    if admin_app.local_webrtc_viewers is not None:
+        app.router.add_get('/api/live/webrtc', _handle_local_webrtc_ws)
     # Anything not registered above still goes through the core, so unknown
     # paths/methods get the core's own 404 (and its redaction) instead of an
     # aiohttp-generated page.
@@ -388,6 +523,19 @@ def _default_live_monitor():
     return live_monitor.LiveMonitor()
 
 
+def _default_local_webrtc_viewers():
+    """Return the shared local-WebRTC viewer registry, or ``None`` if disabled.
+
+    Gated by ``ADMIN_LOCAL_WEBRTC_ENABLED`` (default on). Construction starts
+    no thread and imports no GStreamer/PyGObject; the pipeline itself
+    (:mod:`local_webrtc`) is imported lazily, only once a viewer is actually
+    accepted by :func:`_handle_local_webrtc_ws`.
+    """
+    if not _local_webrtc_enabled():
+        return None
+    return local_webrtc_signaling.ViewerRegistry()
+
+
 def _default_build_manager():
     """Return the one serialized timelapse build manager (WP-UI6; AC-13).
 
@@ -459,8 +607,8 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
                     provisioning_path=None, hotspot_controller=None, probe=None,
                     start_camera=None, activate_station=None, mqtt_probe=None,
                     dashboard_provider=None, settings_actions=None,
-                    live_monitor=None, build_manager=None, update_manager=None,
-                    diagnostics_provider=None, reboot_fn=None):
+                    live_monitor=None, local_webrtc_viewers=None, build_manager=None,
+                    update_manager=None, diagnostics_provider=None, reboot_fn=None):
     """Build the stdlib :class:`admin_http.AdminApp` with real dependencies.
 
     Paths default to the durable ``/data`` locations through the core's own
@@ -516,6 +664,10 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
         live_monitor=(
             live_monitor if live_monitor is not None
             else _default_live_monitor()
+        ),
+        local_webrtc_viewers=(
+            local_webrtc_viewers if local_webrtc_viewers is not None
+            else _default_local_webrtc_viewers()
         ),
         build_manager=(
             build_manager if build_manager is not None

@@ -101,6 +101,24 @@
               </div>
             </div>
 
+            <div class="card overview__card live-webrtc" aria-labelledby="live-webrtc-title">
+              <div class="overview__head">
+                <h3 id="live-webrtc-title" class="card__title">Live video</h3>
+                <span id="live-webrtc-state" class="chip chip--muted" role="status" aria-live="polite">Idle</span>
+              </div>
+              <div class="live-webrtc__frame">
+                <video id="live-webrtc-video" class="live-webrtc__video"
+                       autoplay playsinline muted hidden></video>
+                <p id="live-webrtc-placeholder" class="live-webrtc__placeholder"
+                   role="status" aria-live="polite">Live video is not connected.</p>
+              </div>
+              <p class="field__hint">Low-latency local WebRTC view of the shared camera stream. Limited to one viewer at a time; nothing here reaches Prusa's cloud.</p>
+              <p id="live-webrtc-detail" class="field__hint" role="status" aria-live="polite"></p>
+              <div class="form-actions">
+                <button id="live-webrtc-connect" class="btn btn--primary" type="button">Connect</button>
+              </div>
+            </div>
+
             <div class="card overview__card">
               <div class="overview__head">
                 <h3 class="card__title">Camera</h3>

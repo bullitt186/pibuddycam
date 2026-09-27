@@ -474,6 +474,7 @@ class AdminApp:
         dashboard_provider=None,
         settings_actions=None,
         live_monitor=None,
+        local_webrtc_viewers=None,
         media_dir=None,
         build_manager=None,
         update_manager=None,
@@ -535,6 +536,13 @@ class AdminApp:
         # loop or the single admin-core worker. ``None`` reports the monitor as
         # unavailable instead of fabricating a frame.
         self._live_monitor = live_monitor
+        # The shared local-WebRTC viewer registry (local_webrtc_signaling.
+        # ViewerRegistry), or None when the feature is disabled/unavailable. The
+        # WebSocket signaling itself lives entirely in the aiohttp adapter (a
+        # WS upgrade is not a request/response cycle this core can dispatch);
+        # this core only reports the same registry's bounded counters and
+        # exposes it back to the adapter via the local_webrtc_viewers property.
+        self._local_webrtc_viewers = local_webrtc_viewers
         # WP-UI6/AC-12: the allowlisted media root. Catalog/delivery never
         # accept a path from a request, only a validated basename under here.
         self._media_dir = (
@@ -613,6 +621,10 @@ class AdminApp:
             Route(
                 'GET', re.compile(r'^/api/live/status$'),
                 _AUTHENTICATED, self._handle_live_status,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/live/webrtc/status$'),
+                _AUTHENTICATED, self._handle_local_webrtc_status,
             ),
             Route(
                 'GET', re.compile(r'^/api/media/timelapses$'),
@@ -956,6 +968,18 @@ class AdminApp:
         file is present.
         """
         return self._provisioning_view().setup_available
+
+    def validate_session_token(self, token, now=None):
+        """Return ``True`` for a live admin session token.
+
+        Public entry point for a transport that cannot go through
+        :meth:`handle` (the aiohttp adapter's local-WebRTC WebSocket upgrade,
+        which is not a single request/response cycle). Delegates to the same
+        :class:`admin_auth.SessionStore` used by :meth:`_authorize`, so a
+        WebSocket viewer is held to the identical session policy as every
+        other authenticated route.
+        """
+        return self._sessions.validate(token, now if now is not None else self._clock())
 
     def _authorize(self, request, policy, body_data, now):
         """Enforce session, CSRF, and (for re-auth routes) fresh password checks.
@@ -1305,6 +1329,37 @@ class AdminApp:
             metrics = monitor.metrics()
         except Exception:  # noqa: BLE001 - metrics must never crash routing
             log.warning('admin_http: live monitor metrics failed')
+            metrics = {}
+        payload = {'ok': True, 'available': True}
+        if isinstance(metrics, dict):
+            payload.update(metrics)
+        return self._json(request, 200, payload)
+
+    @property
+    def local_webrtc_viewers(self):
+        """The shared local-WebRTC viewer registry, or ``None`` if unavailable.
+
+        Exposed so the aiohttp adapter's WebSocket signaling handler (which
+        cannot go through :meth:`handle` -- a WS upgrade is not a single
+        request/response cycle) can gate accepted viewers against the exact
+        same counter :meth:`_handle_local_webrtc_status` reports, instead of
+        keeping a second, divergent instance.
+        """
+        return self._local_webrtc_viewers
+
+    def _handle_local_webrtc_status(self, request, match, body_data, now):
+        """Return bounded, secret-free local-WebRTC viewer metrics.
+
+        Mirrors :meth:`_handle_live_status`'s shape for the console's live
+        WebRTC view: only bounded counters, never SDP/candidate/frame content.
+        """
+        registry = self._local_webrtc_viewers
+        if registry is None:
+            return self._json(request, 200, {'ok': True, 'available': False})
+        try:
+            metrics = registry.metrics()
+        except Exception:  # noqa: BLE001 - metrics must never crash routing
+            log.warning('admin_http: local webrtc viewer metrics failed')
             metrics = {}
         payload = {'ok': True, 'available': True}
         if isinstance(metrics, dict):
@@ -2583,18 +2638,27 @@ def _without_csrf_header(headers):
     return headers
 
 
-def _session_token(request):
-    """Return the session token from the Cookie header, or ``''``."""
-    raw = _header(request.headers, 'Cookie')
-    if not isinstance(raw, str) or not raw:
+def session_token_from_cookie(cookie_header):
+    """Return the session token from a raw ``Cookie`` header value, or ``''``.
+
+    Extracted so a non-``admin_http.Request`` transport (the aiohttp adapter's
+    WebSocket upgrade, which reads the header/cookie a different way) can
+    reuse the exact same parsing instead of duplicating it.
+    """
+    if not isinstance(cookie_header, str) or not cookie_header:
         return ''
     cookie = http.cookies.SimpleCookie()
     try:
-        cookie.load(raw)
+        cookie.load(cookie_header)
     except http.cookies.CookieError:
         return ''
     morsel = cookie.get(admin_auth.SESSION_COOKIE_NAME)
     return morsel.value if morsel is not None else ''
+
+
+def _session_token(request):
+    """Return the session token from the Cookie header, or ``''``."""
+    return session_token_from_cookie(_header(request.headers, 'Cookie'))
 
 
 def _csrf_token(request, body_data):

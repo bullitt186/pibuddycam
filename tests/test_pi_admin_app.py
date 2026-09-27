@@ -673,5 +673,149 @@ class AdminSystemUpdateWiringTests(unittest.TestCase):
             ['diagnostics', 'DiagnosticsProvider'], _attr_chains(functions[0]))
 
 
+class LocalWebrtcSignalingRouteTests(unittest.TestCase):
+    """Local WebRTC live-video signaling WebSocket (admin_app.py side).
+
+    A WS upgrade is not a request/response cycle, so this route deliberately
+    bypasses admin_http.AdminApp.handle() -- see local_webrtc_signaling's
+    module docstring. These are static/AST checks because admin_app.py is
+    never imported by the host test suite (top-level aiohttp import).
+    """
+
+    def setUp(self):
+        self.tree = _tree()
+        self.source = ADMIN_APP.read_text(encoding='utf-8')
+        self.chains = _attr_chains(self.tree)
+
+    def _function(self, name, kind=ast.AsyncFunctionDef):
+        functions = [
+            node for node in ast.walk(self.tree)
+            if isinstance(node, kind) and node.name == name
+        ]
+        self.assertEqual(len(functions), 1, f'expected a single {name}')
+        return functions[0]
+
+    def test_webrtc_ws_route_is_not_in_the_shared_route_table(self):
+        routes_node = _module_assign(self.tree, 'ROUTES')
+        declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}
+        self.assertNotIn(('GET', '/api/live/webrtc'), declared)
+        # The status companion route *does* go through the shared core.
+        self.assertIn(('GET', '/api/live/webrtc/status'), declared)
+
+    def test_create_app_registers_the_ws_route_outside_the_routes_loop(self):
+        create = self._function('create_app', kind=ast.FunctionDef)
+        create_src = ast.get_source_segment(self.source, create)
+        self.assertIn('add_get', create_src)
+        self.assertIn('/api/live/webrtc', create_src)
+        self.assertIn('local_webrtc_viewers', create_src)
+
+    def test_handler_never_calls_the_core_handle_method(self):
+        handler = self._function('_handle_local_webrtc_ws')
+        chains = _attr_chains(handler)
+        self.assertNotIn(['core', 'handle'], chains)
+        self.assertNotIn(['admin_app', 'handle'], chains)
+
+    def test_handler_validates_session_before_accepting(self):
+        handler = self._function('_handle_local_webrtc_ws')
+        chains = _attr_chains(handler)
+        self.assertIn(['core', 'validate_session_token'], chains)
+        source = ast.get_source_segment(self.source, handler)
+        self.assertLess(
+            source.index('validate_session_token'), source.index('WebSocketResponse'),
+            'session must be validated before the WebSocket is accepted',
+        )
+
+    def test_handler_checks_origin(self):
+        handler = self._function('_handle_local_webrtc_ws')
+        origin_fn = self._function('_origin_allowed', kind=ast.FunctionDef)
+        self.assertIn(['request', 'headers', 'get'], _attr_chains(origin_fn))
+        source = ast.get_source_segment(self.source, handler)
+        self.assertIn('_origin_allowed', source)
+
+    def test_handler_sets_a_heartbeat(self):
+        handler = self._function('_handle_local_webrtc_ws')
+        ws_calls = [
+            call for call in _calls(handler)
+            if any(chain[-1:] == ['WebSocketResponse'] for chain in _attr_chains(call))
+        ]
+        self.assertTrue(ws_calls, 'expected a WebSocketResponse(...) call')
+        self.assertTrue(
+            any(kw.arg == 'heartbeat' for call in ws_calls for kw in call.keywords),
+            'WebSocketResponse must set a heartbeat for idle teardown',
+        )
+
+    def test_handler_consults_the_viewer_registry_before_accepting(self):
+        handler = self._function('_handle_local_webrtc_ws')
+        chains = _attr_chains(handler)
+        self.assertIn(['registry', 'try_acquire'], chains)
+        self.assertIn(['registry', 'release'], chains)
+        source = ast.get_source_segment(self.source, handler)
+        self.assertLess(
+            source.index('try_acquire'), source.index('WebSocketResponse'),
+            'the viewer cap must be checked before the WebSocket is prepared',
+        )
+
+    def test_gi_dependent_module_is_imported_lazily_inside_the_handler(self):
+        handler = self._function('_handle_local_webrtc_ws')
+        local_imports = {
+            alias.name
+            for node in ast.walk(handler)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        self.assertIn('local_webrtc', local_imports)
+        top_level_imports = {
+            alias.name
+            for node in self.tree.body
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        }
+        self.assertNotIn(
+            'local_webrtc', top_level_imports,
+            'local_webrtc (gi/GStreamer) must not be imported at module top',
+        )
+        top_level_gi = {
+            alias.name
+            for node in self.tree.body
+            if isinstance(node, ast.Import)
+            for alias in node.names
+            if alias.name == 'gi'
+        }
+        self.assertFalse(top_level_gi, 'admin_app.py itself must never import gi')
+
+    def test_local_webrtc_enabled_defaults_to_true(self):
+        function = self._function('_local_webrtc_enabled', kind=ast.FunctionDef)
+        constants = _string_constants(function)
+        self.assertIn('1', constants)
+
+    def test_default_local_webrtc_viewers_is_gated_by_the_env_flag(self):
+        function = self._function('_default_local_webrtc_viewers', kind=ast.FunctionDef)
+        chains = _attr_chains(function)
+        self.assertIn(
+            ['local_webrtc_signaling', 'ViewerRegistry'], chains,
+            'the default factory must build a local_webrtc_signaling.ViewerRegistry',
+        )
+        calls = [
+            node.func.id for node in _calls(function)
+            if isinstance(node.func, ast.Name)
+        ]
+        self.assertIn('_local_webrtc_enabled', calls)
+
+    def test_build_admin_app_injects_local_webrtc_viewers(self):
+        functions = [
+            node for node in self.tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == 'build_admin_app'
+        ]
+        self.assertEqual(len(functions), 1)
+        admin_calls = [
+            call for call in _calls(functions[0])
+            if any(chain == ['admin_http', 'AdminApp'] for chain in _attr_chains(call))
+        ]
+        passed = {keyword.arg for call in admin_calls for keyword in call.keywords}
+        self.assertIn('local_webrtc_viewers', passed)
+        self.assertIn(
+            'local_webrtc_viewers', [a.arg for a in functions[0].args.kwonlyargs])
+
+
 if __name__ == '__main__':
     unittest.main()
