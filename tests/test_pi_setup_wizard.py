@@ -277,7 +277,7 @@ class FingerprintTests(WizardTestBase):
         import tempfile
 
         with tempfile.NamedTemporaryFile('w', suffix='.mac') as handle:
-            handle.write('d8:3a:dd:32:1c:ac\n')
+            handle.write('02:00:00:00:00:01\n')
             handle.flush()
             derived = setup_wizard.WizardSession._derived_fingerprint(
                 mac_path=handle.name)

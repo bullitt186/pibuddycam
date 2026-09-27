@@ -25,8 +25,8 @@ from identity import (  # noqa: E402
 class FirmwareIdentityTests(unittest.TestCase):
     def test_normalizes_sysfs_mac_like_firmware_sprintf(self):
         self.assertEqual(
-            normalize_wifi_mac('d8:3a:dd:32:1c:ac\n'),
-            'D8:3A:DD:32:1C:AC',
+            normalize_wifi_mac('02:00:00:00:00:01\n'),
+            '02:00:00:00:00:01',
         )
 
     def test_accepts_hyphenated_mac_and_normalizes_separators(self):
@@ -110,9 +110,9 @@ class IdentityResolutionTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_normal_mac_path_is_byte_exact(self):
-        mac, fingerprint = identity_from_mac_or_fallback('d8:3a:dd:32:1c:ac\n', self.path)
-        self.assertEqual(mac, 'D8:3A:DD:32:1C:AC')
-        self.assertEqual(fingerprint, hashlib.md5(b'D8:3A:DD:32:1C:AC').hexdigest())
+        mac, fingerprint = identity_from_mac_or_fallback('02:00:00:00:00:01\n', self.path)
+        self.assertEqual(mac, '02:00:00:00:00:01')
+        self.assertEqual(fingerprint, hashlib.md5(b'02:00:00:00:00:01').hexdigest())
         self.assertFalse(os.path.exists(self.path))
 
     def test_missing_or_invalid_mac_uses_persisted_fallback(self):
@@ -144,8 +144,8 @@ class ResolveFingerprintTests(unittest.TestCase):
 
     def test_configured_fingerprint_wins_and_is_returned_verbatim(self):
         configured = 'd54ac883deadbeefdeadbeefdeadbeef'
-        mac, fingerprint = resolve_fingerprint(configured, 'd8:3a:dd:32:1c:ac', self.path)
-        self.assertEqual(mac, 'D8:3A:DD:32:1C:AC')
+        mac, fingerprint = resolve_fingerprint(configured, '02:00:00:00:00:01', self.path)
+        self.assertEqual(mac, '02:00:00:00:00:01')
         self.assertEqual(fingerprint, configured)
         # A configured identity must never create the fallback seed file.
         self.assertFalse(os.path.exists(self.path))
@@ -160,8 +160,8 @@ class ResolveFingerprintTests(unittest.TestCase):
                 self.assertFalse(os.path.exists(self.path))
 
     def test_absent_configured_fingerprint_falls_back_to_mac(self):
-        mac, fingerprint = resolve_fingerprint(None, 'd8:3a:dd:32:1c:ac', self.path)
-        self.assertEqual(mac, 'D8:3A:DD:32:1C:AC')
+        mac, fingerprint = resolve_fingerprint(None, '02:00:00:00:00:01', self.path)
+        self.assertEqual(mac, '02:00:00:00:00:01')
         self.assertEqual(fingerprint, fingerprint_from_mac(mac))
 
     def test_absent_configured_and_bad_mac_uses_persisted_seed(self):

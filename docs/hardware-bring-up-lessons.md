@@ -1,6 +1,6 @@
 # Hardware bring-up lessons — appliance on a Pi Zero 2 W
 
-> **For future Claude / future sessions:** this is the field record of bringing the
+> This is the field record of bringing the
 > PiBuddyCam appliance image up on real hardware for the first time (Pi Zero 2 W +
 > OV5647 CSI camera). Every entry is a defect that unit tests and offline
 > `validate-image.sh` could not catch, with the symptom seen on the device, the

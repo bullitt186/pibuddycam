@@ -144,7 +144,7 @@ assets as described in `AGENTS.md`.
 
 **Status 2026-09-20: not needed — the Pi already derives its fingerprint from `wlan0`.** The deployed
 `config.ini` has no explicit `[identity] fingerprint` and there is no fallback-seed file, so
-`identity.resolve_fingerprint` yields `md5("D8:3A:DD:32:1C:AC")` = `142486ddfee8889f2eb8de723411221d`,
+`identity.resolve_fingerprint` yields `md5("<WLAN0-MAC>")` = `<md5(WLAN0-MAC)>`,
 and the token is already bound to it (live `camera_authentication` ACK `0`, `/c/info` 200). Use the
 steps below **only** if you deliberately change the fingerprint (which invalidates the token).
 

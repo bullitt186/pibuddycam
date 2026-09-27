@@ -9,11 +9,11 @@ the work can be reproduced.
 | Item | Description |
 |---|---|
 | `cam-3.1.5.tar` | Baseline OTA package from `https://connect-ota.prusa3d.com/file/cam-3.1.5.tar`. |
-| `cam-3.1.6.tar` | Update OTA package supplied by the user; SHA-256 `094d420db6faa172cad8bffdeef792cbefebbb3c6a782669076eaca790917612`. |
+| `cam-3.1.6.tar` | Official 3.1.6 update (OTA) package, obtained separately; SHA-256 `094d420db6faa172cad8bffdeef792cbefebbb3c6a782669076eaca790917612`. |
 | `oem.img` | Raw UBI image of the camera's `/oem` partition. Contains the main app binary. |
 | `boot.img` | Boot image from the same firmware package. |
 | `lp_app` | `oem_extracted/…/oem/usr/sbin/lp_app` — the camera's main application. ARM 32-bit ELF, stripped, uClibc. **This binary is the primary RE target.** |
-| `../research/RK_OTA_update.sh` | Rockchip OTA update helper found on the device (kept in `research/` — it's a short shell script, not Prusa binary code). |
+| `RK_OTA_update.sh` (on the device) | Rockchip on-device OTA updater. For each `/dev/block/by-name/*` it writes a matching `<name>.img` with `flash_eraseall` + `nandwrite`, then erases `misc`. Not redistributed here (vendor code, unclear licence). |
 
 **How to obtain:** extract from the physical camera's flash / a Prusa firmware OTA package,
 then unpack with `ubireader_extract_files` (see [`reverse-engineering.md`](reverse-engineering.md)).

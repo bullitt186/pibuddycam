@@ -1004,7 +1004,7 @@ Redirect handling: `"redirect host: %s path: %s"`
 - **DTLS:** OpenSSL
 - **SRTP:** libsrtp (via libdatachannel)
 - **Signaling:** Custom binary over Socket.IO
-- **Library:** libdatachannel (built from `/home/miro/webrtc/webrtc-example/libdatachannel_orig/`)
+- **Library:** libdatachannel (built from `<vendor build path>/libdatachannel_orig/`)
 
 ### 12.2 Signaling Message Format
 

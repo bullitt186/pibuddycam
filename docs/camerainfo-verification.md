@@ -31,7 +31,7 @@ not firmware. The Pi deployment was updated accordingly; see `status.md` for the
 evidence and service verification.
 
 **Tooling**: `mcp__ghidrassist__*` MCP tools, attached to the already-open Ghidra project
-`lp_app` at `/tmp/ghidra_project/cam_analysis` (binary:
+`lp_app` at `$FW_WORKDIR/ghidra-projects/cam_analysis` (binary:
 `oem_extracted/897730261/oem/usr/sbin/lp_app`, ARM:LE:32:v7). These are fast (seconds,
 live GUI session) — prefer them over headless `analyzeHeadless` runs (which cost 2-3 min
 each) for everything in this plan.

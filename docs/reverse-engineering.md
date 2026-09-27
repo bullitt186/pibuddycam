@@ -22,14 +22,14 @@ This revealed: server URLs, event names, log format strings, HTTP headers, confi
 
 **Installed at (current workstation):**
 - JDK 21: system OpenJDK (`/usr/lib/jvm/java-21-openjdk-amd64/`)
-- Ghidra 12.1.3: `~/tools/ghidra_12.1.3_PUBLIC/`
-- Projects: `~/firmware-analysis/ghidra-projects/buddy3d-3.1.5` and
-  `~/firmware-analysis/ghidra-projects/buddy3d-3.1.6` (both imported as `ARM:LE:32:v7`)
+- Ghidra 12.1.3: `$GHIDRA_HOME/`
+- Projects: `$FW_WORKDIR/ghidra-projects/buddy3d-3.1.5` and
+  `$FW_WORKDIR/ghidra-projects/buddy3d-3.1.6` (both imported as `ARM:LE:32:v7`)
 
 **Running headless scripts:**
 ```bash
-~/tools/ghidra_12.1.3_PUBLIC/support/analyzeHeadless \
-  ~/firmware-analysis/ghidra-projects buddy3d-3.1.6 \
+$GHIDRA_HOME/support/analyzeHeadless \
+  $FW_WORKDIR/ghidra-projects buddy3d-3.1.6 \
   -process lp_app \
   -noanalysis \
   -postScript YourScript.java \
@@ -41,15 +41,15 @@ only.
 
 **Opening GUI:**
 ```bash
-~/tools/ghidra_12.1.3_PUBLIC/ghidraRun
+$GHIDRA_HOME/ghidraRun
 ```
-Open either project under `~/firmware-analysis/ghidra-projects/`, file `lp_app`.
+Open either project under `$FW_WORKDIR/ghidra-projects/`, file `lp_app`.
 
 For a repeatable one-off decompile, use the checked-in helper:
 
 ```bash
-~/tools/ghidra_12.1.3_PUBLIC/support/analyzeHeadless \
-  ~/firmware-analysis/ghidra-projects buddy3d-3.1.6 \
+$GHIDRA_HOME/support/analyzeHeadless \
+  $FW_WORKDIR/ghidra-projects buddy3d-3.1.6 \
   -process lp_app -noanalysis -readOnly \
   -scriptPath "$PWD/research/ghidra" \
   -postScript DecompileFunctions.java 0x62d74 0xb996c
@@ -64,9 +64,9 @@ the checked-in `ExportAllDecomp.java` script; do not put the resulting copyright
 Git:
 
 ```bash
-mkdir -p ~/firmware-analysis/decompiled-3.1.6-full
-~/tools/ghidra_12.1.3_PUBLIC/support/analyzeHeadless \
-  ~/firmware-analysis/ghidra-projects buddy3d-3.1.6 \
+mkdir -p $FW_WORKDIR/decompiled-3.1.6-full
+$GHIDRA_HOME/support/analyzeHeadless \
+  $FW_WORKDIR/ghidra-projects buddy3d-3.1.6 \
   -process lp_app -noanalysis -readOnly \
   -scriptPath "$PWD/research/ghidra" \
   -postScript ExportAllDecomp.java \
@@ -79,15 +79,15 @@ the expected file exists, for example:
 
 ```bash
 grep -E '^(program|total|success|failed)=' \
-  ~/firmware-analysis/decompiled-3.1.6-full/summary.txt
-test -f ~/firmware-analysis/decompiled-3.1.6-full/functions/000a1394__FUN_000a1394.c
+  $FW_WORKDIR/decompiled-3.1.6-full/summary.txt
+test -f $FW_WORKDIR/decompiled-3.1.6-full/functions/000a1394__FUN_000a1394.c
 ```
 
 Generate the strings file cited by the tracker from the same 3.1.6 binary:
 
 ```bash
-strings ~/firmware-analysis/cam-3.1.6/oem-extracted/*/oem/usr/sbin/lp_app \
-  > ~/firmware-analysis/cam-3.1.6/lp_app.strings
+strings $FW_WORKDIR/cam-3.1.6/oem-extracted/*/oem/usr/sbin/lp_app \
+  > $FW_WORKDIR/cam-3.1.6/lp_app.strings
 ```
 
 If the project was reanalysed and line numbers moved, locate evidence by the function VMA in the

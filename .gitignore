@@ -54,5 +54,4 @@ venv/
 # ── Tooling / OS ──────────────────────────────────────────────────────────
 .DS_Store
 .codegraph/
-.codex/*
-!.codex/config.toml
+.codex/

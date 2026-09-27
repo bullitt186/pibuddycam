@@ -80,7 +80,7 @@ hash the image, then mount only the copy read-only through a loop device.
 
 ## Update a genuine CAMERA firmware / OTA  ⚠️ destructive
 
-`research/RK_OTA_update.sh` is the Rockchip on-device updater: for each `/dev/block/by-name/*`
+The camera's own `RK_OTA_update.sh` (see `docs/sources.md`) is the Rockchip on-device updater: for each `/dev/block/by-name/*`
 it finds a matching `<name>.img` and does `flash_eraseall` + `nandwrite`, then erases `misc`.
 This **overwrites the camera's NAND partitions** — a bad image bricks the camera. Only run on
 the camera itself (not the Pi), with known-good images, and a recovery plan. Prefer letting the

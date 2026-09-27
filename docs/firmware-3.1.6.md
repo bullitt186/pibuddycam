@@ -2,7 +2,7 @@
 
 Compared directly against the public 3.1.5 OTA package on 2026-09-17. Firmware artifacts,
 Ghidra databases, and decompilation remain outside this repository under
-`~/firmware-analysis/`.
+`$FW_WORKDIR/`.
 
 Package SHA-256: 3.1.5 `57a1bd8bbd869e1bfe652e680fdce9620156dc2f49fdfdc9bb5859a7f5862dda`;
 3.1.6 `094d420db6faa172cad8bffdeef792cbefebbb3c6a782669076eaca790917612`.
@@ -64,7 +64,7 @@ backend enrollment mechanism.
 
 Complete headless exports covered every Ghidra-defined function: 10,548 functions in 3.1.5 and
 10,552 in 3.1.6, with zero decompiler failures. The exported corpora, Function-ID tables, and
-comparison report are under `~/firmware-analysis/`. Ghidra's relocation-insensitive Function-ID
+comparison report are under `$FW_WORKDIR/`. Ghidra's relocation-insensitive Function-ID
 hashes—including the call-target hash—match exactly for all protocol-critical routines below:
 
 | Role | 3.1.5 | 3.1.6 |

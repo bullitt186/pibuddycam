@@ -77,7 +77,7 @@ Items offering “implement or stop advertising” are owner decisions, not codi
 The complete 3.1.6 export is expected at:
 
 ```text
-~/firmware-analysis/decompiled-3.1.6-full/functions/
+$FW_WORKDIR/decompiled-3.1.6-full/functions/
 ```
 
 References below use `file:line` from that export. Function names are still Ghidra-generated, so
@@ -107,7 +107,7 @@ and corrects a stale mapping in older notes.
 | `FW-PB-VERSION` | Build version message and conditional request correlation | `000a3570__FUN_000a3570.c:43-130` |
 | `FW-STATUS` | Build the complete 0x1d0-byte status struct | `000a1394__FUN_000a1394.c:133-499` |
 | `FW-FEATURES` | Build/hash/encode supported-feature message | `000a8ed0__FUN_000a8ed0.c:76-282` |
-| `FW-TRIGGER-STRINGS` | Trigger action names referenced by the dispatcher | `~/firmware-analysis/cam-3.1.6/lp_app.strings:11249,11534-11535,11896,13934,14127,15086,15152,15309-15310` |
+| `FW-TRIGGER-STRINGS` | Trigger action names referenced by the dispatcher | `$FW_WORKDIR/cam-3.1.6/lp_app.strings:11249,11534-11535,11896,13934,14127,15086,15152,15309-15310` |
 | `FW-TIMELAPSE-SEND` | Build, fragment, encode, and emit timelapse file-list response | `000a1fa8__FUN_000a1fa8.c:52-192` |
 | `FW-TIMELAPSE-REGISTER` | Register timelapse-related event callbacks | `000a5208__FUN_000a5208.c:26-558` |
 | `FW-WEBRTC-SEND` | Encode and emit outgoing WebRTC answer/candidate | `000a3e90__FUN_000a3e90.c:5-166` |
@@ -1473,7 +1473,7 @@ closing the gap.
 - [x] **P3 · Resolved 2026-09-20: already using the `wlan0`-MAC-derived fingerprint (token bound; live ACK 0)**
 - **Live state 2026-09-20 (verified):** the deployed `config.ini` has **no `[identity] fingerprint`**
   line and there is **no fallback-seed file**, so `identity.resolve_fingerprint` derives from `wlan0`
-  (`d8:3a:dd:32:1c:ac`) → `md5("D8:3A:DD:32:1C:AC")` = `142486ddfee8889f2eb8de723411221d`. Auth
+  (`<wlan0-mac>`) → `md5("<WLAN0-MAC>")` = `<md5(WLAN0-MAC)>`. Auth
   succeeds (`camera_authentication` ACK `0`) and `/c/info` is `200` — i.e. **the token is already
   bound to the MAC-derived fingerprint**, so the firmware-equivalent identity is in place and **no
   migration is needed**. The runbook below applies only if the fingerprint is ever changed.
@@ -1505,7 +1505,7 @@ closing the gap.
 ### GAP-IDENTITY-03 — Track the physical Wi-Fi MAC/OUI difference
 
 - [x] **P3 · Closed 2026-09-20: documented per-device difference, not a defect; OUI not inspected and the registry-gate theory is superseded**
-- **Resolution 2026-09-20:** the Pi reports and hashes its real `wlan0` MAC (`d8:3a:dd:32:1c:ac`), so
+- **Resolution 2026-09-20:** the Pi reports and hashes its real `wlan0` MAC (`<wlan0-mac>`), so
   it exposes a Raspberry-Pi OUI — the same algorithm the firmware uses, on different hardware. The
   firmware never inspects the OUI (it hashes whatever `SIOCGIFHWADDR` returns), and the only place it
   could conceivably have mattered — the Connect camera-service registry gate — is **superseded**
