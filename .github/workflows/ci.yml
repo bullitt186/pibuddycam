@@ -26,7 +26,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Unit tests (stdlib only)
+      # The application is stdlib-only; PyYAML is only needed so the image
+      # config/layer tests run instead of being skipped.
+      - name: Install test-only dependencies
+        run: python3 -m pip install PyYAML==6.0.2
+
+      - name: Unit tests
         run: python3 -m unittest discover -s tests
 
       - name: Byte-compile pi-impersonator and tests

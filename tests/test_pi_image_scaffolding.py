@@ -34,6 +34,24 @@ PRUSA_PRIV = ASSETS / "prusa-priv"
 SUDOERS = ASSETS / "sudoers" / "prusa-cam"
 REPO_SYSTEMD = REPO_ROOT / "pi-impersonator" / "systemd"
 
+def _git_ignored(relative_paths):
+    """Return the given repo-relative paths git ignores and does not track.
+
+    Empty when git or the work tree is unavailable (e.g. a source tarball), so
+    the check only ever adds signal inside a checkout.
+    """
+    if shutil.which("git") is None or not (REPO_ROOT / ".git").exists():
+        return []
+    result = subprocess.run(
+        ["git", "check-ignore", "--stdin"],
+        cwd=REPO_ROOT,
+        input="\n".join(str(p) for p in relative_paths),
+        capture_output=True,
+        text=True,
+    )
+    return sorted(line for line in result.stdout.splitlines() if line)
+
+
 PINNED_COMMIT = "262d4df5a9f9d4133370465399a7958a7c22cdc7"
 PINNED_TAG = "v2.8.0"
 
@@ -158,6 +176,10 @@ class ImageScaffoldingTests(unittest.TestCase):
         ]
         missing = [str(p.relative_to(REPO_ROOT)) for p in required if not p.is_file()]
         self.assertEqual(missing, [], f"missing image files: {missing}")
+        # A required file that exists locally but is git-ignored passes here and
+        # then fails in a fresh CI checkout (the icon matched ``*.png``).
+        ignored = _git_ignored([p.relative_to(REPO_ROOT) for p in required])
+        self.assertEqual(ignored, [], f"required image files are git-ignored: {ignored}")
 
     # --- AC-10: config + layout --------------------------------------------
 
@@ -885,6 +907,7 @@ class ImageScaffoldingTests(unittest.TestCase):
 
     # --- WP-R4b / AC-29: signed application updates -------------------------
 
+    @unittest.skipUnless(yaml is not None, "PyYAML not available")
     def test_layer_installs_minisign_and_zstd(self):
         doc = yaml.safe_load(read_text(LAYER_DIR / "buddy3d-image.yaml"))
         packages = set(doc["mmdebstrap"]["packages"])

@@ -139,6 +139,38 @@ scan_home_paths() {
    fi
 }
 
+# Personal username. The one allowed position is the owner segment of a public
+# GitHub URL (``github.com/<owner>/``): release manifests must name the
+# repository their assets are downloaded from, and that owner is public. Like
+# the home-path scan this filters PER MATCH, so a line that also contains the
+# username anywhere else (a home path, an e-mail, a hostname) is still flagged.
+scan_personal_username() {
+   local out rc=0 kept="" entry word
+   out="$(grep -inoHIE --binary-files=without-match \
+      -e "[^[:space:]\"'<>]*(${PERSONAL_USER_PATTERN})[^[:space:]\"'<>]*" \
+      -- "${files[@]}" 2>/dev/null)" || rc=$?
+   if [ "$rc" -ge 2 ]; then
+      echo "scan-secrets: content scan 'personal username' failed (grep exit $rc)" >&2
+      matches=$((matches + 1))
+      return
+   fi
+   while IFS= read -r entry; do
+      [ -n "$entry" ] || continue
+      word="${entry#*:}"
+      word="${word#*:}"
+      # Drop every allowed github.com/<owner>/ segment, then re-check.
+      word="$(printf '%s' "$word" \
+         | sed -E "s#github\.com/(${PERSONAL_USER_PATTERN})[A-Za-z0-9-]*/##Ig")"
+      if printf '%s' "$word" | grep -qiE -e "$PERSONAL_USER_PATTERN"; then
+         kept+="$entry"$'\n'
+      fi
+   done <<< "$out"
+   if [ -n "$kept" ]; then
+      printf '%s' "$kept"
+      matches=$((matches + 1))
+   fi
+}
+
 # Secret-bearing filenames are flagged regardless of content (a host private
 # key or connection profile is a secret even if its body is not plain text).
 scan_filenames() {
@@ -179,7 +211,7 @@ if [ "$MODE" != "source" ]; then
    scan_content "mqtt password"     '[Mm][Qq][Tt][Tt][A-Za-z_-]*[Pp][Aa][Ss][Ss][A-Za-z]*[[:space:]]*[:=][[:space:]]*[^[:space:]]+'
    scan_content "password_hash"     'password_hash'
 fi
-scan_content "personal username" "$PERSONAL_USER_PATTERN"
+scan_personal_username
 
 scan_home_paths
 scan_filenames

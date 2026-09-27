@@ -150,6 +150,31 @@ class ScanSecretsTests(unittest.TestCase):
         self.assertIn("who.txt:1", result.stdout)
 
     @unittest.skipUnless(BASH, "bash not available")
+    def test_allows_personal_username_only_as_github_owner(self):
+        env = {"SCAN_PERSONAL_USER_PATTERN": "devperson"}
+        allowed = self.dir / "manifest.json"
+        allowed.write_text(
+            '{"bundle_url": "https://github.com/devperson42/repo/releases/'
+            'download/v1.0.0/app.tar.zst",\n'
+            ' "release_url": "https://github.com/DevPerson/repo/releases/tag/v1"}\n'
+        )
+        self.assertEqual(self.scan(allowed, env=env).returncode, 0)
+
+    def test_personal_username_outside_github_owner_is_flagged(self):
+        env = {"SCAN_PERSONAL_USER_PATTERN": "devperson"}
+        for text in (
+            "url=https://github.com/devperson/repo/../devperson-notes\n",
+            "see https://github.com/devperson/repo and devperson@example.org\n",
+            "https://devperson.github.io/repo\n",
+            "https://example.org/github.com/x/devperson/\n",
+        ):
+            with self.subTest(text=text):
+                fixture = self.dir / "mixed.txt"
+                fixture.write_text(text)
+                result = self.scan(fixture, env=env)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("devperson", result.stdout)
+
     def test_directory_scan_and_missing_path(self):
         nested = self.dir / "tree"
         nested.mkdir()

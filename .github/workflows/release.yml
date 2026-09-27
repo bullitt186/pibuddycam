@@ -5,6 +5,14 @@ on:
     tags:
       - "v*"
       - "alpha-v*"
+  # Dry run: build, sign and validate every artifact on the arm64 runner
+  # without publishing anything. Use it to prove the runner after changes.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp into the dry-run artifacts (X.Y.Z)"
+        required: true
+        default: "0.0.0"
 
 permissions:
   contents: read
@@ -12,6 +20,9 @@ permissions:
 env:
   RPI_IMAGE_GEN_DIR: ${{ vars.RPI_IMAGE_GEN_DIR || '/data/build/rpi-image-gen' }}
   WORKROOT: ${{ vars.WORKROOT || '/data/build/work' }}
+  # Runner-local minisign secret key, used when the RELEASE_SIGNING_KEY
+  # secret is not set, so the key never has to leave the release host.
+  RELEASE_SIGNING_KEY_FILE: ${{ vars.RELEASE_SIGNING_KEY_FILE || '/data/build/keys/release-signing.key' }}
 
 jobs:
   host-gate:
@@ -28,7 +39,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Unit tests (stdlib only)
+      # The application is stdlib-only; PyYAML is only needed so the image
+      # config/layer tests run instead of being skipped.
+      - name: Install test-only dependencies
+        run: python3 -m pip install PyYAML==6.0.2
+
+      - name: Unit tests
         run: python3 -m unittest discover -s tests
 
       - name: Byte-compile pi-impersonator and tests
@@ -75,7 +91,11 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            tag="v${{ inputs.version }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
           case "$tag" in
             alpha-v*)
               channel=alpha
@@ -136,13 +156,17 @@ jobs:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${RELEASE_SIGNING_KEY:-}" ]; then
-            echo "ERROR: the RELEASE_SIGNING_KEY repository secret is not set" >&2
-            exit 1
-          fi
           umask 077
           key="$RUNNER_TEMP/minisign.key"
-          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$key"
+          if [ -n "${RELEASE_SIGNING_KEY:-}" ]; then
+            printf '%s\n' "$RELEASE_SIGNING_KEY" > "$key"
+          elif [ -r "$RELEASE_SIGNING_KEY_FILE" ]; then
+            # Copy, never reference: the cleanup step deletes $MINISIGN_KEY.
+            cp "$RELEASE_SIGNING_KEY_FILE" "$key"
+          else
+            echo "ERROR: set the RELEASE_SIGNING_KEY secret or provide $RELEASE_SIGNING_KEY_FILE on the runner" >&2
+            exit 1
+          fi
           echo "MINISIGN_KEY=$key" >> "$GITHUB_ENV"
 
       - name: Assemble the OS-image release artifacts
@@ -243,6 +267,7 @@ jobs:
       # GitHub Release must actually carry those assets. Fail the run if any
       # file in dist/ does not match a published asset (or vice versa).
       - name: Publish the GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.release_tag }}
@@ -253,6 +278,7 @@ jobs:
             dist/*
 
       - name: Verify the published release assets
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
