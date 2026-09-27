@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
-PI_DIR = Path(__file__).resolve().parents[1] / 'pi-impersonator'
+PI_DIR = Path(__file__).resolve().parents[1] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
 # GAP-AUTH-01 flow tests exercise signaling.PrusaSignaling._authenticate, whose

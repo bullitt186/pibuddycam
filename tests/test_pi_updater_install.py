@@ -20,7 +20,7 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
-PI_DIR = Path(__file__).resolve().parents[1] / 'pi-impersonator'
+PI_DIR = Path(__file__).resolve().parents[1] / 'app'
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PI_DIR))
 

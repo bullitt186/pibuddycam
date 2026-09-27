@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 
-PI_DIR = Path(__file__).resolve().parents[1] / 'pi-impersonator'
+PI_DIR = Path(__file__).resolve().parents[1] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
 from identity import (  # noqa: E402
@@ -183,7 +183,7 @@ class MainWiringTests(unittest.TestCase):
     def test_main_passes_configured_fingerprint(self):
         import ast
 
-        src = (Path(__file__).resolve().parents[1] / 'pi-impersonator' / 'main.py').read_text()
+        src = (Path(__file__).resolve().parents[1] / 'app' / 'main.py').read_text()
         calls = [
             node for node in ast.walk(ast.parse(src))
             if isinstance(node, ast.Call)

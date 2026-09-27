@@ -38,7 +38,7 @@ No other keys are present or accepted.
 
 ## Validation rules
 
-The parser (`pi-impersonator/qr_pairing.py`, `parse_payload`) accepts a payload
+The parser (`app/qr_pairing.py`, `parse_payload`) accepts a payload
 only when **all** of the following hold:
 
 1. The input is text or bytes; bytes must be valid UTF-8.

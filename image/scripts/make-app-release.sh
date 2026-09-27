@@ -6,7 +6,7 @@
 # Usage:
 #   make-app-release.sh --version X.Y.Z --out-dir <dir> --wheels <dir>
 #       --url-base <https URL>
-#       [--source-dir <pi-impersonator>] [--channel stable|alpha]
+#       [--source-dir <app>] [--channel stable|alpha]
 #       [--key <minisign secret key>] [--source-commit <sha>]
 #       [--min-image-version X.Y.Z] [--release-summary <text>]
 #       [--release-url <https URL>] [--reboot-required]
@@ -38,9 +38,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$IMAGE_DIR/.." && pwd)"
 SCAN_SECRETS="$SCRIPT_DIR/scan-secrets.sh"
-DEFAULT_SOURCE_DIR="$REPO_ROOT/pi-impersonator"
+DEFAULT_SOURCE_DIR="$REPO_ROOT/app"
 DEFAULT_REQUIREMENTS_LOCK="$IMAGE_DIR/requirements.lock"
-UPDATER_DIR="$REPO_ROOT/pi-impersonator"
+UPDATER_DIR="$REPO_ROOT/app"
 
 # Documented default archive timestamp when SOURCE_DATE_EPOCH is unset: the
 # Unix epoch (1970-01-01T00:00:00Z). Any fixed value works; the point is that
@@ -55,7 +55,7 @@ usage() {
 Usage:
   make-app-release.sh --version X.Y.Z --out-dir <dir> --wheels <dir>
       --url-base <https URL>
-      [--source-dir <pi-impersonator>] [--channel stable|alpha]
+      [--source-dir <app>] [--channel stable|alpha]
       [--key <minisign secret key>] [--source-commit <sha>]
       [--min-image-version X.Y.Z] [--release-summary <text>]
       [--release-url <https URL>] [--reboot-required]
@@ -65,7 +65,7 @@ Usage:
   --out-dir            artifact output directory (required)
   --wheels             directory of hash-pinned wheels (required)
   --url-base           https base URL the bundle is published under (required)
-  --source-dir         application source tree (default: repo pi-impersonator)
+  --source-dir         application source tree (default: repo app)
   --channel            release channel: stable (default) or alpha
   --key                minisign secret key; omit to publish unsigned
   --source-commit      source commit recorded in the manifest (default: git HEAD)

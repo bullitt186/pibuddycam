@@ -15,7 +15,7 @@ GUIDE = REPO_ROOT / "docs" / "appliance-user-guide.md"
 GAP_TRACKER = REPO_ROOT / "docs" / "firmware-implementation-gap-tracker.md"
 DIST_PLAN = REPO_ROOT / "_archive" / "docs" / "public-appliance-distribution-plan.md"
 README = REPO_ROOT / "README.md"
-PI_README = REPO_ROOT / "pi-impersonator" / "README.md"
+PI_README = REPO_ROOT / "app" / "README.md"
 
 #: Personal literals the secret scanner flags; must not appear in tracked docs.
 #: Assembled from adjacent string fragments (like scan-secrets.sh) so this test

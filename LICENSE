@@ -25,7 +25,7 @@ SOFTWARE.
 Scope of this license
 ---------------------
 This license applies to the original code and documentation in this repository:
-  - pi-impersonator/   (Python impersonator)
+  - app/   (Python impersonator)
   - proxy/             (Rust proxy + control tool)
   - research/          (RE helper scripts)
   - docs/              (protocol documentation, reverse-engineering notes)

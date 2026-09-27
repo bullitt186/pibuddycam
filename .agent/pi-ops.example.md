@@ -11,7 +11,7 @@
 | **Camera** | Optional genuine Prusa Buddy3D Camera, firmware 3.1.6 (Rockchip, ARM). The RE target. | via Prusa Connect / read-only SD copy |
 
 On the appliance, the factory app lives at `/opt/pibuddycam` and the launcher prefers the signed
-release at `/data/pibuddycam/releases/current`. Repo source of truth is `pi-impersonator/`; image
+release at `/data/pibuddycam/releases/current`. Repo source of truth is `app/`; image
 assets and fixed root helpers live under `image/`.
 
 ## SSH quick checks
@@ -42,7 +42,7 @@ image/scripts/make-app-release.sh --version X.Y.Z --out-dir <dir> --wheels <dir>
 /usr/libexec/pibuddycam/pibuddycam-priv install-update
 ```
 
-The legacy `pi-impersonator/deploy.sh` flow is only for the old developer install, not the appliance.
+The legacy `app/deploy.sh` flow is only for the old developer install, not the appliance.
 An application OTA cannot update image-owned files. For an explicitly authorized helper/unit test,
 copy the exact repo asset to `/tmp`, verify its hash, remount `/` rw, install it root-owned with the
 repo mode, and remount `/` ro. Commit the identical image change in the same session.

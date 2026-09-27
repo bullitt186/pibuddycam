@@ -42,12 +42,12 @@ before touching the image layer, units, camera path, or NetworkManager config.
 
 | Change | Correct live path | Persistent source of truth |
 |---|---|---|
-| Python application/static application asset | Build and install a signed application release; do not patch `/opt` | `pi-impersonator/` + signed bundle |
-| Image-owned helper, unit, udev/NM rule, package, boot config | Patch ROOT only for an explicitly authorized hardware test, then add the identical change to `image/`; validate with a fresh image when required | `image/` and reused `pi-impersonator/systemd/` assets |
+| Python application/static application asset | Build and install a signed application release; do not patch `/opt` | `app/` + signed bundle |
+| Image-owned helper, unit, udev/NM rule, package, boot config | Patch ROOT only for an explicitly authorized hardware test, then add the identical change to `image/`; validate with a fresh image when required | `image/` and reused `app/systemd/` assets |
 | Device configuration/state | Write through the application/admin path where possible | `/data/pibuddycam/` |
 | Kernel, boot firmware, partitioning, base packages | New image + user-performed flash | `image/` |
 
-The legacy `pi-impersonator/deploy.sh` overlay maintenance flow is for the older developer install,
+The legacy `app/deploy.sh` overlay maintenance flow is for the older developer install,
 not the current appliance image.
 
 ### The hardware loop

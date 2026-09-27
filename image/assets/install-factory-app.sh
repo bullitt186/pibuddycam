@@ -5,7 +5,7 @@
 #   install-factory-app.sh <target-root> <repo-root>
 #
 # It installs the immutable factory application under /opt/pibuddycam, reuses
-# the pi-impersonator/systemd units verbatim, adds the image-only units and
+# the app/systemd units verbatim, adds the image-only units and
 # drop-ins from this directory, and writes build-info.json. It creates no
 # secret, identity, Wi-Fi profile, or SSH host key.
 set -eu
@@ -45,7 +45,7 @@ rsync -a --delete \
    --exclude 'config.ini' --exclude '*.example' --exclude 'systemd/' \
    --exclude 'README.md' \
    --exclude 'backups/' \
-    "$repo/pi-impersonator/" "$root$APP_ROOT/"
+    "$repo/app/" "$root$APP_ROOT/"
 chown -R root:root "$root$APP_ROOT"
 # rsync -a applies the source directory's mode (the checkout is often 0775),
 # so pin the factory tree to 0755 explicitly (B3/AC-13).
@@ -66,7 +66,7 @@ else
 fi
 
 # --- reused runtime units (never divergent copies) --------------------------
-unit_src="$repo/pi-impersonator/systemd"
+unit_src="$repo/app/systemd"
 for u in rpicam-source.service pibuddycam-rtsp.service pibuddycam-ha-rtsp.service \
          pibuddycam.service pibuddycam-admin.service pibuddycam-provisioning.service \
          pi-persist.service pibuddycam-data-ready.service data-ready.target \

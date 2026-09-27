@@ -58,7 +58,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-REPO_UNITS="$REPO_ROOT/pi-impersonator/systemd"
+REPO_UNITS="$REPO_ROOT/app/systemd"
 
 ROOT_CAPACITY_BYTES=$(( 4 * 1024 * 1024 * 1024 ))
 ROOT_UTIL_LIMIT=75

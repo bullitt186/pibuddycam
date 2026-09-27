@@ -11,7 +11,7 @@ The camera normally only works through Prusa Connect's cloud. This project docum
 protocol from the ARM firmware and reimplements it so you can:
 
 - **Impersonate** the camera from a Raspberry Pi + any camera module — it registers to
-  Prusa Connect as a genuine Buddy3D camera. → [`pi-impersonator/`](pi-impersonator/)
+  Prusa Connect as a genuine Buddy3D camera. → [`app/`](app/)
 - **Proxy** an already-registered camera's cloud WebRTC stream to a local RTSP URL and
   send control commands (reboot, resolution, IR mode). → [`proxy/`](proxy/)
 
@@ -36,7 +36,7 @@ protocol from the ARM firmware and reimplements it so you can:
 | Implement the remaining firmware-parity gaps | [`docs/firmware-implementation-gap-tracker.md`](docs/firmware-implementation-gap-tracker.md) ⭐ |
 | Know what actually works vs. what's still theory | [`docs/status.md`](docs/status.md) ⭐ |
 | Understand the wire protocol (the spec) | [`docs/protocol.md`](docs/protocol.md) |
-| **Set up the Pi impersonator (one command)** | [`pi-impersonator/README.md`](pi-impersonator/README.md) ⭐ |
+| **Set up the Pi impersonator (one command)** | [`app/README.md`](app/README.md) ⭐ |
 | **Use the released appliance image (flash → onboarding → HA/MQTT)** | [`docs/appliance-user-guide.md`](docs/appliance-user-guide.md) |
 | **Operate the local web console (Camera/MQTT/Timelapses/System)** | [`docs/appliance-user-guide.md#local-web-console`](docs/appliance-user-guide.md#local-web-console) |
 | Run the local RTSP proxy / control tool | [`proxy/README.md`](proxy/README.md) |
@@ -111,7 +111,7 @@ The full navigation semantics, limitations, and recovery instructions are in
 │   ├── next-steps.md         prioritised open work
 │   ├── camerainfo-verification.md  checklist that pinned the CameraInfo struct
 │   └── journal/              raw research journal (archive; contains superseded claims)
-├── pi-impersonator/          Python impersonator that runs on the Pi (primary impl)
+├── app/          Python impersonator that runs on the Pi (primary impl)
 │   ├── bootstrap.sh          one-command fresh-Pi provisioning (run from your machine)
 │   ├── deploy.sh             legacy developer-install deploy (not the appliance OTA path)
 │   ├── web/                  self-hosted local web console (semantic HTML/CSS/vanilla JS)

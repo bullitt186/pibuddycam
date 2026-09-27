@@ -141,7 +141,7 @@ def _006_runtime_directory(root):
     root-owned, so systemd must create that directory; ``RuntimeDirectory=``
     does it with the service account as owner. This is the OTA catch-up path for
     devices whose image predates the unit change; the factory unit in
-    ``pi-impersonator/systemd/pibuddycam.service`` already carries it.
+    ``app/systemd/pibuddycam.service`` already carries it.
     """
     unit = os.path.join(root, 'etc', 'systemd', 'system', 'pibuddycam.service')
     if not os.path.isfile(unit):

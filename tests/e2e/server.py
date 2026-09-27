@@ -2,7 +2,7 @@
 """Deterministic local E2E harness for the admin Web console (WP-UI8; AC-18/AC-19).
 
 This module serves the **real** stdlib admin core (:class:`admin_http.AdminApp`)
-with the **real** packaged assets in ``pi-impersonator/web/`` over a small local
+with the **real** packaged assets in ``app/web/`` over a small local
 ``http.server`` transport. Every dependency that would touch the host -- the
 camera runtime, MQTT broker, updater, diagnostics, SSH, reboot, factory reset,
 and the live-monitor producer -- is replaced by an in-process deterministic fake.
@@ -35,7 +35,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 
-PI_DIR = Path(__file__).resolve().parents[2] / 'pi-impersonator'
+PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 if str(PI_DIR) not in sys.path:
     sys.path.insert(0, str(PI_DIR))
 

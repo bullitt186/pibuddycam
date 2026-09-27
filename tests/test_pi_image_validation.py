@@ -21,7 +21,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "image" / "scripts" / "validate-image.sh"
-REPO_SYSTEMD = REPO_ROOT / "pi-impersonator" / "systemd"
+REPO_SYSTEMD = REPO_ROOT / "app" / "systemd"
 ASSET_SYSTEMD = REPO_ROOT / "image" / "assets" / "systemd"
 
 HAS_SFDISK = shutil.which("sfdisk") is not None

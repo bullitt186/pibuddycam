@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-PI_DIR = REPO / 'pi-impersonator'
+PI_DIR = REPO / 'app'
 MAIN_PY = PI_DIR / 'main.py'
 sys.path.insert(0, str(PI_DIR))
 

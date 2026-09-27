@@ -23,7 +23,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PI_DIR = REPO_ROOT / "pi-impersonator"
+PI_DIR = REPO_ROOT / "app"
 SCRIPTS = REPO_ROOT / "image" / "scripts"
 MAKE_APP_RELEASE = SCRIPTS / "make-app-release.sh"
 SCAN_SECRETS = SCRIPTS / "scan-secrets.sh"

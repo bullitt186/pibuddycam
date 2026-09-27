@@ -92,7 +92,7 @@ local-fs.target
 ```
 
 The grow unit and target are image-only. The application units are **reused
-verbatim** from `pi-impersonator/systemd/` (never copied or diverged). The extra
+verbatim** from `app/systemd/` (never copied or diverged). The extra
 ordering is added with drop-ins under `assets/systemd/`. Auxiliary units such as admin, updater,
 and optional MQTT integration must be `Wants=` under `pibuddycam.target`, never `Requires=`, so
 their failures stay isolated.

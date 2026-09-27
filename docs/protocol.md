@@ -685,7 +685,7 @@ Note: the official OpenAPI spec documents success as `204 No Content`; live test
 real backend observed `200` instead (see `status.md`). Firmware `FUN_0005c568` accepts both
 `"200"` and `"204"` and has a dedicated `"403"` branch that logs `Upload image BLOCKED by server!`
 (`lp_app.strings:8304`); any other response is logged as a failed status code. The impersonator
-classifies the same way (`pi-impersonator/http_result.py`).
+classifies the same way (`app/http_result.py`).
 
 ---
 

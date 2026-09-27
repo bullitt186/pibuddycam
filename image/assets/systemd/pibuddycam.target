@@ -1,5 +1,5 @@
 # Image-only runtime target (AC-12). Groups and orders the reused
-# pi-impersonator/systemd units per source §3.2:
+# app/systemd units per source §3.2:
 #
 #   data-ready.target -> pibuddycam.target
 #     -> pi-persist -> rpicam-source -> pibuddycam-rtsp -> pibuddycam-ha-rtsp -> pibuddycam

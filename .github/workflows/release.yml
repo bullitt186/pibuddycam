@@ -51,13 +51,13 @@ jobs:
       - name: Unit tests
         run: python3 -m unittest discover -s tests
 
-      - name: Byte-compile pi-impersonator and tests
-        run: python3 -m compileall -q pi-impersonator tests
+      - name: Byte-compile app and tests
+        run: python3 -m compileall -q app tests
 
       - name: Shell syntax (app + image scripts)
         run: |
           status=0
-          for f in image/scripts/*.sh pi-impersonator/*.sh; do
+          for f in image/scripts/*.sh app/*.sh; do
             bash -n "$f" || status=1
           done
           exit "$status"
@@ -210,7 +210,7 @@ jobs:
         run: |
           set -euo pipefail
           image/scripts/make-app-release.sh \
-            --source-dir pi-impersonator \
+            --source-dir app \
             --version "${{ steps.meta.outputs.version }}" \
             --channel "${{ steps.meta.outputs.channel }}" \
             --out-dir dist \
@@ -231,7 +231,7 @@ jobs:
           import os
           import sys
 
-          sys.path.insert(0, "pi-impersonator")
+          sys.path.insert(0, "app")
           import updater  # noqa: E402
 
           dist = "dist"

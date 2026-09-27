@@ -555,7 +555,7 @@ no unique, un-forgeable identifier was found on the `CameraInfoMessage` wire (se
 out" table above and `protocol.md`). One concrete, cheap correctness fix fell out of the
 investigation: send the real firmware's model-name string (`"Buddy3D-C1"`) at the newly-traced
 `extended_status` offset `0x0c4` instead of the impersonator's invented `"Pi Zero 2 W"`.
-**Applied 2026-07-09** (`pi-impersonator/signaling.py`: `2: 'Pi Zero 2 W'` → `2: MODEL`),
+**Applied 2026-07-09** (`app/signaling.py`: `2: 'Pi Zero 2 W'` → `2: MODEL`),
 deployed to the Pi, verified on the wire (`status` event's field 5 now shows `Buddy3D-C1`) and
 end-to-end (`/c/info` 200, auth ACK `0`, stable connection). This alone did not (and wasn't
 expected to) trigger a `webrtc` event.

@@ -13,7 +13,7 @@ plus two working reimplementations. Full orientation is in
 | The wire protocol (source of truth) | `docs/protocol.md` |
 | Errors / red herrings / corrected assumptions | `docs/dead-ends.md` — check before re-deriving anything |
 | Reproduce the RE (Ghidra, VMAs, techniques) | `docs/reverse-engineering.md` |
-| Pi camera impersonator (Python, primary impl) | `pi-impersonator/` |
+| Pi camera impersonator (Python, primary impl) | `app/` |
 | Appliance image/build/update operations | `image/README.md`, `docs/hardware-bring-up-lessons.md` |
 | Rust cloud-stream proxy + control tool | `proxy/` |
 | Tools / sources | `docs/tools.md`, `docs/sources.md` |
@@ -62,7 +62,7 @@ The Python tests use the standard library and do not require the Pi runtime depe
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m compileall -q pi-impersonator tests
+python3 -m compileall -q app tests
 ```
 
 When changing the Rust proxy, also run:
@@ -73,7 +73,7 @@ cargo test
 ```
 
 The Pi runtime dependencies (`aiohttp`, `python-socketio`, GStreamer, and PyGObject) are provisioned
-by `pi-impersonator/bootstrap.sh`; do not add host-specific virtual environments to the repository.
+by `app/bootstrap.sh`; do not add host-specific virtual environments to the repository.
 There is currently no repository-wide formatter or type checker. Do not claim those checks ran.
 
 CI (`.github/workflows/ci.yml`) runs the same suite on a fresh checkout with PyYAML, minisign,
@@ -124,7 +124,7 @@ while `/data` is the durable PERSIST partition. Do not reuse the older overlay-d
   same session.
 - Durable configuration is `/data/pibuddycam/config/{device,secrets}.toml`. Keep both owned by
   `pibuddycam`; a root-owned secrets file makes the service read an empty token.
-- `pi-impersonator/deploy.sh` remains a legacy developer-install tool. Do not use it on the
+- `app/deploy.sh` remains a legacy developer-install tool. Do not use it on the
   appliance release layout.
 - After live work verify the active release, service health, ROOT ro state, updater configuration,
   snapshots and RTSP, and remove temporary CAs/manifests. Exact private commands are in

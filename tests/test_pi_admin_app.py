@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-PI_DIR = REPO / 'pi-impersonator'
+PI_DIR = REPO / 'app'
 ADMIN_APP = PI_DIR / 'admin_app.py'
 ADMIN_HTTP = PI_DIR / 'admin_http.py'
 UNIT = PI_DIR / 'systemd' / 'pibuddycam-admin.service'

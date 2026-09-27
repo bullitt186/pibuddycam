@@ -8,7 +8,7 @@ suite, the kernel package, the installed-package manifest, and the sha256 of the
 hash-locked Python dependency set. Output is deterministic: keys are sorted and
 no wall-clock time is embedded; SOURCE_DATE_EPOCH is copied through when present.
 
-The ``version`` field is read back at runtime by ``pi-impersonator/app_version.py``
+The ``version`` field is read back at runtime by ``app/app_version.py``
 (WP-R2). Release automation (WP-R5) owns the actual release versioning; this
 generator only records whatever version it is handed.
 

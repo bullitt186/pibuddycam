@@ -13,7 +13,7 @@ from pathlib import Path
 
 MAIN = (
     Path(__file__).resolve().parent.parent
-    / 'pi-impersonator'
+    / 'app'
     / 'main.py'
 )
 

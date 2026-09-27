@@ -4,7 +4,7 @@
 
 This repository is released under the **MIT License** — see [`LICENSE`](LICENSE).
 
-The license covers all original work: the impersonator code (`pi-impersonator/`), the proxy
+The license covers all original work: the impersonator code (`app/`), the proxy
 (`proxy/`), RE helper scripts (`research/`), and the protocol documentation (`docs/`). The
 protocol documentation is the result of independent reverse engineering for interoperability
 and contains no Prusa source code (EU Software Directive 2009/24/EC Art. 6 / US fair use).

@@ -2,7 +2,7 @@
 
 Stdlib-only. These tests never import ``aiohttp``; they drive the
 :mod:`admin_http` policy core with transport-neutral :class:`Request` objects
-and parse the packaged ``pi-impersonator/web/`` source with the standard
+and parse the packaged ``app/web/`` source with the standard
 library. No network, subprocess, live device, or browser dependency is used.
 """
 import json
@@ -12,7 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-PI_DIR = Path(__file__).resolve().parents[1] / 'pi-impersonator'
+PI_DIR = Path(__file__).resolve().parents[1] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
 import admin_auth  # noqa: E402
@@ -1006,9 +1006,9 @@ class AdminAssetPackagingTests(unittest.TestCase):
 
     def test_factory_installer_does_not_exclude_web(self):
         text = INSTALLER.read_text(encoding='utf-8')
-        rsync_block = text.split('rsync -a', 1)[1].split('"$repo/pi-impersonator/"', 1)[0]
+        rsync_block = text.split('rsync -a', 1)[1].split('"$repo/app/"', 1)[0]
         self.assertNotIn('web', rsync_block)
-        self.assertIn('"$repo/pi-impersonator/"', text)
+        self.assertIn('"$repo/app/"', text)
 
     def test_application_release_does_not_exclude_web(self):
         text = MAKE_APP_RELEASE.read_text(encoding='utf-8')

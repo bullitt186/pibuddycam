@@ -38,13 +38,13 @@ jobs:
       - name: Unit tests
         run: python3 -m unittest discover -s tests
 
-      - name: Byte-compile pi-impersonator and tests
-        run: python3 -m compileall -q pi-impersonator tests
+      - name: Byte-compile app and tests
+        run: python3 -m compileall -q app tests
 
       - name: Shell syntax (app + image scripts)
         run: |
           status=0
-          for f in image/scripts/*.sh pi-impersonator/*.sh; do
+          for f in image/scripts/*.sh app/*.sh; do
             echo "bash -n $f"
             bash -n "$f" || status=1
           done

@@ -130,7 +130,7 @@ class UpdaterUnitBoundaryTests(unittest.TestCase):
 
     def setUp(self):
         self.helper = PIBUDDYCAM_PRIV.read_text(encoding='utf-8')
-        self.systemd = REPO / 'pi-impersonator' / 'systemd'
+        self.systemd = REPO / 'app' / 'systemd'
 
     def test_check_update_starts_the_report_only_check_unit(self):
         block = self.helper.split('check-update)', 1)[1].split(';;', 1)[0]

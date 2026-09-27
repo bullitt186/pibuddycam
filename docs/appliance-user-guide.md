@@ -30,7 +30,7 @@ MQTT for Home Assistant.
 The design of record is
 [`docs/public-appliance-distribution-plan.md`](public-appliance-distribution-plan.md) (source of
 truth for the distribution, partition, onboarding, MQTT, update, and acceptance model). The
-impersonator internals are described in [`pi-impersonator/README.md`](../pi-impersonator/README.md),
+impersonator internals are described in [`app/README.md`](../app/README.md),
 and the cloud wire protocol in [`docs/protocol.md`](protocol.md).
 
 ## Hardware

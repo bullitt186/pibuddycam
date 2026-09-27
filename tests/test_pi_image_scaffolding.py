@@ -2,7 +2,7 @@
 
 These tests never build an image, never touch a device, and never require root
 or network access. They read the ``image/`` subtree and the reused
-``pi-impersonator/systemd/`` units from the repository and assert the
+``app/systemd/`` units from the repository and assert the
 structural and ordering invariants the build relies on.
 """
 
@@ -32,7 +32,7 @@ ASSETS = IMAGE / "assets"
 ASSET_SYSTEMD = ASSETS / "systemd"
 PIBUDDYCAM_PRIV = ASSETS / "pibuddycam-priv"
 SUDOERS = ASSETS / "sudoers" / "pibuddycam"
-REPO_SYSTEMD = REPO_ROOT / "pi-impersonator" / "systemd"
+REPO_SYSTEMD = REPO_ROOT / "app" / "systemd"
 
 def _git_ignored(relative_paths):
     """Return the given repo-relative paths git ignores and does not track.
@@ -355,12 +355,12 @@ class ImageScaffoldingTests(unittest.TestCase):
         )
 
     def test_reused_units_are_not_duplicated_in_image(self):
-        # The image must reuse pi-impersonator/systemd/ rather than ship
+        # The image must reuse app/systemd/ rather than ship
         # divergent copies. Only image-only units live under assets/systemd/.
         for name in REUSED_UNITS:
             self.assertFalse(
                 (ASSET_SYSTEMD / name).exists(),
-                f"{name} must be reused from pi-impersonator/systemd/, not duplicated",
+                f"{name} must be reused from app/systemd/, not duplicated",
             )
 
     def test_grow_service_ordering(self):

@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PI_DIR = REPO_ROOT / 'pi-impersonator'
+PI_DIR = REPO_ROOT / 'app'
 if str(PI_DIR) not in sys.path:
     sys.path.insert(0, str(PI_DIR))
 

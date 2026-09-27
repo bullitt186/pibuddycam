@@ -31,7 +31,7 @@ Key domain knowledge applied during static analysis: **nanopb** protobuf descrip
 |---|---|
 | **Rust** (edition 2021, toolchain ≥ 1.85) + **cargo** + **just** | `proxy/` — the cloud-stream proxy & control tool |
 | Rust crates: `tokio`, `axum`, `reqwest` (rustls), `prost`/protobuf, `webrtc` 0.17 | async runtime, HTTP, WebRTC, protobuf |
-| **Python 3** (venv `--system-site-packages`) | `pi-impersonator/` — the on-device camera impersonator |
+| **Python 3** (venv `--system-site-packages`) | `app/` — the on-device camera impersonator |
 | **PyGObject / GStreamer** (`gst-rtsp-server`) | Pi RTSP server + capture pipeline |
 | **rpicam-apps**, **libcamera** | Pi camera capture (`rpicam-hello`, `rpicam-jpeg`, `libcamerasrc`) |
 | **VLC** | Verifying the local RTSP stream (`rtsp://<host>:8554/live`) |

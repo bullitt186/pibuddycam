@@ -1,7 +1,7 @@
 # Buddy3D 3.1.6 implementation gap tracker
 
 Behavioral differences between the fully decompiled Buddy3D Camera firmware `3.1.6`
-and the Raspberry Pi impersonator in [`pi-impersonator/`](../pi-impersonator/).
+and the Raspberry Pi impersonator in [`app/`](../app/).
 
 This document tracks only behavior, state, settings, and parameters visible to Prusa Connect
 or affecting a Connect-requested operation. Rockchip-specific implementation details are out of
@@ -45,7 +45,7 @@ following is the completion contract for each `GAP-*` item:
 
    ```bash
    python3 -m unittest discover -s tests -v
-   python3 -m compileall -q pi-impersonator tests
+   python3 -m compileall -q app tests
    ```
 
 6. Update the checkbox and append the implementation commit, test names, live-verification date
@@ -535,9 +535,9 @@ closing the gap.
   result/error message.
 - **Acceptance:** fixture tests for every recovered trigger prove that only its intended action is
   called and the correct response event/payload is emitted.
-- **Code:** [`main.py`](../pi-impersonator/main.py#L234-L250),
-  [`trigger.py`](../pi-impersonator/trigger.py)
-- **Implementation (staged, commit pending):** [`trigger.py`](../pi-impersonator/trigger.py)
+- **Code:** [`main.py`](../app/main.py#L234-L250),
+  [`trigger.py`](../app/trigger.py)
+- **Implementation (staged, commit pending):** [`trigger.py`](../app/trigger.py)
   decodes the recovered descriptor `0x3f6f14` (`decode_trigger`, returning a tag-keyed
   `TriggerMessage` with a normalized tag-11 `request_id`) and produces an ordered action plan
   (`trigger_actions`) that fires only the exact documented `(tag, value)` pairs. `main.py`'s
@@ -599,8 +599,8 @@ closing the gap.
   where firmware does.
 - **Acceptance:** captured or constructed firmware-compatible payloads for every setting decode to
   the expected typed action; malformed/easter-egg guard payloads reproduce firmware rejection.
-- **Code:** [`main.py`](../pi-impersonator/main.py#L251-L280),
-  [`proto.py`](../pi-impersonator/proto.py#L63-L90)
+- **Code:** [`main.py`](../app/main.py#L251-L280),
+  [`proto.py`](../app/proto.py#L63-L90)
 
 ### GAP-WEBRTC-01 — Consume Connect-provided ICE server configuration
 
@@ -620,8 +620,8 @@ closing the gap.
   credentials into `webrtcbin`; retain firmware-equivalent fallback servers.
 - **Acceptance:** unit fixtures recover the complete ICE list; an integration test forces relay and
   establishes a `RELAYED` connection using Connect-supplied credentials.
-- **Code:** [`proto.py`](../pi-impersonator/proto.py#L93-L114),
-  [`webrtc.py`](../pi-impersonator/webrtc.py#L66-L75)
+- **Code:** [`proto.py`](../app/proto.py#L93-L114),
+  [`webrtc.py`](../app/webrtc.py#L66-L75)
 
 ### GAP-WEBRTC-02 — Share the existing camera encoder instead of opening libcamera twice
 
@@ -639,8 +639,8 @@ closing the gap.
   with independent RTSP, JPEG, and WebRTC consumers.
 - **Acceptance:** RTSP, periodic snapshots, and a WebRTC session can run without a second libcamera
   owner or camera-busy errors.
-- **Code:** [`webrtc.py`](../pi-impersonator/webrtc.py#L47-L72),
-  [`rpicam-source.service`](../pi-impersonator/systemd/rpicam-source.service)
+- **Code:** [`webrtc.py`](../app/webrtc.py#L47-L72),
+  [`rpicam-source.service`](../app/systemd/rpicam-source.service)
 
 ### GAP-WEBRTC-03 — Implement session lifecycle and teardown
 
@@ -668,16 +668,16 @@ closing the gap.
   ends.
 - **Acceptance:** connect/disconnect, failed negotiation, and TTL-expiry tests all clean up the
   pipeline and resume snapshots.
-- **Code:** [`main.py`](../pi-impersonator/main.py#L216-L231),
-  [`webrtc.py`](../pi-impersonator/webrtc.py#L32-L51)
+- **Code:** [`main.py`](../app/main.py#L216-L231),
+  [`webrtc.py`](../app/webrtc.py#L32-L51)
 - **Implementation (done, `1e1e2f2` + `8bd7a45`):** `webrtc.py` connects
   **`notify::ice-connection-state`** (webrtcbin has no `on-ice-connection-state-change` signal) and
   maps states through the stdlib-only
-  [`webrtc_lifecycle.py`](../pi-impersonator/webrtc_lifecycle.py): FAILED/CLOSED notify
+  [`webrtc_lifecycle.py`](../app/webrtc_lifecycle.py): FAILED/CLOSED notify
   immediately, DISCONNECTED is re-checked after a 15 s grace period, and a 30 s connect watchdog
   fires when ICE never connects. `main.py`'s `on_stream_ended` clears `state.streaming` and
   resumes periodic snapshots. Viewer trickle candidates are extracted by the host-testable
-  [`proto.find_webrtc_candidate`](../pi-impersonator/proto.py), which also unwraps the
+  [`proto.find_webrtc_candidate`](../app/proto.py), which also unwraps the
   UTF-8-collapsed tag4 `str` (the live 14-of-21 drop). Tests:
   `test_pi_proto.py::FindWebRtcCandidateTests`, `test_pi_webrtc_lifecycle.py`. The firmware's
   exact peer TTL worker remains untraced, so the watchdog is explicitly Pi-side policy.
@@ -703,9 +703,9 @@ closing the gap.
   offers while disabled, and report actual mode/runtime status.
 - **Acceptance:** enable/disable fixtures alter the gate and subsequent `status` payload exactly as
   expected.
-- **Code:** [`signaling.py`](../pi-impersonator/signaling.py#L60-L66),
-  [`signaling.py`](../pi-impersonator/signaling.py#L275-L278)
-- **Implementation (staged, commit pending):** [`webrtc_control.py`](../pi-impersonator/webrtc_control.py)
+- **Code:** [`signaling.py`](../app/signaling.py#L60-L66),
+  [`signaling.py`](../app/signaling.py#L275-L278)
+- **Implementation (staged, commit pending):** [`webrtc_control.py`](../app/webrtc_control.py)
   decodes field 1 (not the `0x08` tag byte), applies the `FUN_000b94ac` enable/disable state machine,
   and exposes the `FUN_000b996c` gate (`offer_allowed`). `main.py`'s offer handler consults the gate,
   and `set_webrtc_mode` / `configuration.webrtc` start/stop the `PrusaWebRTC` GLib loop with
@@ -742,7 +742,7 @@ closing the gap.
   viewer ICE candidate is of type `relay` (a TURN client) and cleared on WebRTC stream end and
   peer teardown (`on_stream_ended`/`_teardown` -> `on_teardown`). The quality-apply path
   (`main.handle_quality` -> `quality_control.handle_quality`) consults the pure
-  [`quality.quality_change_allowed`](../pi-impersonator/quality.py): while a TURN client is online a
+  [`quality.quality_change_allowed`](../app/quality.py): while a TURN client is online a
   raise (`requested > current`) is rejected with the recovered warning log and no live/persist
   effect; lowering/equal and the no-TURN case are unchanged. Tests:
   `tests/test_pi_turn_quality_lock.py`.
@@ -764,8 +764,8 @@ closing the gap.
 - **Acceptance:** parameterized tests demonstrate distinct ALL/RELAY, TTL, SD/HD/FHD, and FPS
   behavior; TURN sessions block global quality changes like firmware (covered by
   `tests/test_pi_turn_quality_lock.py`).
-- **Code:** [`proto.py`](../pi-impersonator/proto.py#L100-L113),
-  [`webrtc.py`](../pi-impersonator/webrtc.py#L56-L72)
+- **Code:** [`proto.py`](../app/proto.py#L100-L113),
+  [`webrtc.py`](../app/webrtc.py#L56-L72)
 
 ### GAP-WEBRTC-06 — Emit `webrtc_connection_info`
 
@@ -805,12 +805,12 @@ closing the gap.
   the firmware numeric enum, encode the three populated fields, and emit it after selection.
 - **Acceptance:** direct and forced-relay tests produce the correct event and candidate types.
 - **Implementation (staged, commit pending):** helpers in
-  [`webrtc_lifecycle.py`](../pi-impersonator/webrtc_lifecycle.py) (`candidate_type_code`,
+  [`webrtc_lifecycle.py`](../app/webrtc_lifecycle.py) (`candidate_type_code`,
   `parse_candidate_type`, `connection_info_payload`), emission in
-  [`webrtc.py`](../pi-impersonator/webrtc.py) (`_emit_connection_info`/`_on_stats_ready`),
+  [`webrtc.py`](../app/webrtc.py) (`_emit_connection_info`/`_on_stats_ready`),
   sender in
-  [`signaling.py`](../pi-impersonator/signaling.py) (`send_webrtc_connection_info`), wired from
-  [`main.py`](../pi-impersonator/main.py) (`on_connection_info`). Tests:
+  [`signaling.py`](../app/signaling.py) (`send_webrtc_connection_info`), wired from
+  [`main.py`](../app/main.py) (`on_connection_info`). Tests:
   `tests/test_pi_webrtc_connection_info.py`. **Assumption:** the exact GStreamer `get-stats`
   structure shape is version-dependent; the extractor is a best-effort recursive scan and skips
   the event when the selected pair cannot be identified (never guesses).
@@ -832,7 +832,7 @@ closing the gap.
   encoding; read the persisted quality at startup; query actual service states where necessary.
 - **Acceptance:** after every supported command, a decoded `status` fixture shows the resulting
   firmware-equivalent state.
-- **Code:** [`signaling.py`](../pi-impersonator/signaling.py#L214-L304)
+- **Code:** [`signaling.py`](../app/signaling.py#L214-L304)
 
 ### GAP-STATUS-02 — Correct request correlation in `status`
 
@@ -853,7 +853,7 @@ closing the gap.
   field 10 from the correct context.
 - **Acceptance:** initial-status and request-response fixtures encode different expected field 10
   values and match a real-camera capture or descriptor-driven test.
-- **Code:** [`signaling.py`](../pi-impersonator/signaling.py#L293-L310)
+- **Code:** [`signaling.py`](../app/signaling.py#L293-L310)
 
 ### GAP-SNAPSHOT-01 — Apply snapshot upload interval changes
 
@@ -872,8 +872,8 @@ closing the gap.
   the active loop, and update status.
 - **Acceptance:** changing 10→60→10 seconds changes measured upload scheduling without restart;
   values outside the firmware range are rejected.
-- **Code:** [`main.py`](../pi-impersonator/main.py#L129-L148),
-  [`main.py`](../pi-impersonator/main.py#L260-L262)
+- **Code:** [`main.py`](../app/main.py#L129-L148),
+  [`main.py`](../app/main.py#L260-L262)
 
 ### GAP-SNAPSHOT-02 — Implement snapshot enable/disable triggers
 
@@ -892,7 +892,7 @@ closing the gap.
   enable resumes the configured cadence.
 - **Implementation (staged, commit pending):** recovered trigger tags 4/5 values `1`/`2` now map to
   `snapshot_enable`/`snapshot_disable` and are applied through
-  [`trigger.py`](../pi-impersonator/trigger.py) `apply_snapshot_upload`, which sets the shared
+  [`trigger.py`](../app/trigger.py) `apply_snapshot_upload`, which sets the shared
   `state.snapshot_upload_enabled` that `periodic_snapshot_allowed` already reads. Immediate
   get-snapshot is independent of that switch and keeps only the existing WebRTC pause. Status has
   no recovered field for this flag, so none is emitted rather than inventing one. Tests:
@@ -916,10 +916,10 @@ closing the gap.
   changes and reconnect/network events.
 - **Acceptance:** injected HTTP failures recover without restart; changing a published attribute
   results in a subsequent successful `/c/info` containing the new value.
-- **Code:** [`main.py`](../pi-impersonator/main.py#L179-L188),
-  [`upload.py`](../pi-impersonator/upload.py#L18-L53)
+- **Code:** [`main.py`](../app/main.py#L179-L188),
+  [`upload.py`](../app/upload.py#L18-L53)
 - **Implementation (staged, commit pending):** pure decisions in
-  [`info_service.py`](../pi-impersonator/info_service.py) reproduce the firmware
+  [`info_service.py`](../app/info_service.py) reproduce the firmware
   dirty/countdown loop (`next_info_action`, reload to 10 on failure); `main.info_service_loop`
   ticks every second and marks dirty on camera-name, quality, snapshot-interval, and RTSP/WebRTC
   mode changes. Retry is bounded by `http_result.MAX_INFO_RETRIES` (the task contract's finite
@@ -944,7 +944,7 @@ closing the gap.
   Do not claim a feature merely to resemble the string list if its behavior is absent.
 - **Acceptance:** every advertised feature has a passing command/status integration test; all
   intentionally unsupported features are absent and the resulting feature hash is updated.
-- **Code:** [`features.py`](../pi-impersonator/features.py)
+- **Code:** [`features.py`](../app/features.py)
 
 ## P2 — parameter and semantic differences
 
@@ -963,7 +963,7 @@ closing the gap.
 - **Implementation:** use raw-to-protobuf mapping `{5: 1, 6: 2, 7: 3}` and preserve the existing
   protobuf-enum-to-dimensions table.
 - **Acceptance:** raw bytes 5/6/7 yield SD/HD/FHD respectively and status reports enums 1/2/3.
-- **Code:** [`quality.py`](../pi-impersonator/quality.py#L11-L12)
+- **Code:** [`quality.py`](../app/quality.py#L11-L12)
 
 ### GAP-QUALITY-02 — Reproduce the quality persistence flag and recover event wiring
 
@@ -1006,7 +1006,7 @@ closing the gap.
   write, flag `1` performs the same live change plus one write, and live-change failure performs
   neither the current-state update nor persistence. A separate fixture pins each event name to its
   recovered flag.
-- **Code:** [`main.py`](../pi-impersonator/main.py#L291-L300)
+- **Code:** [`main.py`](../app/main.py#L291-L300)
 
 ### GAP-QUALITY-03 — Initialize and publish persisted quality
 
@@ -1042,8 +1042,8 @@ closing the gap.
   privileged port `554`; do not change the listener/status URL.
 - **Acceptance (met):** listener, status, and documentation agree on `8554`, and a real
   Connect/local-client test consumes it.
-- **Code:** [`rtsp_server.py`](../pi-impersonator/rtsp_server.py),
-  [`signaling.py`](../pi-impersonator/signaling.py#L257-L261)
+- **Code:** [`rtsp_server.py`](../app/rtsp_server.py),
+  [`signaling.py`](../app/signaling.py#L257-L261)
 
 ### GAP-RTSP-02 — Track configured mode separately from runtime state
 
@@ -1061,7 +1061,7 @@ closing the gap.
   configuration-form commands through one path; choose boot behavior from mode.
 - **Acceptance:** disable survives the intended persistence boundary, status follows service state,
   and both command forms behave identically.
-- **Implementation (staged, commit pending):** [`rtsp_control.py`](../pi-impersonator/rtsp_control.py)
+- **Implementation (staged, commit pending):** [`rtsp_control.py`](../app/rtsp_control.py)
   decodes the direct field-1 mode, maps `configuration.rtsp` `on`/`off` to `2`/`1`, and applies both
   through one `apply_mode` path that starts/stops `pibuddycam-rtsp.service`, sets `state.rtsp_mode`, and
   resolves `state.rtsp_running` from `systemctl is-active` (falling back to the commanded state when
@@ -1083,7 +1083,7 @@ closing the gap.
 - **Implementation:** set 95 unless Pi bandwidth/CPU testing justifies and documents a deliberate
   deviation.
 - **Acceptance:** encoder configuration and a captured image report quality target 95.
-- **Code:** [`camera.py`](../pi-impersonator/camera.py#L12-L20)
+- **Code:** [`camera.py`](../app/camera.py#L12-L20)
 
 ### GAP-SNAPSHOT-04 — Match snapshot scheduling and concurrent-stream behavior
 
@@ -1112,7 +1112,7 @@ closing the gap.
   the Pi, including a quality change, before changing this item to closed.
 - **Acceptance:** snapshots continue at configured cadence during RTSP and WebRTC without camera
   contention.
-- **Code:** [`main.py`](../pi-impersonator/main.py#L129-L148)
+- **Code:** [`main.py`](../app/main.py#L129-L148)
 
 ### GAP-HTTP-01 — Snapshot `Expect: 100-continue`
 
@@ -1127,7 +1127,7 @@ closing the gap.
 - **Implementation:** enable aiohttp's `expect100` behavior for snapshot PUT and verify no latency or
   proxy regression.
 - **Acceptance:** capture shows the header and successful `100`/final response flow.
-- **Code:** [`upload.py`](../pi-impersonator/upload.py#L3-L16)
+- **Code:** [`upload.py`](../app/upload.py#L3-L16)
 
 ### GAP-HTTP-02 — Handle HTTP result classes and throttling
 
@@ -1147,7 +1147,7 @@ closing the gap.
   redirects, and implement bounded retry/backoff/throttle behavior.
 - **Acceptance:** mocked 2xx, 3xx, 4xx-blocked, 5xx, timeout, and TLS failures take the documented
   path without leaking token/fingerprint.
-- **Implementation (staged, commit pending):** [`http_result.py`](../pi-impersonator/http_result.py)
+- **Implementation (staged, commit pending):** [`http_result.py`](../app/http_result.py)
   classifies `success`/`redirect`/`blocked`/`client_error`/`server_error`/`timeout`/
   `connection_error` and bounds transient retries. Direct evidence resolves the blocked class to
   exactly `403`: snapshot handler `FUN_0005c568` compares the response text to `"200"`, `"204"`,
@@ -1172,7 +1172,7 @@ closing the gap.
   handlers.
 - **Acceptance:** one state fixture produces mutually consistent `/c/info`, status, and encoder
   settings.
-- **Implementation (staged, commit pending):** [`info_body.py`](../pi-impersonator/info_body.py)
+- **Implementation (staged, commit pending):** [`info_body.py`](../app/info_body.py)
   builds the JSON body from `CameraState` (`state.resolution()`/`state.camera_name`), and
   `upload.upload_info(session, state, ...)` no longer takes independent width/height/name.
   Tests: `test_pi_info_body.py` (body/status name and resolution consistency).
@@ -1206,8 +1206,8 @@ closing the gap.
   failure returns from the callback without a nested disconnect, and supervisor health requires
   both an Engine.IO connection and an exact successful auth ACK. Tests cover the bounded initial
   attempt and reject a connected-but-unauthenticated session.
-- **Code:** [`signaling.py`](../pi-impersonator/signaling.py#L137-L159),
-  [`signaling.py`](../pi-impersonator/signaling.py#L377-L463)
+- **Code:** [`signaling.py`](../app/signaling.py#L137-L159),
+  [`signaling.py`](../app/signaling.py#L377-L463)
 
 ### GAP-CONTROL-01 — Apply and publish camera-name changes
 
@@ -1246,13 +1246,13 @@ closing the gap.
   responses, or remove `FwUpdate` and return an explicit unsupported result if the protocol permits.
 - **Acceptance:** staged fixtures cover no update, available update, integrity failure, successful
   update, and remote-start request without unsafe arbitrary firmware installation.
-- **Code:** [`main.py`](../pi-impersonator/main.py#L150-L168)
+- **Code:** [`main.py`](../app/main.py#L150-L168)
 
 ### GAP-TIMELAPSE-01 — Implement or stop advertising timelapse
 
 - [~] **P2 · Firmware-named frames/AVI live-verified; make-video verified directly; file_list not app-exercisable**
 - **2026-09-19 (live symptom + descriptor re-trace):** Connect shows *"Time lapse not available, camera storage not detected, insert SD card"*. The app reads storage from the **`status` message**, specifically the `extended_status.4` storage block (descriptor `0x3f72b0`; firmware labels it the "video/timelapse mode/storage block"). The descriptor was recovered exactly as **tags 1-4 uvarint + tag 5 callback string**: tag 1 = SD mounted state (`FUN_000744ac`, translated `0->2`, `1->1`, else `0`; i.e. **1 = mounted/present, 2 = not mounted**), tags 2/3/4 = total/free/used MB (`FUN_000745e0`, `(f_bsize * f_blocks) >> 20` etc. via `statvfs64("/mnt/sdcard")`), tag 5 = mount-mode string (`FUN_00073914` -> `"RW"`/`"RO"`/`"UNKNOWN"`). **Correction:** the earlier note mapping `FUN_000abcb0`/`FUN_000abaf4` into this block was wrong — those are TimelapseService singleton getters that belong to top-level `timelapse_status` (field 2), and the `MODEL` string previously emitted on tag 5 was a misread.
-- **Implementation (2026-09-19, local; not live-verified):** [`timelapse.py`](../pi-impersonator/timelapse.py) provides the Pi storage policy — `sd_present` (`os.path.isdir` + `os.access(R_OK)` over `/mnt/sdcard`, matching the firmware's `FUN_00071bc0` accessibility check; the Pi has no block device), `sd_space` (`statvfs` MB with the firmware shift), `sd_mode` (`RW`/`RO`/`UNKNOWN`), and `storage_status` (the 5-tuple). [`status.py`](../pi-impersonator/status.py) encodes it on `extended_status.4` and wires `timelapse_status` tags 1/2 to `state.timelapse_enabled`/`state.timelapse_interval` (`FUN_000abcdc`/`FUN_000abcb0`); [`signaling.py`](../pi-impersonator/signaling.py) supplies live telemetry. `deploy.sh` now chowns the `/mnt/sdcard` mountpoint itself to the service user (not just `/mnt/sdcard/timelapse`) so the mode reports `RW`, and installs samba before writing its config. Tests: `tests/test_pi_timelapse.py` (`StorageStatusTests`), `tests/test_pi_status_schema.py` (storage-block and timelapse enable/interval).
+- **Implementation (2026-09-19, local; not live-verified):** [`timelapse.py`](../app/timelapse.py) provides the Pi storage policy — `sd_present` (`os.path.isdir` + `os.access(R_OK)` over `/mnt/sdcard`, matching the firmware's `FUN_00071bc0` accessibility check; the Pi has no block device), `sd_space` (`statvfs` MB with the firmware shift), `sd_mode` (`RW`/`RO`/`UNKNOWN`), and `storage_status` (the 5-tuple). [`status.py`](../app/status.py) encodes it on `extended_status.4` and wires `timelapse_status` tags 1/2 to `state.timelapse_enabled`/`state.timelapse_interval` (`FUN_000abcdc`/`FUN_000abcb0`); [`signaling.py`](../app/signaling.py) supplies live telemetry. `deploy.sh` now chowns the `/mnt/sdcard` mountpoint itself to the service user (not just `/mnt/sdcard/timelapse`) so the mode reports `RW`, and installs samba before writing its config. Tests: `tests/test_pi_timelapse.py` (`StorageStatusTests`), `tests/test_pi_status_schema.py` (storage-block and timelapse enable/interval).
 - **Emulated SD (done, verified):** `/mnt/sdcard/timelapse` on the Pi (the exact firmware path), shared read/write over SMB as `\\<pi>\sdcard` (share `sdcard`; `smbd` on 139/445). `deploy.sh` provisions the dir + share + samba; `bootstrap.sh` installs samba. `MicroSd` is re-advertised.
 - **Implementation:** `timelapse.py` (stdlib-only) provides interval/FPS validation, timestamped frame naming/storage, ordered listing, a minimal stdlib MJPEG-in-AVI writer, the `<name>:<status>` `.timelapse_videos.csv` index, and the firmware-shaped `file_list` fragmenter under `/mnt/sdcard/timelapse`. `CameraState` carries `timelapse_enabled/interval/fps`; `main.timelapse_loop` captures a frame on the interval while enabled; trigger tags 5 (enable/disable), 14 (make video) and 15 (file list) are wired. `signaling.send_file_list` emits the recovered `0x3f701c` envelope on the `file_list` event (field 1 = `"<page>;<total>\n<chunk>"` where `<chunk>` is one `<name>;<status>\n` per `.avi`, field 2 = HTTP token, field 3 = request_id when present, field 4 omitted); an empty list sends nothing. Tests: `tests/test_pi_timelapse.py`, `tests/test_pi_file_list.py`.
 - **Live (Pi-side) 2026-09-19:** deployed via `deploy.sh` (overlay maintenance flow, services `active`); `/mnt/sdcard` is owned by the service user and writable; the deployed `timelapse.storage_status()` returns `(1, <total>, <free>, <used>, 'RW')` (present, RW); `smbd` active; `/c/info` 200 and `status` sent (387 bytes).
@@ -1275,7 +1275,7 @@ closing the gap.
   empty message.
 - **Acceptance:** every advertised timelapse action has a schema fixture and either a working result
   or an explicit firmware-shaped unsupported/error response.
-- **Code:** [`main.py`](../pi-impersonator/main.py#L301-L304)
+- **Code:** [`main.py`](../app/main.py#L301-L304)
 
 ### GAP-PERSIST-01 — Persist settings + timelapse storage on /data
 
@@ -1347,7 +1347,7 @@ closing the gap.
   limiting and acknowledgment, or remove the advertised capability. Owner chose implement.
 - **Acceptance:** command is authenticated, rate-limited, acknowledged, and invokes only the intended
   reboot action in an integration harness.
-- **Implementation (staged, commit pending):** [`device_control.py`](../pi-impersonator/device_control.py)
+- **Implementation (staged, commit pending):** [`device_control.py`](../app/device_control.py)
   holds a pure predicate `can_reboot(last, now, min_interval)` and `request_reboot(state, reboot_fn,
   now=None)`, which records the accepted monotonic time on the shared `CameraState`
   (`state.last_reboot_monotonic`) before invoking the injected `reboot_fn`. The minimum spacing is
@@ -1384,7 +1384,7 @@ closing the gap.
 - **Acceptance:** Connect UI and status expose only supportable operations, with no silent success.
 - **Implementation (staged, commit pending):** `CameraState` now carries explicit
   `ir_available`/`speaker_available`/`fan_available`/`microsd_available = False` and
-  `ir_mode = None`. [`device_control.py`](../pi-impersonator/device_control.py)
+  `ir_mode = None`. [`device_control.py`](../app/device_control.py)
   `apply_light_control` maps the recovered `configuration.light_control` values
   (`auto`/`day`/`night` -> 1/2/3, `FW-CONFIG:193-228`), logs that the Pi has no IR illuminator,
   returns `False`, and leaves `ir_mode` unavailable instead of claiming the mode was applied;
@@ -1392,7 +1392,7 @@ closing the gap.
   `test_pi_device_control.py` (`HardwareAvailabilityTests`). **Closed (Wave 2):** the truthful
   `MicroSd` status is the already-correct `extended_status.4` block, and the remaining
   `camera_status` fields are either pruned (`ir_mode`/`speaker_volume`) or moot, so the hardcoded
-  IR/speaker bytes in [`status.py`](../pi-impersonator/status.py) are left pinned harmlessly
+  IR/speaker bytes in [`status.py`](../app/status.py) are left pinned harmlessly
   (`test_status_hardware_bytes_unchanged_pending_descriptor`). **Correction:** capability
   removal under GAP-CAP-01 **is** done — `IrMode`/`SpeakerVolume`/`FanControl` were pruned from the
   advertised features (while `MicroSd` is kept for the emulated SD), so Connect no longer exposes
@@ -1438,7 +1438,7 @@ closing the gap.
 - **Implementation choice (decided):** keep video-only; document it as intentional.
 - **Acceptance (met):** a real Connect offer negotiates successfully with a video-only media
   section and plays in the app and browser.
-- **Code:** [`webrtc.py`](../pi-impersonator/webrtc.py#L66-L98)
+- **Code:** [`webrtc.py`](../app/webrtc.py#L66-L98)
 
 ## P3 — parity and diagnostics
 
@@ -1454,9 +1454,9 @@ closing the gap.
 - **Implementation:** decide whether to reproduce and persist a fallback identity or fail closed with
   a clear diagnostic; never silently rotate a fingerprint bound to an existing token.
 - **Acceptance:** normal-path vectors remain exact; failure behavior is deterministic and documented.
-- **Code:** [`identity.py`](../pi-impersonator/identity.py),
-  [`main.py`](../pi-impersonator/main.py#L120-L127)
-- **Implementation (staged, commit pending):** [`identity.py`](../pi-impersonator/identity.py) adds
+- **Code:** [`identity.py`](../app/identity.py),
+  [`main.py`](../app/main.py#L120-L127)
+- **Implementation (staged, commit pending):** [`identity.py`](../app/identity.py) adds
   `fingerprint_from_seed` (lowercase MD5 of the exact seed text), `generate_fallback_seed`, and
   `load_or_create_fallback_seed`, which persists the seed at `/etc/pibuddycam/identity.fallback`
   (`PIBUDDYCAM_IDENTITY_FALLBACK` override) and reuses a valid existing seed verbatim so a bound token's
@@ -1547,7 +1547,7 @@ closing the gap.
   telemetry value.
 - **Acceptance:** schema/field-presence comparison has no unexplained field, type, or semantic
   differences.
-- **Code:** [`signaling.py`](../pi-impersonator/signaling.py#L214-L304)
+- **Code:** [`signaling.py`](../app/signaling.py#L214-L304)
 
 ### GAP-STATUS-04 — Timezone representation
 

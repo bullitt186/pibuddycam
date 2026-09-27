@@ -10,7 +10,7 @@ import sys
 import unittest
 from pathlib import Path
 
-PI_DIR = Path(__file__).resolve().parents[1] / 'pi-impersonator'
+PI_DIR = Path(__file__).resolve().parents[1] / 'app'
 MAIN_PY = PI_DIR / 'main.py'
 WEBRTC_PY = PI_DIR / 'webrtc.py'
 sys.path.insert(0, str(PI_DIR))

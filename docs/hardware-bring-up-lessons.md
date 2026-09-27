@@ -93,7 +93,7 @@ image/security defect, not a firmware `GAP-*` item.
 
 **Repo implementation (this change):**
 
-- `pi-impersonator/admin_tls.py` generates a device self-signed keypair once,
+- `app/admin_tls.py` generates a device self-signed keypair once,
   durably, under `/data/pibuddycam/config/admin-tls/` (key `0600`, cert `0644`,
   both `pibuddycam`-owned) and recreates the volatile `/etc/pibuddycam/admin.env`
   (`0640`) on every boot. The SAN covers `pibuddycam-<device-id>.local`; a LAN IP

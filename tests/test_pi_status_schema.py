@@ -10,7 +10,7 @@ import sys
 import unittest
 from pathlib import Path
 
-PI_DIR = Path(__file__).resolve().parents[1] / 'pi-impersonator'
+PI_DIR = Path(__file__).resolve().parents[1] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
 from proto import decode_message  # noqa: E402

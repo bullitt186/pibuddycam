@@ -55,7 +55,7 @@
 #
 # X-Env-Var-reporoot: ${DIRECTORY}/../..
 # X-Env-Var-reporoot-Desc: Repository root, used to install the factory
-#  application from pi-impersonator/ and to reuse pi-impersonator/systemd/.
+#  application from app/ and to reuse app/systemd/.
 # X-Env-Var-reporoot-Required: n
 # X-Env-Var-reporoot-Valid: dir
 # X-Env-Var-reporoot-Set: y

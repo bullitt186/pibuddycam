@@ -11,7 +11,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-PI_DIR = Path(__file__).resolve().parents[1] / 'pi-impersonator'
+PI_DIR = Path(__file__).resolve().parents[1] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
 import factory_reset  # noqa: E402

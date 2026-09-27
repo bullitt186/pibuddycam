@@ -36,7 +36,7 @@ Flash **Raspberry Pi OS Lite 64-bit** via `rpi-imager` (enable SSH + Wi-Fi in se
 username `pi`). Then from this repo on your machine:
 
 ```bash
-PI=pi@<PI_IP> pi-impersonator/bootstrap.sh
+PI=pi@<PI_IP> app/bootstrap.sh
 ```
 
 `bootstrap.sh` installs dependencies, creates the dedicated account and `/opt/pibuddycam`, builds
@@ -44,7 +44,7 @@ the venv, installs the runtime units, and deploys the code. Follow the final com
 the script to install `config.ini` as `pibuddycam`; do not copy it into the SSH user's home.
 
 ```bash
-cp pi-impersonator/config.ini.example /tmp/config.ini
+cp app/config.ini.example /tmp/config.ini
 # edit /tmp/config.ini: set token
 scp /tmp/config.ini pi@<PI_IP>:/tmp/config.ini
 ssh pi@<PI_IP> 'sudo install -o pibuddycam -g pibuddycam -m 0600 \
@@ -56,7 +56,7 @@ The following overlay step applies only to this legacy Raspberry Pi OS developer
 is not the deployment mechanism for the appliance image:
 
 ```bash
-PI=pi@<PI_IP> pi-impersonator/deploy.sh --enable-overlay
+PI=pi@<PI_IP> app/deploy.sh --enable-overlay
 ```
 
 ## Configuration
@@ -137,7 +137,7 @@ packages:
 
 ```bash
 python3 -m unittest discover -s tests -v
-python3 -m compileall -q pi-impersonator tests
+python3 -m compileall -q app tests
 ```
 
 Firmware-parity work must name and update a `GAP-*` item in the implementation tracker. Follow the
@@ -170,7 +170,7 @@ via `deploy.sh`:
 
 ```bash
 # From repo root:
-PI=pi@<PI_IP> pi-impersonator/deploy.sh
+PI=pi@<PI_IP> app/deploy.sh
 # dev (overlay OFF):  rsync + restart, no reboot, ~5 s
 # prod (overlay ON):  disable → reboot → rsync → re-enable → reboot, ~3 min (automated)
 ```
@@ -180,9 +180,9 @@ Check mode: `ssh pi@<PI_IP> 'findmnt -no FSTYPE /'` → `overlay` = prod, `ext4`
 Maintenance window (apt installs, `/etc` edits):
 
 ```bash
-PI=pi@<PI_IP> pi-impersonator/deploy.sh --disable-overlay
+PI=pi@<PI_IP> app/deploy.sh --disable-overlay
 # … make changes …
-PI=pi@<PI_IP> pi-impersonator/deploy.sh --enable-overlay   # verifies initramfs before rebooting
+PI=pi@<PI_IP> app/deploy.sh --enable-overlay   # verifies initramfs before rebooting
 ```
 
 **By contrast, intentionally ephemeral on the appliance** (re-materialized from `/data` on boot):
@@ -249,7 +249,7 @@ Measured end-to-end (from this setup):
 If the Pi will not boot after a power cut:
 
 1. Reflash the SD card (Raspberry Pi OS Lite 64-bit, same settings as before).
-2. Run `PI=pi@<PI_IP> pi-impersonator/bootstrap.sh` to rebuild everything.
+2. Run `PI=pi@<PI_IP> app/bootstrap.sh` to rebuild everything.
 3. Restore `config.ini` (token) and restart `pibuddycam`.
 4. For the supported product path, rebuild/reflash the appliance image. The overlay command is only
    for the legacy developer installation.
