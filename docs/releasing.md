@@ -64,9 +64,12 @@ stays stdlib-only. Only 2 tests are expected to skip. They are mutually exclusiv
    published assets exactly match `dist/`.
 
 **Minimum image version:** the workflow sets the application manifest's `min_image_version` to
-the release's own version. A device running an older image refuses that application update until
-it is reflashed. An application-only release that must install on older images therefore has to be
-built manually (below) with an explicit `--min-image-version`.
+the release's own version. The updater enforces it only when it is given the installed image
+version: `--current-image-version`, defaulting to the `PRUSA_IMAGE_VERSION` environment variable.
+No appliance unit sets that today, so the check is currently skipped and a CI-built bundle installs
+on older images. If you ever wire the image version into `prusa-updater*.service`, older images
+will start refusing such bundles. Build those releases manually (below) with an explicit
+`--min-image-version`.
 
 **Image-owned changes** (systemd units, packages, `/usr/libexec` helpers, udev/NM rules, boot
 config) only reach devices through a newly flashed image. The OTA bundle cannot change them.
