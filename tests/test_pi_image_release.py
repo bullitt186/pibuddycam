@@ -345,6 +345,9 @@ class MakeReleaseTests(unittest.TestCase):
             f"{base}.spdx.json",
             f"{base}.packages.txt",
             "buddy3d-camera-os-list.json",
+            # The default icon URL is <url-base>/buddy3d-camera.png, so the
+            # icon itself must be among the published artifacts.
+            "buddy3d-camera.png",
         ):
             self.assertTrue((self.out / name).is_file(), f"missing {name}")
         # No key supplied: the artifact must remain unsigned, with a warning.

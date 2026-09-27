@@ -139,6 +139,9 @@ IMAGE_URL="$URL_BASE/${BASE}.img.xz"
 if [ -z "$ICON" ]; then
    ICON="$URL_BASE/buddy3d-camera.png"
    warn "--icon not provided; defaulting to $ICON"
+   # The default URL points next to the image, so ship the icon with the
+   # artifacts; otherwise the Imager manifest links to a missing asset.
+   cp "$IMAGE_DIR/assets/icon/buddy3d-camera.png" "$OUT_DIR/buddy3d-camera.png"
 fi
 if [ -z "$WEBSITE" ]; then
    WEBSITE="https://example.invalid/buddy3d-camera"
