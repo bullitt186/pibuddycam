@@ -26,6 +26,7 @@ import threading
 import time
 
 import config_schema
+import timezone
 import wifi_station
 
 log = logging.getLogger('pibuddycam.network_settings')
@@ -250,16 +251,18 @@ def read_link_status(runner=None, ifname=wifi_station.DEFAULT_IFNAME):
 
 
 def read_time_status(runner=None, now=time.time):
-    """Return ``{synchronized, server, now}`` from ``timedatectl``."""
+    """Return ``{synchronized, server, now, timezone}`` from ``timedatectl``."""
     runner = runner or _default_runner
     synced = _run_text(runner, [
         'timedatectl', 'show', '-p', 'NTPSynchronized', '--value']).strip()
     server = _run_text(runner, [
         'timedatectl', 'show-timesync', '-p', 'ServerName', '--value']).strip()
+    zone = _run_text(runner, ['timedatectl', 'show', '-p', 'Timezone', '--value']).strip()
     return {
         'synchronized': synced == 'yes',
         'server': server[:253],
         'now': int(now()),
+        'timezone': zone if timezone.valid_zone_name(zone) else '',
     }
 
 

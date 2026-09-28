@@ -24,6 +24,7 @@
 #   hostname-apply       hostnamectl set-hostname --transient <label> (RFC 1123 checked)
 #   wifi-scan            nmcli wifi list --rescan yes (terse SSID,SIGNAL,SECURITY)
 #   ntp-apply            ntp_apply.py apply (timesyncd drop-in from device.toml)
+#   timezone-apply       timedatectl set-timezone <IANA name> (shape and zoneinfo checked)
 #
 # The Wi-Fi PSK is never an argument: it is forwarded on stdin to
 # wifi_station.py, which writes it to a 0600 NetworkManager ``passwd-file`` and
@@ -116,6 +117,17 @@ case "$verb" in
       ;;
    ntp-apply)
       exec "$PYTHON" "$APP_ROOT/ntp_apply.py" apply
+      ;;
+   timezone-apply)
+      zone="${2:-}"
+      zone_re='^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+){0,2}$'
+      # The shape check has no dot segment, so the name cannot leave zoneinfo; the
+      # file test then makes an unknown zone fail before timedatectl is involved.
+      if [[ ! "$zone" =~ $zone_re ]] || [ "${#zone}" -gt 64 ] \
+         || [ ! -f "${PIBUDDYCAM_ZONEINFO:-/usr/share/zoneinfo}/$zone" ]; then
+         exit 2
+      fi
+      exec /usr/bin/timedatectl set-timezone "$zone"
       ;;
    *)
       exit 2

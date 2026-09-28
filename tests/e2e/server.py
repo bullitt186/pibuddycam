@@ -96,6 +96,7 @@ class FakeRuntime:
             'timelapse_trigger': 'interval',
             'timelapse_gpio_pin': None,
             'timelapse_gpio_record_pin': None,
+            'timezone': '',
             'rtsp_mode': 2,               # enabled
             'webrtc_mode': 1,             # enabled
         }
@@ -105,7 +106,7 @@ class FakeRuntime:
             'reboot': 0, 'ssh': 0, 'recovery': 0, 'reset': 0,
             'update_check': 0, 'update_install': 0, 'build_busy': 0,
             'network_apply': 0, 'network_psk_seen': 0, 'hostname': 0, 'ntp': 0,
-            'build_session': 0,
+            'build_session': 0, 'timezone': 0,
         }
         self.scenarios = {
             'live': 'live',            # live | stale
@@ -196,6 +197,12 @@ class FakeRuntime:
                     'GPIO pin is not offered or is already the layer pin')
             else:
                 settings['timelapse_gpio_record_pin'] = value
+        elif field == 'timezone':
+            import timezone
+            if value != '' and not timezone.valid_zone_name(value):
+                return self._reject('unknown time zone')
+            self.counters['timezone'] += 1
+            settings['timezone'] = value
         else:
             return self._reject('setting field is not supported')
         return {
@@ -520,7 +527,8 @@ class FakeNetwork:
             'ntp_servers': list(self.ntp_servers),
             'psk_set': True,
             'time': {'synchronized': synced,
-                     'server': 'time.e2e.invalid' if synced else '', 'now': 1_767_225_600},
+                     'server': 'time.e2e.invalid' if synced else '', 'now': 1_767_225_600,
+                     'timezone': self.runtime.settings['timezone'] or 'UTC'},
             'result': self.result,
             'busy': self.pending,
         }

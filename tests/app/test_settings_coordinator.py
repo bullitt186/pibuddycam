@@ -384,6 +384,62 @@ class GpioTriggerSettingTests(CoordinatorTestCase):
         self.assertEqual(state.timelapse_gpio_pin, 17)
 
 
+class TimezoneSettingTests(CoordinatorTestCase):
+    def test_a_known_zone_is_applied_first_then_persisted_and_published(self):
+        apply = Recorder(True)
+        state, coordinator, persist, publish, _q, _live = self._make(timezone_apply=apply)
+        result = coordinator.apply_mutation('timezone', 'Europe/Berlin')
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(result.changed, ['timezone'])
+        self.assertEqual(apply.calls, [(('Europe/Berlin',), {})])
+        self.assertEqual(state.timezone, 'Europe/Berlin')
+        self.assertEqual((len(persist.calls), len(publish.calls)), (1, 1))
+
+    def test_a_failed_apply_changes_nothing(self):
+        state, coordinator, persist, publish, _q, _live = self._make(
+            timezone_apply=Recorder(False))
+        result = coordinator.apply_mutation('timezone', 'Europe/Berlin')
+        self.assertFalse(result.ok)
+        self.assertIn('newer image', result.reason)
+        self.assertEqual(state.timezone, '')
+        self.assertEqual((persist.calls, publish.calls), ([], []))
+
+    def test_a_raising_apply_is_a_rejection_not_a_crash(self):
+        def boom(name):
+            raise RuntimeError('helper gone')
+        state, coordinator, *_ = self._make(timezone_apply=boom)
+        self.assertFalse(coordinator.apply_mutation('timezone', 'UTC').ok)
+        self.assertEqual(state.timezone, '')
+
+    def test_bad_values_never_reach_the_helper(self):
+        apply = Recorder(True)
+        state, coordinator, *_ = self._make(timezone_apply=apply)
+        for bad in ('Nowhere/City', '../../etc/shadow', 5, None, True, 'a b', ['UTC']):
+            self.assertFalse(coordinator.apply_mutation('timezone', bad).ok, repr(bad))
+        self.assertEqual(apply.calls, [])
+
+    def test_without_an_apply_callable_it_is_unavailable(self):
+        state, coordinator, *_ = self._make()
+        result = coordinator.apply_mutation('timezone', 'UTC')
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reason, 'live apply unavailable')
+
+    def test_an_empty_name_clears_the_remembered_zone_without_the_helper(self):
+        apply = Recorder(True)
+        state, coordinator, *_ = self._make(timezone_apply=apply)
+        coordinator.apply_mutation('timezone', 'UTC')
+        apply.calls.clear()
+        self.assertTrue(coordinator.apply_mutation('timezone', '').ok)
+        self.assertEqual((state.timezone, apply.calls), ('', []))
+
+    def test_restore_does_not_call_the_helper(self):
+        # persist_restore.py (root) re-applies the zone at boot.
+        apply = Recorder(True)
+        state, coordinator, *_ = self._make(timezone_apply=apply)
+        coordinator.restore({'timezone': 'Europe/Berlin'})
+        self.assertEqual((state.timezone, apply.calls), ('Europe/Berlin', []))
+
+
 class RestoreAndPersistenceTests(CoordinatorTestCase):
     def test_restore_applies_values_and_does_not_persist(self):
         state = CameraState()

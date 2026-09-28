@@ -9,6 +9,7 @@ import logging
 
 import gpio_pins
 import network_settings
+import timezone
 
 from admin_http import (  # noqa: E402 - partially initialised, see above
     NETWORK_APPLY_WARNING,
@@ -117,6 +118,10 @@ class NetworkHandlers:
         payload = dict(payload)
         payload['ok'] = status == 200
         return self._json(request, status, payload)
+
+    def _handle_timezones(self, request, match, body_data, now):
+        """The IANA zone names this device can be set to (fetched once by the UI)."""
+        return self._json(request, 200, {'ok': True, 'zones': timezone.available_zones()})
 
     def _handle_gpio_pins(self, request, match, body_data, now):
         """Safe GPIO pin table plus the runtime trigger status."""

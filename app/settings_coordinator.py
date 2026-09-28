@@ -24,6 +24,7 @@ import rotation
 import rtsp_control
 import settings_store
 import timelapse
+import timezone
 import webrtc_control
 from state import ENUM_TO_RAW, RAW_TO_ENUM
 
@@ -44,6 +45,7 @@ MUTATION_FIELDS = (
     'timelapse_trigger',
     'timelapse_gpio_pin',
     'timelapse_gpio_record_pin',
+    'timezone',
     'rtsp_mode',
     'webrtc_mode',
 )
@@ -67,6 +69,7 @@ _KEY_TIMELAPSE_FPS = 'timelapse_fps'
 _KEY_TIMELAPSE_TRIGGER = 'timelapse_trigger'
 _KEY_TIMELAPSE_GPIO_PIN = 'timelapse_gpio_pin'
 _KEY_TIMELAPSE_GPIO_RECORD_PIN = 'timelapse_gpio_record_pin'
+_KEY_TIMEZONE = 'timezone'
 _KEY_RTSP_MODE = 'rtsp_mode'
 _KEY_WEBRTC_MODE = 'webrtc_mode'
 
@@ -115,7 +118,7 @@ class SettingsCoordinator:
                  rotation_apply=None,
                  rtsp_start=None, rtsp_stop=None, rtsp_query=None,
                  webrtc_start=None, webrtc_stop=None,
-                 timelapse_enable=None, gpio_apply=None):
+                 timelapse_enable=None, gpio_apply=None, timezone_apply=None):
         self.state = state
         self._persist = persist if persist is not None else persist_state
         self._publish = publish if publish is not None else state.mark_info_dirty
@@ -133,6 +136,9 @@ class SettingsCoordinator:
         # Reconfigures the GPIO trigger line(s) after a trigger/pin change or a
         # restore. It must not raise into the coordinator (guarded below).
         self._gpio_apply = gpio_apply
+        # Applies the operating-system time zone (root helper); returns True on
+        # success. ``None`` reports the change unavailable.
+        self._timezone_apply = timezone_apply
 
     def authoritative(self):
         """Return the durable settings snapshot (the ``state.json`` key set)."""
@@ -317,6 +323,34 @@ class SettingsCoordinator:
         self._apply_gpio()
         return result
 
+    # -- time zone ---------------------------------------------------------
+
+    def set_timezone(self, name):
+        """Apply an IANA time zone through the root helper, then remember it.
+
+        The live apply runs first and the shared state and ``state.json`` change only
+        after it succeeded, like the other live-applied settings. An empty name
+        clears the remembered zone without touching the system.
+        """
+        if not isinstance(name, str):
+            return self._result(False, 'time zone must be a string')
+        if name == '':
+            self.state.set_timezone('')
+            return self._commit([_KEY_TIMEZONE])
+        if not timezone.valid_zone_name(name):
+            return self._result(False, 'unknown time zone')
+        if self._timezone_apply is None:
+            return self._result(False, 'live apply unavailable')
+        try:
+            ok = self._timezone_apply(name)
+        except Exception as e:
+            log.warning(f'settings: timezone apply raised: {type(e).__name__}')
+            ok = False
+        if not ok:
+            return self._result(False, 'time zone could not be applied (needs a newer image)')
+        self.state.set_timezone(name)
+        return self._commit([_KEY_TIMEZONE])
+
     # -- streaming modes ---------------------------------------------------
 
     def set_rtsp_mode(self, mode):
@@ -421,6 +455,9 @@ class SettingsCoordinator:
 
     def _mutate_timelapse_gpio_record_pin(self, value):
         return self.set_timelapse_gpio_record_pin(value)
+
+    def _mutate_timezone(self, value):
+        return self.set_timezone(value)
 
     def _mutate_rtsp_mode(self, value):
         if not isinstance(value, str) or value not in _RTSP_NAMES:

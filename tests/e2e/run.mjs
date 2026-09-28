@@ -664,6 +664,16 @@ const TESTS = [
       await waitForText(page.locator('#network-hostname-form .form-status'), 'Reboot the camera');
       assertEqual((await counters(request, base)).hostname, 1, 'hostname applied');
 
+      // Time zone: the list comes from the device's tz database; saving needs no re-auth.
+      await page.waitForFunction(
+        () => document.querySelectorAll('#network-timezone option').length > 20);
+      assertEqual(await page.locator('#network-timezone').inputValue(), 'UTC', 'system zone preselected');
+      await page.locator('#network-timezone').selectOption('Europe/Berlin');
+      await page.locator('#network-timezone-form').getByRole('button', { name: 'Save time zone' }).click();
+      await waitForText(page.locator('#network-timezone-form .form-status'), 'Saved.');
+      assertEqual((await counters(request, base)).timezone, 1, 'time zone applied');
+      await waitForText(page.locator('#network-current-time'), 'Europe/Berlin');
+
       // NTP: saved without re-auth.
       await page.locator('#network-ntp').fill('time.e2e.invalid, 192.0.2.1');
       await page.locator('#network-ntp-form').getByRole('button', { name: 'Save time servers' }).click();

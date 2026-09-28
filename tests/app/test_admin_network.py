@@ -148,6 +148,17 @@ class ReadTests(Base):
         self.assertNotIn('psk"', response.body.decode())
         self.assertEqual(body['link']['ssid'], 'Home')
 
+    def test_timezones_need_a_session_and_list_iana_names(self):
+        app = self.build()
+        self.assertEqual(app.handle(make_request('GET', '/api/timezones')).status, 401)
+        headers = self.session(app, reauth=False)
+        body = json.loads(app.handle(
+            make_request('GET', '/api/timezones', headers=headers)).body)
+        self.assertTrue(body['ok'])
+        if body['zones']:                      # a host without tzdata lists none
+            self.assertIn('UTC', body['zones'])
+            self.assertTrue(all('..' not in zone and zone[0] != '/' for zone in body['zones']))
+
     def test_scan(self):
         app = self.build()
         headers = self.session(app, reauth=False)

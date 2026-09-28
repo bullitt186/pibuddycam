@@ -204,6 +204,7 @@ class PersistedStateTests(unittest.TestCase):
             'timelapse_trigger': 'interval',
             'timelapse_gpio_pin': None,
             'timelapse_gpio_record_pin': None,
+            'timezone': '',
             'rtsp_mode': 2,
             'webrtc_mode': 0,
         })
@@ -228,6 +229,22 @@ class PersistedStateTests(unittest.TestCase):
         self.assertTrue(state.set_timelapse_trigger('interval'))
         self.assertTrue(state.set_timelapse_gpio_pin(None))
         self.assertTrue(state.set_timelapse_gpio_record_pin(None))
+
+    def test_timezone_setting_validation_and_round_trip(self):
+        state = CameraState()
+        self.assertEqual(state.timezone, '')
+        for bad in ('Nowhere/City', '../etc/passwd', 'Europe//Berlin', 5, None, 'x' * 70,
+                    'Europe/Berlin/../x'):
+            self.assertFalse(state.set_timezone(bad), repr(bad))
+        self.assertTrue(state.set_timezone('Europe/Berlin'))
+        self.assertTrue(state.set_timezone('UTC'))
+        self.assertEqual(state.persistable_state()['timezone'], 'UTC')
+        fresh = CameraState()
+        self.assertEqual(fresh.apply_persisted({'timezone': 'Europe/Berlin'}), ['timezone'])
+        self.assertEqual(fresh.timezone, 'Europe/Berlin')
+        self.assertEqual(fresh.apply_persisted({'timezone': 'Not/AZone'}), [])
+        self.assertEqual(fresh.apply_persisted({'timezone': 5}), [])
+        self.assertTrue(fresh.set_timezone(''))          # clearing is allowed
 
     def test_gpio_trigger_settings_round_trip(self):
         state = CameraState()

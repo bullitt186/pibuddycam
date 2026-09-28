@@ -732,6 +732,21 @@ G4 S<span data-gpio="dwell">8</span></code></pre>
               <p class="form-status" role="status" aria-live="polite" hidden></p>
             </form>
 
+            <form id="network-timezone-form" class="setting-form network-form" novalidate>
+              <h4 class="card__subtitle">Time zone</h4>
+              <div class="field">
+                <label for="network-timezone">Time zone (local time in file and session names)</label>
+                <select id="network-timezone" name="timezone">
+                  <option value="">Image default</option>
+                </select>
+                <span class="field__hint">Applies at once and again after every reboot. This is the camera&rsquo;s own zone; the zone reported to Prusa Connect is detected separately.</span>
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save time zone</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </form>
+
             <form id="network-ntp-form" class="setting-form network-form" novalidate>
               <h4 class="card__subtitle">Time servers</h4>
               <div class="field">

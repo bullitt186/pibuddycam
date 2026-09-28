@@ -26,6 +26,7 @@ ignored by readers):
     timelapse_trigger        str   "interval" (timer) or "gpio" (Hackerboard pulse)
     timelapse_gpio_pin       int   BCM layer/shot pin from gpio_pins.SAFE_PINS, or null
     timelapse_gpio_record_pin int  optional BCM recording pin, or null
+    timezone                 str   IANA zone name chosen in the console ("" = image default)
     rtsp_mode                int   1=disabled, 2=enabled (configured mode)
     webrtc_mode              int   0=disabled, 1=enabled
 

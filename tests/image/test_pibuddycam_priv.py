@@ -61,6 +61,7 @@ class PrusaPrivAssetTests(unittest.TestCase):
             'hostname-apply',
             'wifi-scan',
             'ntp-apply',
+            'timezone-apply',
         ):
             self.assertIn(f'{verb})', text)
         # Nothing else is dispatched.
@@ -83,6 +84,24 @@ class PrusaPrivAssetTests(unittest.TestCase):
         self.assertIn('pibuddycam-network-request.json', branch)
         self.assertIn(
             'exec "$SYSTEMCTL" --no-block start pibuddycam-network-apply.service', branch)
+
+    def test_timezone_apply_rejects_bad_or_unknown_zones_before_running_anything(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            zoneinfo = Path(tmp) / 'zoneinfo'
+            (zoneinfo / 'Europe').mkdir(parents=True)
+            (zoneinfo / 'Europe' / 'Berlin').write_text('tz', encoding='utf-8')
+            (Path(tmp) / 'secret').write_text('x', encoding='utf-8')
+            env = {'PIBUDDYCAM_ZONEINFO': str(zoneinfo)}
+            for bad in ('', '..', '../secret', 'Europe/../../secret', '/etc/passwd',
+                        'Europe//Berlin', 'Europe/Nowhere', 'Not a zone', 'a;b',
+                        '$(id)', 'x' * 65, 'Europe/Berlin\n', 'Europe'):
+                result = run_helper(['timezone-apply', bad], env=env)
+                self.assertEqual(result.returncode, 2, repr(bad))
+
+    def test_timezone_apply_uses_timedatectl_for_a_known_zone(self):
+        text = PIBUDDYCAM_PRIV.read_text(encoding='utf-8')
+        self.assertIn('exec /usr/bin/timedatectl set-timezone "$zone"', text)
+        self.assertIn('PIBUDDYCAM_ZONEINFO:-/usr/share/zoneinfo', text)
 
     def test_wifi_scan_and_ntp_apply_are_fixed_commands(self):
         text = PIBUDDYCAM_PRIV.read_text(encoding='utf-8')

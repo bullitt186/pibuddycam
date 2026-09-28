@@ -150,12 +150,15 @@ and whether the clock is synchronized. You can change:
   runs. The System view reports `hotspot` as the last network result.
 - **Hostname.** Applied immediately and remembered. Reboot once so the console's certificate
   matches the new name.
+- **Time zone.** The camera's own zone, chosen from the device's tz database. It decides the
+  local time in frame and session names and is applied again after every reboot. It is separate
+  from the zone the camera reports to Prusa Connect, which is detected automatically.
 - **Time servers.** The camera has no clock chip, so time comes from the network. Blank means
   automatic: the server your router advertises (DHCP option 42), then the Debian pool. Enter up
   to three hostnames or IPv4 addresses for networks that block outbound NTP. The last known time
   is kept across reboots, so names and certificates rarely carry a stale date.
 
-Applying network changes, the hostname, scanning and the persistent clock need the image released
+Applying network changes, the hostname, the time zone, scanning and the persistent clock need the image released
 after 1.4.0; on an older image the console says so and changes nothing.
 
 ## Updates

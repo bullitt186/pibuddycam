@@ -18,6 +18,7 @@ import asyncio
 import rotation as rotation_mod
 import gpio_pins
 import timelapse
+import timezone
 
 # Exact firmware raw-event-byte -> protobuf-enum mapping (GAP-QUALITY-01).
 RAW_TO_ENUM = {5: 1, 6: 2, 7: 3}
@@ -88,6 +89,9 @@ class CameraState:
         # is being recorded, and the last pulse-to-stored-frame time in seconds.
         self.timelapse_recording = False
         self.timelapse_trigger_latency = None
+        # Operating-system time zone chosen in the console (IANA name); empty means
+        # the image default. It decides the local time in frame and session names.
+        self.timezone = ''
         # GAP-DEVICE-02: explicit hardware availability. The Pi has no IR
         # illuminator, speaker, fan, or MicroSD slot, so no control path may
         # imply otherwise or report a fake applied mode. ``ir_mode`` stays None
@@ -199,6 +203,13 @@ class CameraState:
         self.timelapse_gpio_record_pin = pin
         return True
 
+    def set_timezone(self, name):
+        """Set the IANA time zone name (``''`` clears it). Returns False if invalid."""
+        if name != '' and not timezone.valid_zone_name(name):
+            return False
+        self.timezone = name
+        return True
+
     def set_camera_name(self, name):
         """Set a non-empty stripped camera name. Returns False for invalid input."""
         if not isinstance(name, str):
@@ -229,6 +240,7 @@ class CameraState:
             'timelapse_trigger': self.timelapse_trigger,
             'timelapse_gpio_pin': self.timelapse_gpio_pin,
             'timelapse_gpio_record_pin': self.timelapse_gpio_record_pin,
+            'timezone': self.timezone,
             'rtsp_mode': self.rtsp_mode,
             'webrtc_mode': self.webrtc_mode,
         }
@@ -293,6 +305,10 @@ class CameraState:
         value = data.get('timelapse_trigger')
         if value is not None and self.set_timelapse_trigger(value):
             applied.append('timelapse_trigger')
+
+        value = data.get('timezone')
+        if isinstance(value, str) and self.set_timezone(value):
+            applied.append('timezone')
 
         value = data.get('rtsp_mode')
         if type(value) is int and value in (1, 2):

@@ -6,7 +6,7 @@
  * than the entry point that loads it.
  */
 
-import { SESSION_STATE, handleExpired, isFormPending, request, requestReauth, setBusy, setFormBusy, setFormStatus, setNumberValue, setRadioValue, setText, setTextValue } from './common.js?v=__ASSET_VERSION__';
+import { SESSION_STATE, handleExpired, isFormPending, request, requestReauth, setBusy, setFormBusy, setFormStatus, setNumberValue, setRadioValue, setText, setTextValue, shared } from './common.js?v=__ASSET_VERSION__';
 
 
 /* ------------------------------------------------------------------ */
@@ -21,6 +21,10 @@ const NETWORK_SCAN_POLL_MS = 1500;
 const NETWORK_SCAN_POLL_MAX = 12;
 
 const netUi = {
+  zones: null,
+  zonesLoading: false,
+  zoneDirty: false,
+  currentZone: '',
   dirty: false,
   timer: null,
   polls: 0,
@@ -71,9 +75,9 @@ function renderNetwork(data, options = {}) {
   const time = data.time || {};
   setText(
     netEl('network-current-time'),
-    time.synchronized
+    (time.synchronized
       ? `synchronized${time.server ? ` (${time.server})` : ''}`
-      : 'not synchronized',
+      : 'not synchronized') + (time.timezone ? ` · ${time.timezone}` : ''),
   );
   setText(
     netEl('network-status'),
@@ -91,6 +95,8 @@ function renderNetwork(data, options = {}) {
   }
   setTextValue('network-hostname', data.hostname);
   setTextValue('network-ntp', (data.ntp_servers || []).join(', '));
+  netUi.currentZone = time.timezone || '';
+  selectTimezone();
   const psk = netEl('network-psk');
   if (psk) {
     psk.placeholder = data.psk_set
@@ -118,6 +124,7 @@ export async function loadNetwork() {
     return null;
   }
   renderNetwork(result.data);
+  loadTimezones();
   return result.data;
 }
 
@@ -384,7 +391,76 @@ async function scanNetworks() {
   await step();
 }
 
+/** Fill the time-zone list once; the names come from the device's own tz database. */
+async function loadTimezones() {
+  if (netUi.zones || netUi.zonesLoading) return;
+  netUi.zonesLoading = true;
+  const result = await request('/api/timezones');
+  netUi.zonesLoading = false;
+  if (!result.ok || !result.data || !Array.isArray(result.data.zones)) return;
+  netUi.zones = result.data.zones;
+  const select = netEl('network-timezone');
+  if (!select) return;
+  select.textContent = '';
+  const unset = document.createElement('option');
+  unset.value = '';
+  unset.textContent = 'Image default';
+  select.appendChild(unset);
+  netUi.zones.forEach((zone) => {
+    const option = document.createElement('option');
+    option.value = zone;
+    option.textContent = zone;
+    select.appendChild(option);
+  });
+  selectTimezone();
+}
+
+/** Preselect the zone the console saved, else the one the system reports. */
+function selectTimezone() {
+  const select = netEl('network-timezone');
+  if (!select || netUi.zoneDirty || !netUi.zones) return;
+  const saved = shared.dashboard && shared.dashboard.settings
+    ? shared.dashboard.settings.timezone : '';
+  const wanted = saved || netUi.currentZone || '';
+  select.value = netUi.zones.includes(wanted) ? wanted : '';
+}
+
+async function submitTimezone(event) {
+  event.preventDefault();
+  const form = netEl('network-timezone-form');
+  if (!form || isFormPending(form)) return;
+  const zone = (netEl('network-timezone') || {}).value || '';
+  setFormBusy(form, true);
+  setFormStatus(form, 'info', 'Applying…');
+  const result = await request('/api/settings', {
+    method: 'PATCH', csrf: true, body: { field: 'timezone', value: zone },
+  });
+  setFormBusy(form, false);
+  if (result.status === 401) {
+    handleExpired();
+    return;
+  }
+  const data = result.data || {};
+  if (result.ok && data.ok) {
+    netUi.zoneDirty = false;
+    if (shared.dashboard && data.settings) shared.dashboard.settings = data.settings;
+    setFormStatus(form, 'ok', zone ? 'Saved.' : 'Saved. The image default applies after a reboot.');
+    loadNetwork();
+    return;
+  }
+  if (result.status === 503) {
+    setFormStatus(form, 'error', 'The camera runtime is unavailable. Try again when it is running.');
+    return;
+  }
+  setFormStatus(form, 'error', data.error || 'The time zone could not be set.');
+}
+
 export function wireNetwork() {
+  const zoneForm = netEl('network-timezone-form');
+  if (zoneForm) {
+    zoneForm.addEventListener('submit', submitTimezone);
+    zoneForm.addEventListener('change', () => { netUi.zoneDirty = true; });
+  }
   const form = netEl('network-form');
   if (form) {
     form.addEventListener('submit', submitNetwork);

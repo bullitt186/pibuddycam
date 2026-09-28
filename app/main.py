@@ -661,6 +661,7 @@ async def main():
         webrtc_start=start_webrtc_service,
         webrtc_stop=stop_webrtc_service,
         gpio_apply=apply_gpio,
+        timezone_apply=lambda name: bool(privileged.timezone_apply(name).ok),
     )
 
     # Pi-only GPIO timelapse trigger (Prusa GPIO Hackerboard). Layer pulses land

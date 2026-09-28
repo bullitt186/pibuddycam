@@ -63,6 +63,7 @@ SETTINGS_KEYS = (
     'timelapse_trigger',
     'timelapse_gpio_pin',
     'timelapse_gpio_record_pin',
+    'timezone',
     'rtsp_mode',
     'webrtc_mode',
 )

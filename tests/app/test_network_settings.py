@@ -167,12 +167,18 @@ class StatusTests(unittest.TestCase):
 
     def test_time_status(self):
         status = ns.read_time_status(runner_for({
-            'NTPSynchronized': 'yes\n', 'ServerName': 'time.example\n'}),
-            now=lambda: 1234.9)
+            'NTPSynchronized': 'yes\n', 'ServerName': 'time.example\n',
+            'Timezone': 'Europe/Berlin\n'}), now=lambda: 1234.9)
         self.assertEqual(status, {
-            'synchronized': True, 'server': 'time.example', 'now': 1234})
+            'synchronized': True, 'server': 'time.example', 'now': 1234,
+            'timezone': 'Europe/Berlin'})
         self.assertFalse(ns.read_time_status(
             runner_for({'NTPSynchronized': 'no\n'}))['synchronized'])
+
+    def test_an_implausible_timezone_reading_is_dropped(self):
+        for junk in ('../../etc\n', 'n/a\n', 'a b\n', '\n'):
+            status = ns.read_time_status(runner_for({'Timezone': junk}))
+            self.assertEqual(status['timezone'], '', junk)
 
 
 class ResultTests(unittest.TestCase):

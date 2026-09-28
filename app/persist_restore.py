@@ -15,7 +15,7 @@ Runs as root from ``pi-persist.service`` before the camera/RTSP units. It:
    (appliance image/security defect; see :mod:`admin_tls`);
 4. restores ``quality.env``, ``rotation.env`` and ``rtsp.mode`` from
    ``state.json``;
-5. keeps the last known clock across reboots (there is no RTC): the timesyncd
+5. re-applies the time zone chosen in the console (``state.json``), then keeps the last known clock across reboots (there is no RTC): the timesyncd
    state directory is bind-mounted from ``/data`` and timesyncd is restarted, and
    the NTP drop-in is regenerated from ``device.toml [network] ntp_servers``;
 6. prunes the oldest timelapse JPEG frames, including the ones inside per-print
@@ -43,6 +43,7 @@ import rotation
 import rtsp_control
 import settings_store
 import timelapse
+import timezone
 
 log = logging.getLogger('pibuddycam.persist')
 
@@ -257,6 +258,35 @@ def _apply_hostname(device_path=None, runner=subprocess.run):
     return True
 
 
+def _apply_timezone(runner=subprocess.run, data=None):
+    """Re-apply the console's time zone (``state.json``) as the system zone.
+
+    The root filesystem is read-only, so ``timedatectl set-timezone`` does not survive
+    a reboot; the console stores the choice and this puts it back at every boot,
+    before anything names a frame or session after the local time. An unset or
+    invalid value leaves the image default. Best-effort, never raises.
+    """
+    try:
+        settings = settings_store.load() if data is None else data
+        name = settings.get('timezone') if isinstance(settings, dict) else ''
+    except Exception as e:  # noqa: BLE001 - never block the settings restore
+        log.warning(f'persist: could not read the time zone: {type(e).__name__}')
+        return False
+    if not name or not timezone.valid_zone_name(name):
+        return False
+    try:
+        result = runner(['timedatectl', 'set-timezone', name],
+                        capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning(f'persist: timedatectl failed: {type(e).__name__}')
+        return False
+    if result.returncode != 0:
+        log.warning(f'persist: timedatectl exited {result.returncode}')
+        return False
+    log.info(f'persist: time zone applied ({name})')
+    return True
+
+
 def _restore_time_sync(runner=subprocess.run):
     """Persist timesyncd's clock and apply the NTP servers (best-effort).
 
@@ -434,6 +464,7 @@ def main():
 
     _bind_mount(DATA_SDCARD, SD_MOUNT)
     _bind_mount(DATA_NETWORK_CONNECTIONS, NM_CONNECTIONS)
+    _apply_timezone()
     _restore_time_sync()
     _restore_settings(service_user)
     _prune_timelapse()

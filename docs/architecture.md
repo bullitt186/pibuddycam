@@ -89,7 +89,7 @@ narrow sudoers rule. Its verbs:
 |---|---|
 | Services | `start-camera`, `stop-provisioning`, `rtsp-start`, `rtsp-stop`, `quality-restart` |
 | Network | `hotspot-start`, `hotspot-stop`, `wifi-station-apply`, `network-apply`, `hostname-apply`, `wifi-scan` |
-| Time | `ntp-apply` |
+| Time | `ntp-apply`, `timezone-apply <IANA name>` |
 | Updates and power | `check-update`, `install-update`, `reboot` |
 
 No argument or command can be passed through from the browser, MQTT or Connect. Two verbs take
@@ -145,6 +145,12 @@ IPv4 tokens from `DHCP4_NTP_SERVERS`; timesyncd learns per-link servers only fro
 systemd-networkd, so option 42 would otherwise be ignored under NetworkManager), and
 `persist_restore.py` at boot. **[assumption]** NetworkManager's internal DHCP client requests
 option 42 and exports it to dispatcher scripts; verify on a device.
+
+The **time zone** is a coordinator setting (`timezone`, saved in `state.json`). Its live apply is
+the `timezone-apply` verb (`timedatectl set-timezone`; the helper accepts only an IANA-shaped name
+that exists under `/usr/share/zoneinfo`). Because the root filesystem is read-only,
+`persist_restore.py` re-applies it at every boot before the clock is restored. It is unrelated to
+the `/etc/TZ` value the firmware-compatible status reports to Prusa Connect.
 
 `persist_restore.py` bind-mounts `/data/pibuddycam/timesync` onto timesyncd's state directory
 (resolved through the `/var/lib/private` symlink if present) and restarts timesyncd, so the last

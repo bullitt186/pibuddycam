@@ -712,6 +712,10 @@ class _AdminAppCore:
                 _AUTHENTICATED, self._handle_network_ntp_put,
             ),
             Route(
+                'GET', re.compile(r'^/api/timezones$'),
+                _AUTHENTICATED, self._handle_timezones,
+            ),
+            Route(
                 'GET', re.compile(r'^/api/gpio/pins$'),
                 _AUTHENTICATED, self._handle_gpio_pins,
             ),

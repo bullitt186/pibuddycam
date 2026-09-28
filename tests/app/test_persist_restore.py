@@ -198,6 +198,7 @@ class BindMountTests(unittest.TestCase):
                 patch.object(persist_restore, '_provision_admin_tls'), \
                 patch.object(persist_restore, '_apply_hostname'), \
                 patch.object(persist_restore, '_restore_time_sync'), \
+                patch.object(persist_restore, '_apply_timezone'), \
                 patch.object(
                     persist_restore, '_bind_mount',
                     side_effect=lambda src, dst: calls.append((src, dst)) or True,
@@ -226,10 +227,12 @@ class BindMountTests(unittest.TestCase):
                              side_effect=lambda s, d: order.append('bind') or True), \
                 patch.object(persist_restore, '_restore_time_sync',
                              side_effect=lambda: order.append('time')), \
+                patch.object(persist_restore, '_apply_timezone',
+                             side_effect=lambda: order.append('zone')), \
                 patch.object(persist_restore, '_restore_settings'), \
                 patch.object(persist_restore, '_prune_timelapse'):
             persist_restore.main()
-        self.assertEqual(order, ['hostname', 'tls', 'bind', 'bind', 'time'])
+        self.assertEqual(order, ['hostname', 'tls', 'bind', 'bind', 'zone', 'time'])
 
     def test_time_sync_binds_the_durable_clock_and_restarts_timesyncd_once(self):
         calls = []
@@ -302,6 +305,43 @@ class ApplyHostnameTests(unittest.TestCase):
         self._write('cam')
         ok, _calls = self._apply(returncode=1)
         self.assertFalse(ok)
+
+
+class ApplyTimezoneTests(unittest.TestCase):
+    def _apply(self, data, returncode=0):
+        calls = []
+
+        def runner(args, **kwargs):
+            calls.append(list(args))
+            return subprocess.CompletedProcess(args, returncode, '', '')
+
+        return persist_restore._apply_timezone(runner=runner, data=data), calls
+
+    def test_applies_the_stored_zone(self):
+        ok, calls = self._apply({'timezone': 'Europe/Berlin'})
+        self.assertTrue(ok)
+        self.assertEqual(calls, [['timedatectl', 'set-timezone', 'Europe/Berlin']])
+
+    def test_unset_invalid_or_hostile_values_change_nothing(self):
+        for data in ({}, {'timezone': ''}, {'timezone': 'Nowhere/City'},
+                     {'timezone': '../../etc/shadow'}, {'timezone': 5}, {'timezone': None},
+                     'not a dict', None):
+            ok, calls = self._apply(data)
+            self.assertFalse(ok, data)
+            self.assertEqual(calls, [], data)
+
+    def test_a_failing_timedatectl_is_isolated(self):
+        ok, _calls = self._apply({'timezone': 'UTC'}, returncode=1)
+        self.assertFalse(ok)
+
+    def test_it_reads_state_json_when_no_data_is_given(self):
+        calls = []
+        with patch.object(persist_restore.settings_store, 'load',
+                          return_value={'timezone': 'UTC'}):
+            ok = persist_restore._apply_timezone(
+                runner=lambda a, **k: calls.append(list(a)) or subprocess.CompletedProcess(a, 0, '', ''))
+        self.assertTrue(ok)
+        self.assertEqual(calls, [['timedatectl', 'set-timezone', 'UTC']])
 
 
 class SessionPruneTests(unittest.TestCase):

@@ -55,6 +55,7 @@ VERBS = frozenset({
     'hostname-apply',
     'wifi-scan',
     'ntp-apply',
+    'timezone-apply',
 })
 
 #: Bounded wall-clock timeout for a privileged invocation.
@@ -309,6 +310,13 @@ def hostname_apply(name, runner=None):
 def ntp_apply(runner=None):
     """Regenerate the timesyncd drop-in from ``device.toml`` as root."""
     return _invoke('ntp-apply', runner=runner)
+
+
+def timezone_apply(name, runner=None):
+    """Set the operating-system time zone; the helper re-validates the IANA name."""
+    if not isinstance(name, str) or not name:
+        return PrivilegedResult(False, 'time zone is required')
+    return _invoke('timezone-apply', name, runner=runner)
 
 
 def wifi_scan(runner=None):

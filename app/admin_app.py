@@ -123,6 +123,7 @@ ROUTES = (
     ('PUT', '/api/network/hostname'),
     ('PUT', '/api/network/ntp'),
     ('GET', '/api/gpio/pins'),
+    ('GET', '/api/timezones'),
     ('GET', '/api/update'),
     ('POST', '/api/update/check'),
     ('POST', '/api/update/install'),

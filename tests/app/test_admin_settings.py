@@ -198,7 +198,7 @@ class CoordinatorMutationTests(unittest.TestCase):
                 'camera_name', 'quality', 'rotation', 'snapshot_upload_enabled',
                 'snapshot_interval', 'timelapse_enabled', 'timelapse_interval',
                 'timelapse_fps', 'timelapse_trigger', 'timelapse_gpio_pin',
-                'timelapse_gpio_record_pin', 'rtsp_mode', 'webrtc_mode',
+                'timelapse_gpio_record_pin', 'timezone', 'rtsp_mode', 'webrtc_mode',
             },
         )
 

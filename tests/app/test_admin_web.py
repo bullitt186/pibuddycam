@@ -774,6 +774,14 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
         self.assertIsNone(re.search(r'data\.psk(?!_set)', code))
         self.assertIn('psk_set', code)
 
+    def test_timezone_form_uses_the_settings_path_and_the_device_zone_list(self):
+        self.assertIn('id="network-timezone-form"', self.html)
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'submitTimezone')
+        self.assertIn("'/api/settings'", body)
+        self.assertIn("field: 'timezone'", body)
+        self.assertIn("'/api/timezones'", _function_body(code, 'loadTimezones'))
+
     def test_network_changes_reauthenticate_before_the_put(self):
         code = _strip_js_comments(self.js)
         for name, url in (('submitNetwork', '/api/network'),

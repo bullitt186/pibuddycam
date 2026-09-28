@@ -14,6 +14,7 @@ Recovered from lp_app 3.1.6:
 Stdlib-only and side-effect free on import so it is host-testable.
 """
 import json
+import re
 
 TIMEZONE_URL = 'https://timezone.prusa3d.com/'
 TZ_FILE = '/etc/TZ'
@@ -93,3 +94,38 @@ def resolve_tz_name(raw, path=TZ_FILE):
     converted = convert_timezone(raw)
     write_tz_file(converted, path)
     return read_tz_file(path) or converted
+
+
+# --------------------------------------------------------------------------- #
+# Operating-system time zone (console setting; not the firmware's /etc/TZ report)
+# --------------------------------------------------------------------------- #
+
+#: An IANA zone name: 1-3 path components of letters, digits, ``_``, ``+`` and ``-``.
+#: No dot segment and no separator tricks can pass, so the value is safe to hand to
+#: the root helper and to append to ``/usr/share/zoneinfo``.
+ZONE_NAME_RE = re.compile(r'^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+){0,2}$')
+ZONE_NAME_MAX = 64
+
+
+def available_zones():
+    """Sorted IANA zone names known to this system (empty without tzdata)."""
+    try:
+        import zoneinfo
+        return sorted(zoneinfo.available_timezones())
+    except Exception:  # noqa: BLE001 - a missing tz database must not break the console
+        return []
+
+
+def valid_zone_name(name, known=None):
+    """True for a well-formed IANA zone name that this system knows.
+
+    ``known`` overrides the zone list (tests); when the system has no tz database
+    at all the shape check alone decides, so an image without zoneinfo does not
+    reject every value.
+    """
+    if not isinstance(name, str) or not name or len(name) > ZONE_NAME_MAX:
+        return False
+    if ZONE_NAME_RE.match(name) is None:
+        return False
+    zones = available_zones() if known is None else known
+    return name in zones if zones else True

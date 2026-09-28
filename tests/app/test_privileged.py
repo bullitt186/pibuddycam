@@ -71,6 +71,7 @@ class AllowlistTests(unittest.TestCase):
                 'check-update', 'reboot',
                 'rtsp-start', 'rtsp-stop', 'quality-restart',
                 'network-apply', 'hostname-apply', 'wifi-scan', 'ntp-apply',
+                'timezone-apply',
             }),
         )
 
@@ -122,6 +123,14 @@ class NetworkVerbTests(unittest.TestCase):
         self.assertTrue(privileged.hostname_apply('cam-1', runner=runner))
         self.assertEqual(runner.calls[0][0], self.HELPER + ['hostname-apply', 'cam-1'])
         self.assertFalse(privileged.hostname_apply('', runner=runner))
+
+    def test_timezone_apply_passes_the_zone_as_argument(self):
+        runner = make_runner()
+        self.assertTrue(privileged.timezone_apply('Europe/Berlin', runner=runner))
+        self.assertEqual(runner.calls[0][0], self.HELPER + ['timezone-apply', 'Europe/Berlin'])
+        self.assertFalse(privileged.timezone_apply('', runner=runner))
+        self.assertFalse(privileged.timezone_apply(None, runner=runner))
+        self.assertEqual(len(runner.calls), 1)
 
     def test_ntp_apply_verb(self):
         runner = make_runner()
