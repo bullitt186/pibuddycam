@@ -316,6 +316,74 @@ class OtherSetterTests(CoordinatorTestCase):
             self.assertEqual(set(result.state), documented)
 
 
+class GpioTriggerSettingTests(CoordinatorTestCase):
+    """Pi-only GPIO trigger settings go through the same single mutation path."""
+
+    def test_pin_then_trigger_persist_publish_and_apply_the_hook(self):
+        hook = Recorder(None)
+        state, coordinator, persist, publish, _q, _live = self._make(gpio_apply=hook)
+
+        result = coordinator.apply_mutation('timelapse_gpio_pin', 17)
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(result.changed, ['timelapse_gpio_pin'])
+        result = coordinator.apply_mutation('timelapse_trigger', 'gpio')
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(state.timelapse_trigger, 'gpio')
+        self.assertEqual(len(persist.calls), 2)
+        self.assertEqual(len(publish.calls), 2)
+        self.assertEqual(len(hook.calls), 2)
+        self.assertEqual(hook.calls[-1][0], (state,))
+
+    def test_rejections_do_not_persist_publish_or_apply(self):
+        hook = Recorder(None)
+        state, coordinator, persist, publish, _q, _live = self._make(gpio_apply=hook)
+        for field, value in (
+            ('timelapse_trigger', 'gpio'),          # no layer pin yet
+            ('timelapse_trigger', 'sometimes'),
+            ('timelapse_gpio_pin', 3),              # I2C
+            ('timelapse_gpio_pin', '17'),
+            ('timelapse_gpio_pin', True),
+            ('timelapse_gpio_record_pin', 0),
+        ):
+            result = coordinator.apply_mutation(field, value)
+            self.assertFalse(result.ok, (field, value))
+            self.assertTrue(result.reason)
+        self.assertEqual(persist.calls, [])
+        self.assertEqual(publish.calls, [])
+        self.assertEqual(hook.calls, [])
+        self.assertEqual(state.timelapse_trigger, 'interval')
+
+    def test_record_pin_must_differ_from_layer_pin(self):
+        state, coordinator, *_ = self._make()
+        self.assertTrue(coordinator.apply_mutation('timelapse_gpio_pin', 17).ok)
+        self.assertFalse(coordinator.apply_mutation('timelapse_gpio_record_pin', 17).ok)
+        self.assertTrue(coordinator.apply_mutation('timelapse_gpio_record_pin', 27).ok)
+        self.assertFalse(coordinator.apply_mutation('timelapse_gpio_pin', 27).ok)
+
+    def test_pin_can_be_cleared_only_on_interval_trigger(self):
+        state, coordinator, *_ = self._make()
+        coordinator.apply_mutation('timelapse_gpio_pin', 17)
+        coordinator.apply_mutation('timelapse_trigger', 'gpio')
+        self.assertFalse(coordinator.apply_mutation('timelapse_gpio_pin', None).ok)
+        coordinator.apply_mutation('timelapse_trigger', 'interval')
+        self.assertTrue(coordinator.apply_mutation('timelapse_gpio_pin', None).ok)
+        self.assertIsNone(state.timelapse_gpio_pin)
+
+    def test_restore_reconfigures_the_line(self):
+        hook = Recorder(None)
+        state, coordinator, *_ = self._make(gpio_apply=hook)
+        coordinator.restore({'timelapse_gpio_pin': 17, 'timelapse_trigger': 'gpio'})
+        self.assertEqual(state.timelapse_trigger, 'gpio')
+        self.assertEqual(len(hook.calls), 1)
+
+    def test_a_failing_hook_does_not_mask_the_mutation(self):
+        def boom(_state):
+            raise RuntimeError('no chip')
+        state, coordinator, *_ = self._make(gpio_apply=boom)
+        self.assertTrue(coordinator.apply_mutation('timelapse_gpio_pin', 17).ok)
+        self.assertEqual(state.timelapse_gpio_pin, 17)
+
+
 class RestoreAndPersistenceTests(CoordinatorTestCase):
     def test_restore_applies_values_and_does_not_persist(self):
         state = CameraState()

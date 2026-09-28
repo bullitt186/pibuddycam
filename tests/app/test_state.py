@@ -201,11 +201,55 @@ class PersistedStateTests(unittest.TestCase):
             'timelapse_interval': 15,
             'timelapse_enabled': True,
             'timelapse_fps': 12,
+            'timelapse_trigger': 'interval',
+            'timelapse_gpio_pin': None,
+            'timelapse_gpio_record_pin': None,
             'rtsp_mode': 2,
             'webrtc_mode': 0,
         })
         # The store version is owned by settings_store.save, not CameraState.
         self.assertNotIn('version', state.persistable_state())
+
+    def test_gpio_trigger_settings_validation(self):
+        state = CameraState()
+        self.assertEqual(state.timelapse_trigger, 'interval')
+        # gpio needs a layer pin first
+        self.assertFalse(state.set_timelapse_trigger('gpio'))
+        for bad in (0, 1, 2, 3, 7, 11, 14, 15, 99, True, '17', 17.0):
+            self.assertFalse(state.set_timelapse_gpio_pin(bad), bad)
+        self.assertTrue(state.set_timelapse_gpio_pin(17))
+        self.assertFalse(state.set_timelapse_gpio_record_pin(17))
+        self.assertTrue(state.set_timelapse_gpio_record_pin(27))
+        self.assertFalse(state.set_timelapse_gpio_pin(27))
+        self.assertTrue(state.set_timelapse_trigger('gpio'))
+        self.assertFalse(state.set_timelapse_trigger('sometimes'))
+        # the layer pin cannot be cleared while the trigger is gpio
+        self.assertFalse(state.set_timelapse_gpio_pin(None))
+        self.assertTrue(state.set_timelapse_trigger('interval'))
+        self.assertTrue(state.set_timelapse_gpio_pin(None))
+        self.assertTrue(state.set_timelapse_gpio_record_pin(None))
+
+    def test_gpio_trigger_settings_round_trip(self):
+        state = CameraState()
+        applied = state.apply_persisted({
+            'timelapse_trigger': 'gpio', 'timelapse_gpio_pin': 17,
+            'timelapse_gpio_record_pin': 27,
+        })
+        self.assertEqual(
+            applied,
+            ['timelapse_gpio_pin', 'timelapse_gpio_record_pin', 'timelapse_trigger'])
+        persisted = state.persistable_state()
+        fresh = CameraState()
+        fresh.apply_persisted(persisted)
+        self.assertEqual(fresh.timelapse_trigger, 'gpio')
+        self.assertEqual(fresh.timelapse_gpio_pin, 17)
+        self.assertEqual(fresh.timelapse_gpio_record_pin, 27)
+
+    def test_persisted_gpio_trigger_without_pin_falls_back_to_interval(self):
+        state = CameraState()
+        state.apply_persisted({'timelapse_trigger': 'gpio', 'timelapse_gpio_pin': 3})
+        self.assertEqual(state.timelapse_trigger, 'interval')
+        self.assertIsNone(state.timelapse_gpio_pin)
 
     def test_rotation_default_validation_and_round_trip(self):
         state = CameraState()

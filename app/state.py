@@ -16,6 +16,7 @@ Quality representations recovered from firmware 3.1.6
 import asyncio
 
 import rotation as rotation_mod
+import gpio_pins
 import timelapse
 
 # Exact firmware raw-event-byte -> protobuf-enum mapping (GAP-QUALITY-01).
@@ -76,6 +77,13 @@ class CameraState:
         self.timelapse_enabled = False
         self.timelapse_interval = 10
         self.timelapse_fps = 10
+        # Pi-only extension: what triggers a timelapse frame. ``interval`` is the
+        # firmware-shaped timer; ``gpio`` waits for a pulse from the Prusa GPIO
+        # Hackerboard on ``timelapse_gpio_pin`` (BCM), and an optional
+        # ``timelapse_gpio_record_pin`` starts/ends a per-print session.
+        self.timelapse_trigger = 'interval'
+        self.timelapse_gpio_pin = None
+        self.timelapse_gpio_record_pin = None
         # GAP-DEVICE-02: explicit hardware availability. The Pi has no IR
         # illuminator, speaker, fan, or MicroSD slot, so no control path may
         # imply otherwise or report a fake applied mode. ``ir_mode`` stays None
@@ -156,6 +164,37 @@ class CameraState:
         self.timelapse_interval = seconds
         return True
 
+    def set_timelapse_trigger(self, trigger):
+        """Select ``interval`` or ``gpio``; ``gpio`` needs a layer pin first."""
+        if trigger not in ('interval', 'gpio'):
+            return False
+        if trigger == 'gpio' and self.timelapse_gpio_pin is None:
+            return False
+        self.timelapse_trigger = trigger
+        return True
+
+    def set_timelapse_gpio_pin(self, pin):
+        """Set the layer (shot) BCM pin from the safe list, or ``None`` to clear."""
+        if pin is None:
+            if self.timelapse_trigger == 'gpio':
+                return False
+            self.timelapse_gpio_pin = None
+            return True
+        if not gpio_pins.valid_pin(pin) or pin == self.timelapse_gpio_record_pin:
+            return False
+        self.timelapse_gpio_pin = pin
+        return True
+
+    def set_timelapse_gpio_record_pin(self, pin):
+        """Set the optional recording BCM pin (must differ from the layer pin)."""
+        if pin is None:
+            self.timelapse_gpio_record_pin = None
+            return True
+        if not gpio_pins.valid_pin(pin) or pin == self.timelapse_gpio_pin:
+            return False
+        self.timelapse_gpio_record_pin = pin
+        return True
+
     def set_camera_name(self, name):
         """Set a non-empty stripped camera name. Returns False for invalid input."""
         if not isinstance(name, str):
@@ -183,6 +222,9 @@ class CameraState:
             'timelapse_interval': self.timelapse_interval,
             'timelapse_enabled': self.timelapse_enabled,
             'timelapse_fps': self.timelapse_fps,
+            'timelapse_trigger': self.timelapse_trigger,
+            'timelapse_gpio_pin': self.timelapse_gpio_pin,
+            'timelapse_gpio_record_pin': self.timelapse_gpio_record_pin,
             'rtsp_mode': self.rtsp_mode,
             'webrtc_mode': self.webrtc_mode,
         }
@@ -233,6 +275,20 @@ class CameraState:
         if type(value) is int and timelapse.valid_fps(value) is not None:
             self.timelapse_fps = value
             applied.append('timelapse_fps')
+
+        # Pins first, then the trigger, so a persisted ``gpio`` trigger finds its
+        # pin. A stale trigger without a valid pin falls back to ``interval``.
+        value = data.get('timelapse_gpio_pin')
+        if value is not None and self.set_timelapse_gpio_pin(value):
+            applied.append('timelapse_gpio_pin')
+
+        value = data.get('timelapse_gpio_record_pin')
+        if value is not None and self.set_timelapse_gpio_record_pin(value):
+            applied.append('timelapse_gpio_record_pin')
+
+        value = data.get('timelapse_trigger')
+        if value is not None and self.set_timelapse_trigger(value):
+            applied.append('timelapse_trigger')
 
         value = data.get('rtsp_mode')
         if type(value) is int and value in (1, 2):

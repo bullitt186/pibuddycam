@@ -1170,6 +1170,76 @@ PY
       report fail "missing NetworkManager scan-rand-mac-address=no (fingerprint flaps)"
    fi
 
+   # GPIO timelapse trigger (Prusa GPIO Hackerboard): the runtime reads
+   # /dev/gpiochip* as pibuddycam, so a udev rule must give the gpio group access,
+   # the gpio group must exist (there is no raspberrypi-sys-mods to create it) and
+   # the service account must be a member.
+   gpio_rule="$MOUNT_ROOT/etc/udev/rules.d/60-pibuddycam-gpio.rules"
+   if [ -f "$gpio_rule" ] \
+      && grep -q 'SUBSYSTEM=="gpio"' "$gpio_rule" \
+      && grep -q 'GROUP="gpio"' "$gpio_rule"; then
+      report ok "gpiochip udev rule grants the gpio group access"
+   else
+      report fail "missing gpiochip udev rule (the GPIO timelapse trigger cannot open the chip)"
+   fi
+   group_file="$MOUNT_ROOT/etc/group"
+   if awk -F: '$1=="gpio"{found=1} END{exit !found}' "$group_file" 2>/dev/null; then
+      report ok "gpio group exists"
+      if awk -F: '$1=="gpio"{print $4}' "$group_file" | tr ',' '\n' \
+         | grep -qx 'pibuddycam'; then
+         report ok "pibuddycam is a member of the gpio group"
+      else
+         report fail "pibuddycam must be a member of the gpio group"
+      fi
+   else
+      report fail "gpio group missing (usermod -aG silently skipped it)"
+   fi
+
+   # Time sync: the NetworkManager dispatcher hands DHCP option 42 to the root
+   # ntp_apply.py (timesyncd ignores it under NetworkManager); it must be a
+   # root-owned 0755 script or NM refuses to run it.
+   ntp_hook="$MOUNT_ROOT/etc/NetworkManager/dispatcher.d/50-pibuddycam-ntp"
+   if [ -f "$ntp_hook" ]; then
+      ntp_owner="$(stat -c '%u:%g' "$ntp_hook" 2>/dev/null || true)"
+      ntp_mode="$(stat -c '%a' "$ntp_hook" 2>/dev/null || true)"
+      if [ "$ntp_owner" = "$root_uid:$root_gid" ] && [ "$ntp_mode" = "755" ] \
+         && grep -q 'ntp_apply.py' "$ntp_hook"; then
+         report ok "NetworkManager NTP dispatcher script is root:root 0755"
+      else
+         report fail "NetworkManager NTP dispatcher must be root:root mode 0755 and call ntp_apply.py (found ${ntp_owner:-?} ${ntp_mode:-?})"
+      fi
+   else
+      report fail "NetworkManager NTP dispatcher script missing (DHCP option 42 is ignored)"
+   fi
+   if [ -L "$SYSTEMD_DIR/sysinit.target.wants/systemd-timesyncd.service" ] \
+      || [ -L "$SYSTEMD_DIR/dbus-org.freedesktop.timesync1.service" ]; then
+      report ok "systemd-timesyncd is enabled"
+   else
+      report fail "systemd-timesyncd must be enabled (there is no RTC)"
+   fi
+   if [ -e "$SYSTEMD_DIR/systemd-timesyncd.service.d/10-data-ready.conf" ]; then
+      report fail "systemd-timesyncd must not be ordered After=pi-persist.service (dependency cycle with sysinit.target)"
+   else
+      report ok "systemd-timesyncd has no ordering drop-in that would form a boot cycle"
+   fi
+
+   # The console's network change runs as a root oneshot that only the helper
+   # starts: no [Install] section and no enable symlink.
+   net_unit="$SYSTEMD_DIR/pibuddycam-network-apply.service"
+   if [ -f "$net_unit" ]; then
+      if grep -q '^\[Install\]' "$net_unit" \
+         || [ -L "$wants_dir/pibuddycam-network-apply.service" ] \
+         || [ -L "$camera_wants_dir/pibuddycam-network-apply.service" ]; then
+         report fail "pibuddycam-network-apply.service must not be enabled (triggered only via the helper)"
+      elif grep -q 'network_apply.py' "$net_unit"; then
+         report ok "pibuddycam-network-apply.service runs network_apply.py and is not enabled"
+      else
+         report fail "pibuddycam-network-apply.service must run network_apply.py"
+      fi
+   else
+      report fail "pibuddycam-network-apply.service is missing"
+   fi
+
    # --- factory app + launcher fallback -----------------------------------
    if [ -f "$MOUNT_ROOT/opt/pibuddycam/main.py" ]; then
       report ok "factory application present under /opt/pibuddycam"

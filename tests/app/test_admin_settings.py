@@ -197,7 +197,8 @@ class CoordinatorMutationTests(unittest.TestCase):
             {
                 'camera_name', 'quality', 'rotation', 'snapshot_upload_enabled',
                 'snapshot_interval', 'timelapse_enabled', 'timelapse_interval',
-                'timelapse_fps', 'rtsp_mode', 'webrtc_mode',
+                'timelapse_fps', 'timelapse_trigger', 'timelapse_gpio_pin',
+                'timelapse_gpio_record_pin', 'rtsp_mode', 'webrtc_mode',
             },
         )
 
@@ -294,6 +295,35 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(payload['field'], 'camera_name')
         self.assertEqual(payload['settings']['camera_name'], 'Bench')
         self.assertEqual(calls, [('camera_name', 'Bench')])
+
+    def test_null_clears_a_gpio_pin_but_no_other_field(self):
+        calls = []
+
+        def action(field, value):
+            calls.append((field, value))
+            return {'ok': True, 'changed': [field], 'settings': {}, 'degraded': False}
+
+        app = self._build_app(settings_actions=action)
+        for field in ('timelapse_gpio_pin', 'timelapse_gpio_record_pin'):
+            response = self._authed(app, 'PATCH', '/api/settings',
+                                    body={'field': field, 'value': None})
+            self.assertEqual(response.status, 200, field)
+        response = self._authed(app, 'PATCH', '/api/settings',
+                                body={'field': 'camera_name', 'value': None})
+        self.assertEqual(response.status, 400)
+        self.assertEqual(calls, [('timelapse_gpio_pin', None),
+                                 ('timelapse_gpio_record_pin', None)])
+
+    def test_gpio_fields_are_accepted_by_the_allowlist(self):
+        calls = []
+        app = self._build_app(settings_actions=lambda f, v: calls.append((f, v)) or {
+            'ok': True, 'changed': [f], 'settings': {}, 'degraded': False})
+        for field, value in (('timelapse_trigger', 'gpio'), ('timelapse_gpio_pin', 17),
+                             ('timelapse_gpio_record_pin', 27)):
+            response = self._authed(app, 'PATCH', '/api/settings',
+                                    body={'field': field, 'value': value})
+            self.assertEqual(response.status, 200, field)
+        self.assertEqual(len(calls), 3)
 
     def test_rejection_returns_state_and_no_false_success(self):
         def action(field, value):

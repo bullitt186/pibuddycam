@@ -230,6 +230,67 @@ def catalog_frames(directory=DEFAULT_MEDIA_DIR):
     return entries, truncated
 
 
+def session_dir(directory, session):
+    """Return the path of one session folder, or ``None`` when not usable.
+
+    ``session`` must match ``session_<YYYYMMDD>-<HHMMSS>`` and be a real
+    directory (not a symlink) directly under ``directory``; the result can then
+    be passed as the ``directory`` of :func:`catalog_frames`/:func:`open_media`.
+    """
+    if not timelapse.valid_session_name(session):
+        return None
+    path = os.path.join(directory, session)
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return None
+    return path if stat.S_ISDIR(info.st_mode) else None
+
+
+def catalog_sessions(directory=DEFAULT_MEDIA_DIR):
+    """Return ``(sessions, truncated)``: one dict per per-print session folder.
+
+    Each item has the session ``name``, its ``frames`` count and ``bytes``, the
+    newest frame's ``modified`` time and, once built, the root ``video`` name.
+    Newest session first.
+    """
+    sessions = []
+    truncated = False
+    inspected = 0
+    videos = {entry.name for entry in _scan(directory, 'video')[0]}
+    try:
+        iterator = os.scandir(directory)
+    except OSError:
+        return [], False
+    with iterator:
+        for dirent in iterator:
+            if inspected >= MAX_SCAN_ENTRIES:
+                truncated = True
+                break
+            inspected += 1
+            if not timelapse.valid_session_name(dirent.name):
+                continue
+            try:
+                if not dirent.is_dir(follow_symlinks=False):
+                    continue
+            except OSError:
+                continue
+            frames, frames_truncated = _scan(
+                os.path.join(directory, dirent.name), 'frame')
+            truncated = truncated or frames_truncated
+            video = dirent.name + timelapse.AVI_SUFFIX
+            sessions.append({
+                'name': dirent.name,
+                'frames': len(frames),
+                'bytes': sum(entry.size for entry in frames),
+                'modified': round(
+                    max((entry.modified for entry in frames), default=0.0), 3),
+                'video': video if video in videos else None,
+            })
+    sessions.sort(key=lambda item: item['name'], reverse=True)
+    return sessions, truncated
+
+
 def paginate(entries, page, page_size):
     """Slice ``entries`` into one bounded page document (paths never included)."""
     total = len(entries)

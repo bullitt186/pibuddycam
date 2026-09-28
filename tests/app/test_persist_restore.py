@@ -196,6 +196,8 @@ class BindMountTests(unittest.TestCase):
         with patch.object(persist_restore.settings_store, 'available', return_value=True), \
                 patch.object(persist_restore, 'ensure_durable_layout'), \
                 patch.object(persist_restore, '_provision_admin_tls'), \
+                patch.object(persist_restore, '_apply_hostname'), \
+                patch.object(persist_restore, '_restore_time_sync'), \
                 patch.object(
                     persist_restore, '_bind_mount',
                     side_effect=lambda src, dst: calls.append((src, dst)) or True,
@@ -210,6 +212,157 @@ class BindMountTests(unittest.TestCase):
                 (persist_restore.DATA_NETWORK_CONNECTIONS, persist_restore.NM_CONNECTIONS),
             ],
         )
+
+    def test_main_orders_hostname_before_tls_and_time_sync_after_binds(self):
+        order = []
+        with patch.object(persist_restore.settings_store, 'available', return_value=True), \
+                patch.object(persist_restore.migrations, 'run_pending', return_value=[]), \
+                patch.object(persist_restore, 'ensure_durable_layout'), \
+                patch.object(persist_restore, '_apply_hostname',
+                             side_effect=lambda: order.append('hostname')), \
+                patch.object(persist_restore, '_provision_admin_tls',
+                             side_effect=lambda user: order.append('tls')), \
+                patch.object(persist_restore, '_bind_mount',
+                             side_effect=lambda s, d: order.append('bind') or True), \
+                patch.object(persist_restore, '_restore_time_sync',
+                             side_effect=lambda: order.append('time')), \
+                patch.object(persist_restore, '_restore_settings'), \
+                patch.object(persist_restore, '_prune_timelapse'):
+            persist_restore.main()
+        self.assertEqual(order, ['hostname', 'tls', 'bind', 'bind', 'time'])
+
+    def test_time_sync_binds_the_durable_clock_and_restarts_timesyncd_once(self):
+        calls = []
+
+        def fake_run(args, **kwargs):
+            calls.append(list(args))
+            return subprocess.CompletedProcess(args, 0, '', '')
+
+        with patch.object(persist_restore, '_bind_mount', return_value=True) as bind, \
+                patch.object(persist_restore.os.path, 'realpath',
+                             return_value='/var/lib/private/systemd/timesync'), \
+                patch.object(persist_restore.ntp_apply, 'apply') as apply:
+            self.assertTrue(persist_restore._restore_time_sync(runner=fake_run))
+        bind.assert_called_once_with(
+            persist_restore.DATA_TIMESYNC, '/var/lib/private/systemd/timesync')
+        # The drop-in is written without its own restart; one restart follows.
+        self.assertIsNotNone(apply.call_args.kwargs['restart'])
+        self.assertEqual(calls, [['systemctl', 'try-restart', 'systemd-timesyncd']])
+
+    def test_timesync_dir_is_durable_and_root_owned(self):
+        self.assertEqual(persist_restore.DATA_TIMESYNC, '/data/pibuddycam/timesync')
+        self.assertIn(persist_restore.DATA_TIMESYNC, persist_restore.ROOT_ONLY_DIRS)
+        self.assertIn(
+            (persist_restore.DATA_TIMESYNC, 0o755), persist_restore.DATA_LAYOUT)
+
+
+class ApplyHostnameTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self._tmp.name, 'device.toml')
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write(self, hostname):
+        import config_schema
+        cfg = config_schema.default_device()
+        cfg['admin']['hostname'] = hostname
+        with open(self.path, 'w', encoding='utf-8') as handle:
+            handle.write(config_schema.dumps_device(cfg))
+
+    def _apply(self, returncode=0):
+        calls = []
+
+        def runner(args, **kwargs):
+            calls.append(list(args))
+            return subprocess.CompletedProcess(args, returncode, '', '')
+
+        return persist_restore._apply_hostname(self.path, runner=runner), calls
+
+    def test_applies_the_configured_hostname_as_transient(self):
+        self._write('Print-Cam')
+        ok, calls = self._apply()
+        self.assertTrue(ok)
+        self.assertEqual(calls, [['hostnamectl', 'set-hostname', '--transient', 'print-cam']])
+
+    def test_unset_or_invalid_hostname_changes_nothing(self):
+        for value in ('', 'bad name', '-x', 'a_b'):
+            self._write(value)
+            ok, calls = self._apply()
+            self.assertFalse(ok, value)
+            self.assertEqual(calls, [], value)
+
+    def test_missing_config_changes_nothing(self):
+        ok, calls = self._apply()
+        self.assertFalse(ok)
+        self.assertEqual(calls, [])
+
+    def test_failing_hostnamectl_is_isolated(self):
+        self._write('cam')
+        ok, _calls = self._apply(returncode=1)
+        self.assertFalse(ok)
+
+
+class SessionPruneTests(unittest.TestCase):
+    """Frames inside per-print session folders must not escape the guard."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+        self.threshold = persist_restore.PRUNE_FREE_THRESHOLD_BYTES
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _file(self, rel, size, mtime):
+        path = os.path.join(self.dir, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'wb') as f:
+            f.write(b'x' * size)
+        os.utime(path, (mtime, mtime))
+
+    def test_prunes_oldest_first_across_root_and_sessions(self):
+        self._file('session_20260101-000000/timelapse_00-00-01-000.jpg', 100, 1000)
+        self._file('timelapse_00-00-02-000.jpg', 100, 2000)
+        self._file('session_20260102-000000/timelapse_00-00-03-000.jpg', 100, 3000)
+        with patch.object(persist_restore.shutil, 'disk_usage',
+                          return_value=SimpleNamespace(free=self.threshold - 200)):
+            persist_restore._prune_timelapse(self.dir, mount='/data')
+        self.assertFalse(os.path.exists(os.path.join(
+            self.dir, 'session_20260101-000000', 'timelapse_00-00-01-000.jpg')))
+        self.assertFalse(os.path.exists(os.path.join(self.dir, 'timelapse_00-00-02-000.jpg')))
+        self.assertTrue(os.path.exists(os.path.join(
+            self.dir, 'session_20260102-000000', 'timelapse_00-00-03-000.jpg')))
+
+    def test_emptied_session_folders_are_removed_but_videos_stay(self):
+        self._file('session_20260101-000000/timelapse_00-00-01-000.jpg', 100, 1000)
+        self._file('session_20260101-000000.avi', 100, 1000)
+        with patch.object(persist_restore.shutil, 'disk_usage',
+                          return_value=SimpleNamespace(free=0)):
+            persist_restore._prune_timelapse(self.dir, mount='/data')
+        self.assertEqual(os.listdir(self.dir), ['session_20260101-000000.avi'])
+
+    def test_the_active_session_folder_is_kept_even_when_empty(self):
+        import timelapse
+        name = timelapse.open_session(self.dir, now=1_700_000_000)
+        self._file('timelapse_00-00-01-000.jpg', 100, 1000)
+        with patch.object(persist_restore.shutil, 'disk_usage',
+                          return_value=SimpleNamespace(free=0)):
+            persist_restore._prune_timelapse(self.dir, mount='/data')
+        self.assertTrue(os.path.isdir(os.path.join(self.dir, name)))
+
+    def test_symlinked_session_is_not_followed(self):
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        with open(os.path.join(outside.name, 'timelapse_00-00-01-000.jpg'), 'wb') as f:
+            f.write(b'x' * 100)
+        os.symlink(outside.name, os.path.join(self.dir, 'session_20260101-000000'))
+        with patch.object(persist_restore.shutil, 'disk_usage',
+                          return_value=SimpleNamespace(free=0)):
+            persist_restore._prune_timelapse(self.dir, mount='/data')
+        self.assertTrue(os.path.exists(
+            os.path.join(outside.name, 'timelapse_00-00-01-000.jpg')))
 
 
 class ImportSafetyTests(unittest.TestCase):

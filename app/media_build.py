@@ -25,6 +25,7 @@ Firmware status characters keep their exact meaning: the build still appends
 unknown by :mod:`media_library`.
 """
 import datetime
+import logging
 import os
 import re
 import threading
@@ -64,6 +65,13 @@ REASON_LOW_SPACE = 'insufficient free space for the build'
 REASON_BUSY = 'a build is already running'
 REASON_FAILED = 'build failed'
 REASON_STOPPED = 'build stopped'
+REASON_BAD_SESSION = 'unknown session'
+
+#: Automatic session builds that found the manager busy are retried this often.
+QUEUE_RETRY_SECONDS = 30.0
+QUEUE_MAX_RETRIES = 120
+
+log = logging.getLogger('pibuddycam.media_build')
 
 _JOB_ID_RE = re.compile(r'^[0-9a-f]{32}$')
 
@@ -73,11 +81,15 @@ def valid_job_id(value):
     return isinstance(value, str) and _JOB_ID_RE.match(value) is not None
 
 
-def _timelapse_build(*, directory, fps, width, height, names, progress, stop_event):
-    """Default builder: the streaming firmware-parity AVI writer."""
+def _timelapse_build(*, directory, fps, width, height, names, progress, stop_event,
+                     **extra):
+    """Default builder: the streaming firmware-parity AVI writer.
+
+    ``extra`` carries ``out_dir``/``name`` for a per-print session build only.
+    """
     return timelapse.build_avi(
         directory, fps=fps, width=width, height=height, names=names,
-        progress=progress, stop_event=stop_event,
+        progress=progress, stop_event=stop_event, **extra,
     )
 
 
@@ -105,18 +117,30 @@ class BuildManager:
         self._stop = threading.Event()
         self._thread = None
         self._lock_held = False
+        # Session builds requested while busy; each is retried until it starts.
+        self._queue = []
+        self._retry_timer = None
 
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
 
-    def start(self, fps=timelapse.DEFAULT_FPS, width=None, height=None):
+    def start(self, fps=timelapse.DEFAULT_FPS, width=None, height=None, session=None):
         """Preflight and queue one build. Returns ``{ok, job}`` or ``{ok,error}``.
 
         Only the first call while a job is active can win; every other call gets
         :data:`REASON_BUSY` (or a specific gate reason) and never starts a
-        second thread.
+        second thread. ``session`` builds one per-print session folder into the
+        timelapse root as ``<session>.avi`` instead of the root frames.
         """
+        source_dir = self._directory
+        extra = {}
+        if session is not None:
+            path = media_library.session_dir(self._directory, session)
+            if path is None:
+                return self._rejection(REASON_BAD_SESSION, 'bad_session')
+            source_dir = path
+            extra = {'out_dir': self._directory, 'name': session + timelapse.AVI_SUFFIX}
         with self._lock:
             active = self._active_job_locked()
             if active is not None:
@@ -127,7 +151,7 @@ class BuildManager:
                     'job_id': active['id'],
                 }
 
-            entries, truncated = media_library.catalog_frames(self._directory)
+            entries, truncated = media_library.catalog_frames(source_dir)
             if truncated:
                 return self._rejection(REASON_SCAN_TRUNCATED, 'too_large')
             count = len(entries)
@@ -162,7 +186,7 @@ class BuildManager:
             self._stop.clear()
             thread = threading.Thread(
                 target=self._run,
-                args=(job_id, fps, width, height, names),
+                args=(job_id, fps, width, height, names, source_dir, extra),
                 name='timelapse-build',
                 daemon=True,
             )
@@ -194,6 +218,11 @@ class BuildManager:
     def stop(self, timeout=2.0):
         """Request cancellation and join the build thread (idempotent)."""
         self._stop.set()
+        with self._lock:
+            timer, self._retry_timer = self._retry_timer, None
+            self._queue.clear()
+        if timer is not None:
+            timer.cancel()
         thread = self._thread
         if thread is not None and thread.is_alive():
             thread.join(timeout)
@@ -203,15 +232,16 @@ class BuildManager:
     # Internals
     # ------------------------------------------------------------------ #
 
-    def _run(self, job_id, fps, width, height, names):
+    def _run(self, job_id, fps, width, height, names, source_dir=None, extra=None):
         self._update(job_id, state=STATE_RUNNING)
         try:
             def progress(written, total):
                 self._update(job_id, frames_written=written)
 
             path = self._build(
-                directory=self._directory, fps=fps, width=width, height=height,
-                names=names, progress=progress, stop_event=self._stop,
+                directory=source_dir or self._directory, fps=fps, width=width,
+                height=height, names=names, progress=progress,
+                stop_event=self._stop, **(extra or {}),
             )
             if self._stop.is_set():
                 final_state, reason = STATE_ERROR, REASON_STOPPED
@@ -228,6 +258,68 @@ class BuildManager:
         # the old lock file is still held, so it can never release the lock of a
         # job that started after it.
         self._finish(job_id, final_state, reason)
+        self._drain_queue()
+
+    def enqueue_session(self, session, fps=timelapse.DEFAULT_FPS, width=None,
+                        height=None):
+        """Build ``session`` as soon as possible; never drop it silently.
+
+        Used by the automatic build at the end of a print. When a build is
+        already running (or another process holds the on-disk lock) the request
+        is kept and retried when the running job finishes and on a timer.
+        Returns ``True`` when it started immediately.
+        """
+        if media_library.session_dir(self._directory, session) is None:
+            return False
+        result = self.start(fps, width, height, session=session)
+        if result.get('ok'):
+            return True
+        if result.get('code') == 'busy':
+            with self._lock:
+                if not any(item[0] == session for item in self._queue):
+                    self._queue.append([session, fps, width, height, 0])
+            self._schedule_retry()
+        return False
+
+    def _drain_queue(self):
+        """Start the next queued session build, if any (outside the job lock)."""
+        with self._lock:
+            if not self._queue:
+                return
+            item = self._queue[0]
+        session, fps, width, height, attempts = item
+        result = self.start(fps, width, height, session=session)
+        if result.get('ok') or result.get('code') != 'busy':
+            # Started, or permanently rejected (no frames, low space, ...): done.
+            with self._lock:
+                if item in self._queue:
+                    self._queue.remove(item)
+            if not result.get('ok'):
+                log.warning(f"queued session build dropped: {result.get('error')}")
+                self._drain_queue()   # do not let one bad session block the rest
+            return
+        item[4] = attempts + 1
+        if item[4] >= QUEUE_MAX_RETRIES:
+            with self._lock:
+                if item in self._queue:
+                    self._queue.remove(item)
+            log.warning('queued session build gave up: manager stayed busy')
+            return
+        self._schedule_retry()
+
+    def _schedule_retry(self):
+        with self._lock:
+            if self._retry_timer is not None or not self._queue:
+                return
+            timer = threading.Timer(QUEUE_RETRY_SECONDS, self._retry)
+            timer.daemon = True
+            self._retry_timer = timer
+        timer.start()
+
+    def _retry(self):
+        with self._lock:
+            self._retry_timer = None
+        self._drain_queue()
 
     def _finish(self, job_id, state, reason):
         with self._lock:

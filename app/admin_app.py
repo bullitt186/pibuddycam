@@ -63,6 +63,7 @@ import live_monitor
 import local_webrtc_signaling
 import media_build
 import mqtt_probe
+import network_settings
 import privileged
 import provisioning
 import runtime_ipc
@@ -111,9 +112,16 @@ ROUTES = (
     ('GET', '/api/media/timelapses/{name}'),
     ('GET', '/api/media/frames'),
     ('GET', '/api/media/frames/{name}'),
+    ('GET', '/api/media/sessions'),
     ('POST', '/api/media/timelapses/build'),
     ('GET', '/api/media/jobs/{id}'),
     ('GET', '/api/system'),
+    ('GET', '/api/network'),
+    ('GET', '/api/network/scan'),
+    ('PUT', '/api/network'),
+    ('PUT', '/api/network/hostname'),
+    ('PUT', '/api/network/ntp'),
+    ('GET', '/api/gpio/pins'),
     ('GET', '/api/update'),
     ('POST', '/api/update/check'),
     ('POST', '/api/update/install'),
@@ -546,6 +554,31 @@ def _default_build_manager():
     return media_build.BuildManager()
 
 
+def _default_network_controller(device_path=None, secrets_path=None):
+    """Return the console's network controller (status, apply, hostname, NTP, scan).
+
+    Reads are unprivileged (``nmcli``/``timedatectl``); every change goes through
+    the fixed-verb helper. Construction runs no command and starts no thread.
+    """
+    return network_settings.NetworkController(
+        apply_fn=privileged.network_apply,
+        hostname_fn=privileged.hostname_apply,
+        scan_fn=privileged.wifi_scan,
+        ntp_fn=privileged.ntp_apply,
+        device_path=device_path,
+        secrets_path=secrets_path,
+    )
+
+
+def _wizard_wifi_scan():
+    """Wizard scan: the root ``wifi-scan`` verb; a failed scan raises so the
+    wizard reports it instead of showing an empty list as success."""
+    networks = privileged.wifi_scan()
+    if networks is None:
+        raise RuntimeError('wifi scan unavailable')
+    return networks
+
+
 def _default_update_manager():
     """Return the update read/check/install control (WP-UI7; AC-15).
 
@@ -609,7 +642,8 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
                     start_camera=None, activate_station=None, mqtt_probe=None,
                     dashboard_provider=None, settings_actions=None,
                     live_monitor=None, local_webrtc_viewers=None, build_manager=None,
-                    update_manager=None, diagnostics_provider=None, reboot_fn=None):
+                    update_manager=None, diagnostics_provider=None, reboot_fn=None,
+                    network_controller=None, wifi_scan=None):
     """Build the stdlib :class:`admin_http.AdminApp` with real dependencies.
 
     Paths default to the durable ``/data`` locations through the core's own
@@ -685,6 +719,11 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
         reboot_fn=(
             reboot_fn if reboot_fn is not None else privileged.reboot
         ),
+        network_controller=(
+            network_controller if network_controller is not None
+            else _default_network_controller(device_path, secrets_path)
+        ),
+        wifi_scan=wifi_scan if wifi_scan is not None else _wizard_wifi_scan,
         device_path=device_path,
         secrets_path=secrets_path,
         provisioning_path=provisioning_path,

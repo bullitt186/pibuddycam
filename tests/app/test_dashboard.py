@@ -89,6 +89,17 @@ class ShapeTests(unittest.TestCase):
         self.assertNotIn('token', payload['settings'])
         self.assertNotIn('password', payload['settings'])
 
+    def test_gpio_settings_are_projected_and_status_is_optional(self):
+        payload = build(settings={
+            'timelapse_trigger': 'gpio', 'timelapse_gpio_pin': 17,
+            'timelapse_gpio_record_pin': None, 'camera_name': 'Cam'})
+        self.assertEqual(payload['settings']['timelapse_trigger'], 'gpio')
+        self.assertEqual(payload['settings']['timelapse_gpio_pin'], 17)
+        self.assertNotIn('timelapse_gpio', payload)
+        status = {'armed': True, 'error': '', 'session': 'session_20260101-000000'}
+        payload = dashboard.build_dashboard(now=1000.0, gpio=status)
+        self.assertEqual(payload['timelapse_gpio'], status)
+
     def test_metrics_and_version_are_reported(self):
         payload = build()
         self.assertEqual(payload['metrics']['wifi_rssi_dbm'], -55)

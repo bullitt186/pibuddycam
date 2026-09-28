@@ -128,27 +128,51 @@ def _returncode(result):
 # Command shapes (no PSK ever appears in these argument lists)
 # --------------------------------------------------------------------------- #
 
-def _add_command(ssid, ifname, wpa):
+def _ipv4_args(ipv4=None):
+    """nmcli ``ipv4.*`` properties for DHCP (default) or a static profile.
+
+    ``ipv4`` is ``None`` or ``{'method': 'auto'}`` for DHCP, or
+    ``{'method': 'manual', 'address', 'prefix', 'gateway', 'dns': [...]}``.
+    DHCP explicitly clears any earlier static values so switching back works
+    on an existing profile.
+    """
+    if not ipv4 or ipv4.get('method', 'auto') != 'manual':
+        return [
+            'ipv4.method', 'auto',
+            'ipv4.addresses', '', 'ipv4.gateway', '', 'ipv4.dns', '',
+            'ipv4.ignore-auto-dns', 'no',
+        ] if ipv4 else ['ipv4.method', 'auto']
+    dns = list(ipv4.get('dns') or [])
+    return [
+        'ipv4.method', 'manual',
+        'ipv4.addresses', f"{ipv4['address']}/{ipv4['prefix']}",
+        'ipv4.gateway', ipv4['gateway'],
+        'ipv4.dns', ' '.join(dns),
+        'ipv4.ignore-auto-dns', 'yes' if dns else 'no',
+    ]
+
+
+def _add_command(ssid, ifname, wpa, ipv4=None):
     """``nmcli connection add`` for the station profile (no PSK in argv)."""
     command = [
         'nmcli', 'connection', 'add', 'type', 'wifi',
         'ifname', ifname, 'con-name', CONNECTION_NAME,
         'autoconnect', 'yes', 'ssid', ssid,
         '--',
-        'ipv4.method', 'auto',
+        *_ipv4_args(ipv4),
     ]
     if wpa:
         command += ['wifi-sec.key-mgmt', 'wpa-psk']
     return command
 
 
-def _modify_command(ssid, ifname, wpa):
+def _modify_command(ssid, ifname, wpa, ipv4=None):
     """``nmcli connection modify`` for an existing station profile (no PSK)."""
     command = [
         'nmcli', 'connection', 'modify', CONNECTION_NAME,
         'connection.autoconnect', 'yes',
         '802-11-wireless.ssid', ssid,
-        'ipv4.method', 'auto',
+        *_ipv4_args(ipv4),
     ]
     if wpa:
         command += ['wifi-sec.key-mgmt', 'wpa-psk']
@@ -234,14 +258,20 @@ def _remove_passwd_file(path):
 # Public operation
 # --------------------------------------------------------------------------- #
 
-def apply(ssid, psk='', ifname=DEFAULT_IFNAME, runner=None, passwd_dir=None):
+def apply(ssid, psk='', ifname=DEFAULT_IFNAME, runner=None, passwd_dir=None,
+          ipv4=None, keep_psk=False, existing=False):
     """Create/update and activate the station profile.
 
     Returns ``(ok, reason)``. ``psk`` may be empty for an open network. The PSK
     is written to a ``0600`` nmcli passwd-file (never argv, a log line, or
     ``reason``) that is removed afterwards; an open network uses plain
     ``nmcli connection up``. ``passwd_dir`` overrides the temporary-file
-    directory for tests. Never raises.
+    directory for tests. ``ipv4`` selects DHCP (default) or a static profile (see
+    :func:`_ipv4_args`). ``keep_psk`` re-uses the key already stored in the
+    profile (the console's blank-password case): no passwd-file is written and
+    the stored security settings are left untouched. ``existing`` says the
+    profile is known to exist, so it is modified in place first (NetworkManager
+    would otherwise accept a duplicate ``add`` under the same name). Never raises.
     """
     runner = runner or _default_runner
     if not isinstance(ssid, str) or not ssid.strip():
@@ -253,18 +283,18 @@ def apply(ssid, psk='', ifname=DEFAULT_IFNAME, runner=None, passwd_dir=None):
     if psk and not MIN_PSK_LENGTH <= len(psk) <= MAX_PSK_LENGTH:
         return False, f'wifi PSK must be {MIN_PSK_LENGTH}..{MAX_PSK_LENGTH} characters'
     ssid = ssid.strip()
-    wpa = bool(psk)
+    wpa = bool(psk) or keep_psk
+    write_psk = bool(psk) and not keep_psk
 
-    returncode, _out, failure = _run(
-        runner, _add_command(ssid, ifname, wpa), COMMAND_TIMEOUT_SECONDS
-    )
+    add = _add_command(ssid, ifname, wpa, ipv4)
+    modify = _modify_command(ssid, ifname, wpa, ipv4)
+    first, second = (modify, add) if existing else (add, modify)
+    returncode, _out, failure = _run(runner, first, COMMAND_TIMEOUT_SECONDS)
     if failure is not None:
         return False, failure
     if returncode != 0:
-        # The profile may already exist: update it instead of failing.
-        returncode, _out, failure = _run(
-            runner, _modify_command(ssid, ifname, wpa), COMMAND_TIMEOUT_SECONDS
-        )
+        # The profile may (not) exist: try the other form instead of failing.
+        returncode, _out, failure = _run(runner, second, COMMAND_TIMEOUT_SECONDS)
         if failure is not None:
             return False, failure
         if returncode != 0:
@@ -278,13 +308,13 @@ def apply(ssid, psk='', ifname=DEFAULT_IFNAME, runner=None, passwd_dir=None):
 
     passwd_file = ''
     try:
-        if wpa:
+        if write_psk:
             passwd_file, write_reason = _write_passwd_file(psk, directory=passwd_dir)
             if not passwd_file:
                 # Do not attempt the connection without a usable credential file.
                 return False, write_reason
         command = (
-            _up_with_passwd_file_command(passwd_file) if wpa else _up_command()
+            _up_with_passwd_file_command(passwd_file) if write_psk else _up_command()
         )
         returncode, _out, failure = _run(runner, command, COMMAND_TIMEOUT_SECONDS)
         if failure is not None:

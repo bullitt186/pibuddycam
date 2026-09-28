@@ -27,8 +27,16 @@ else
    chroot "$root" useradd --system --create-home --home-dir "$APP_ROOT" \
       --shell /usr/sbin/nologin "$SERVICE_USER"
 fi
-chroot "$root" usermod -aG video,render,audio,plugdev,gpio,i2c,spi "$SERVICE_USER" \
-   2>/dev/null || true
+# Device-access groups. Not every one is guaranteed by the base image (there is
+# no raspberrypi-sys-mods), and usermod -aG fails as a whole when any listed group
+# is missing, so create the missing ones first and let a real failure abort the
+# build instead of silently shipping a service account without GPIO/camera access.
+SERVICE_GROUPS="video render audio plugdev gpio i2c spi"
+for group in $SERVICE_GROUPS; do
+   chroot "$root" getent group "$group" >/dev/null 2>&1 \
+      || chroot "$root" groupadd -r "$group"
+done
+chroot "$root" usermod -aG "$(echo "$SERVICE_GROUPS" | tr ' ' ',')" "$SERVICE_USER"
 rm -rf "$root/home/$SERVICE_USER"
 uid="$(chroot "$root" id -u "$SERVICE_USER")"
 gid="$(chroot "$root" id -g "$SERVICE_USER")"
@@ -71,7 +79,7 @@ for u in rpicam-source.service pibuddycam-rtsp.service pibuddycam-ha-rtsp.servic
          pibuddycam.service pibuddycam-admin.service pibuddycam-provisioning.service \
          pi-persist.service pibuddycam-data-ready.service data-ready.target \
          bootlog.service pibuddycam-updater.service pibuddycam-updater.timer \
-         pibuddycam-updater-install.service; do
+         pibuddycam-updater-install.service pibuddycam-network-apply.service; do
    install -D -m 0644 "$unit_src/$u" "$SYSTEMD_DST/$u"
 done
 
@@ -97,6 +105,23 @@ install -D -m 0644 "$assets/systemd/journald-volatile.conf" \
 # allocate camera buffers; grant the video group access (pibuddycam is a member).
 install -D -o root -g root -m 0644 "$assets/udev/50-pibuddycam-camera.rules" \
    "$root/etc/udev/rules.d/50-pibuddycam-camera.rules"
+
+# --- GPIO access for the timelapse trigger ---------------------------------
+# /dev/gpiochip* is root:gpio 0660 on Raspberry Pi OS but not on a plain Debian
+# base; pin it so the service account (a member of gpio) can request the
+# Hackerboard input lines through the GPIO character device.
+install -D -o root -g root -m 0644 "$assets/udev/60-pibuddycam-gpio.rules" \
+   "$root/etc/udev/rules.d/60-pibuddycam-gpio.rules"
+
+# --- time sync (NTP) ---------------------------------------------------------
+# NetworkManager hands DHCP option 42 to a dispatcher script, which passes the
+# validated servers to ntp_apply.py (root). timesyncd's last clock lives on the
+# persistent /data: persist_restore bind-mounts its state directory and restarts
+# it. There is deliberately no After=pi-persist.service drop-in on timesyncd:
+# timesyncd runs before sysinit.target while pi-persist.service runs after it,
+# so that ordering would be a dependency cycle.
+install -D -o root -g root -m 0755 "$assets/networkmanager/dispatcher.d/50-pibuddycam-ntp" \
+   "$root/etc/NetworkManager/dispatcher.d/50-pibuddycam-ntp"
 
 # --- emulated SD mountpoint + Samba share (timelapse SMB) -------------------
 # /mnt/sdcard must exist on ROOT so pi-persist.service can bind-mount
@@ -225,6 +250,10 @@ chroot "$root" systemctl enable \
    data-ready.target pibuddycam-data-ready.service pibuddycam-data-grow.service \
    pi-persist.service bootlog.service pibuddycam-boot-mode.service \
    pibuddycam-updater.timer >/dev/null 2>&1 || true
+# There is no RTC, so time comes from systemd-timesyncd. It is enabled by the
+# package, but this is the one place that guarantees it (separate call so an
+# unrelated unit failure cannot silently skip it).
+chroot "$root" systemctl enable systemd-timesyncd.service >/dev/null 2>&1 || true
 # console-setup.service tries to write /etc/console-setup on a read-only ROOT
 # and fails every boot.  Headless appliance — mask it.
 chroot "$root" systemctl mask console-setup.service >/dev/null 2>&1 || true

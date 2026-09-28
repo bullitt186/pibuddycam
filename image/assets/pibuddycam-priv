@@ -19,17 +19,26 @@
 #   rtsp-start           systemctl start pibuddycam-rtsp.service
 #   rtsp-stop            systemctl stop pibuddycam-rtsp.service
 #   quality-restart      restart source/HA RTSP, try-restart Prusa RTSP
+#   network-apply        JSON request on stdin -> /run/pibuddycam-network-request.json,
+#                        then systemctl --no-block start pibuddycam-network-apply.service
+#   hostname-apply       hostnamectl set-hostname --transient <label> (RFC 1123 checked)
+#   wifi-scan            nmcli wifi list --rescan yes (terse SSID,SIGNAL,SECURITY)
+#   ntp-apply            ntp_apply.py apply (timesyncd drop-in from device.toml)
 #
 # The Wi-Fi PSK is never an argument: it is forwarded on stdin to
 # wifi_station.py, which writes it to a 0600 NetworkManager ``passwd-file`` and
 # activates the profile with `nmcli connection up ... passwd-file <file>`.
 #
-# PIBUDDYCAM_APP_ROOT exists only so host tests can stub the application root; a
+# The network-apply request (which can carry the new PSK) is stdin-only: it is
+# stored 0600 in root-only /run and consumed and deleted by network_apply.py.
+#
+# PIBUDDYCAM_APP_ROOT and PIBUDDYCAM_RUN_DIR exist only so host tests can stub the application root; a
 # real sudo invocation resets the environment (env_reset is pinned in
 # /etc/sudoers.d/pibuddycam), so it cannot redirect the helper.
 set -eu
 
 APP_ROOT="${PIBUDDYCAM_APP_ROOT:-/opt/pibuddycam}"
+RUN_DIR="${PIBUDDYCAM_RUN_DIR:-/run}"
 PYTHON="$APP_ROOT/venv/bin/python"
 
 # Absolute path: the helper must not depend on the caller's PATH (secure_path is
@@ -82,6 +91,31 @@ case "$verb" in
          exit 2
       fi
       exec "$PYTHON" "$APP_ROOT/wifi_station.py" apply "$ssid"
+      ;;
+   network-apply)
+      umask 077
+      request="$RUN_DIR/pibuddycam-network-request.json"
+      # Bounded copy of stdin; the request carries at most an SSID, a PSK and a
+      # handful of IPv4 addresses.
+      head -c 8192 > "$request.tmp"
+      mv -f "$request.tmp" "$request"
+      exec "$SYSTEMCTL" --no-block start pibuddycam-network-apply.service
+      ;;
+   hostname-apply)
+      name="${2:-}"
+      # [[ =~ ]] matches the whole string (grep -q would accept a name with an
+      # embedded newline as soon as one line matched).
+      label_re='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+      if [[ ! "$name" =~ $label_re ]]; then
+         exit 2
+      fi
+      exec /usr/bin/hostnamectl set-hostname --transient "$name"
+      ;;
+   wifi-scan)
+      exec /usr/bin/nmcli -t -f SSID,SIGNAL,SECURITY dev wifi list --rescan yes
+      ;;
+   ntp-apply)
+      exec "$PYTHON" "$APP_ROOT/ntp_apply.py" apply
       ;;
    *)
       exit 2

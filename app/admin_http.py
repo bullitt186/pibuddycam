@@ -94,12 +94,14 @@ import dashboard
 import device_control
 import diagnostics
 import expert_config
+import gpio_pins
 import factory_reset as factory_reset_module
 import live_monitor
 import media_build
 import media_library
 import mqtt_service
 import mqtt_topics
+import network_settings
 import provisioning
 import recovery
 import runtime_ipc
@@ -339,6 +341,17 @@ MEDIA_DEFAULT_PAGE_SIZE = 24
 #: confirmation flag; anything larger is rejected before any action.
 MAX_SYSTEM_ACTION_BODY_BYTES = 1024
 
+NETWORK_APPLY_WARNING = (
+    'The device may change address. If the new network does not come up within '
+    'about a minute it returns to the previous settings.'
+)
+
+#: Most sessions returned by ``GET /api/media/sessions``.
+MEDIA_MAX_SESSIONS = 200
+
+#: Settings whose value may be JSON ``null`` (an unset pin).
+_NULLABLE_SETTINGS = frozenset({'timelapse_gpio_pin', 'timelapse_gpio_record_pin'})
+
 #: Documented warning shown/returned when an install is accepted. The install
 #: restarts the camera and admin services, so the current admin request may be
 #: terminated; the UI must report that honestly rather than claim completion.
@@ -483,6 +496,7 @@ class AdminApp:
         release_identity_fn=None,
         application_version_fn=None,
         hostname_fn=None,
+        network_controller=None,
     ):
         if mode not in ('setup', 'admin'):
             raise ValueError("mode must be 'setup' or 'admin'")
@@ -573,6 +587,9 @@ class AdminApp:
             else app_version.application_version
         )
         self._hostname_fn = hostname_fn if hostname_fn is not None else socket.gethostname
+        # Network settings (apply/hostname/NTP/scan/status). ``None`` reports the
+        # feature unavailable (501) instead of fabricating state.
+        self._network = network_controller
 
         # Lazily built wizard session and reset confirmation state.
         self._wizard = None
@@ -643,6 +660,10 @@ class AdminApp:
                 _AUTHENTICATED, self._handle_media_frame_download,
             ),
             Route(
+                'GET', re.compile(r'^/api/media/sessions$'),
+                _AUTHENTICATED, self._handle_media_sessions,
+            ),
+            Route(
                 'POST', re.compile(r'^/api/media/timelapses/build$'),
                 _AUTHENTICATED, self._handle_media_build,
             ),
@@ -653,6 +674,32 @@ class AdminApp:
             Route(
                 'GET', re.compile(r'^/api/system$'),
                 _AUTHENTICATED, self._handle_system,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/network$'),
+                _AUTHENTICATED, self._handle_network_get,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/network/scan$'),
+                _AUTHENTICATED, self._handle_network_scan,
+            ),
+            # Changing the network can lock the operator out (auto-revert is the
+            # safety net), so it needs the fresh re-auth window like a reboot.
+            Route(
+                'PUT', re.compile(r'^/api/network$'),
+                _REAUTH_WINDOW_ONLY, self._handle_network_put,
+            ),
+            Route(
+                'PUT', re.compile(r'^/api/network/hostname$'),
+                _REAUTH_WINDOW_ONLY, self._handle_network_hostname_put,
+            ),
+            Route(
+                'PUT', re.compile(r'^/api/network/ntp$'),
+                _AUTHENTICATED, self._handle_network_ntp_put,
+            ),
+            Route(
+                'GET', re.compile(r'^/api/gpio/pins$'),
+                _AUTHENTICATED, self._handle_gpio_pins,
             ),
             Route(
                 'GET', re.compile(r'^/api/update$'),
@@ -1464,19 +1511,58 @@ class AdminApp:
             item['download_url'] = f"/api/media/timelapses/{item['name']}"
         return self._json(request, 200, payload)
 
+    def _media_session_dir(self, request):
+        """Return ``(directory, session, error)`` for the optional ``session`` query.
+
+        Absent means the timelapse root. A session must match
+        ``session_<YYYYMMDD>-<HHMMSS>`` and be a real folder under the media root.
+        """
+        query = request.query if isinstance(request.query, dict) else {}
+        raw = query.get('session')
+        if isinstance(raw, list):
+            raw = raw[0] if raw else None
+        if raw is None or raw == '':
+            return self._media_dir, None, None
+        if not isinstance(raw, str) or not timelapse.valid_session_name(raw):
+            return None, None, 'invalid session'
+        path = media_library.session_dir(self._media_dir, raw)
+        if path is None:
+            return None, None, 'unknown session'
+        return path, raw, None
+
     def _handle_media_frames(self, request, match, body_data, now):
-        """Paginated metadata for allowlisted stored ``.jpg`` frames (AC-12)."""
+        """Paginated metadata for allowlisted stored ``.jpg`` frames (AC-12).
+
+        An optional ``session=`` query lists one per-print session's frames.
+        """
         page, page_size, error = self._media_page(request)
         if error:
             return self._error(request, 400, error)
-        entries, truncated = media_library.catalog_frames(self._media_dir)
+        directory, session, error = self._media_session_dir(request)
+        if error:
+            return self._error(request, 400 if error == 'invalid session' else 404, error)
+        entries, truncated = media_library.catalog_frames(directory)
         payload = {'ok': True, 'kind': 'frames', 'truncated': truncated}
+        if session:
+            payload['session'] = session
         payload['bytes_total'] = sum(entry.size for entry in entries)
         payload.update(media_library.paginate(entries, page, page_size))
+        suffix = f'?session={session}' if session else ''
         for item in payload['items']:
-            item['preview_url'] = f"/api/media/frames/{item['name']}"
+            item['preview_url'] = f"/api/media/frames/{item['name']}{suffix}"
             item['download_url'] = item['preview_url']
         return self._json(request, 200, payload)
+
+    def _handle_media_sessions(self, request, match, body_data, now):
+        """Per-print timelapse sessions (newest first, bounded)."""
+        sessions, truncated = media_library.catalog_sessions(self._media_dir)
+        return self._json(request, 200, {
+            'ok': True,
+            'kind': 'sessions',
+            'truncated': truncated,
+            'active': timelapse.active_session(self._media_dir),
+            'sessions': sessions[:MEDIA_MAX_SESSIONS],
+        })
 
     def _handle_media_video_download(self, request, match, body_data, now):
         """Serve one allowlisted AVI with a single byte range (AC-12).
@@ -1534,9 +1620,12 @@ class AdminApp:
         planted near-limit JPEG is never decoded or buffered whole.
         """
         name = match.group('name')
+        directory, _session, error = self._media_session_dir(request)
+        if error:
+            return self._error(request, 404, 'not found')
         try:
             handle, size, _kind = media_library.open_media(
-                self._media_dir, name, expect='frame')
+                directory, name, expect='frame')
         except media_library.MediaError as exc:
             return self._error(request, exc.status, exc.message)
         try:
@@ -1567,9 +1656,12 @@ class AdminApp:
         if _body_size(request) > MAX_MEDIA_BUILD_BODY_BYTES:
             return self._error(request, 413, 'request body too large')
         body = body_data if isinstance(body_data, dict) else {}
-        unknown = [key for key in body if key not in ('fps',)]
+        unknown = [key for key in body if key not in ('fps', 'session')]
         if unknown:
             return self._error(request, 400, 'unknown field')
+        session = body.get('session')
+        if session is not None and not timelapse.valid_session_name(session):
+            return self._error(request, 400, 'invalid session')
         fps = body.get('fps', timelapse.DEFAULT_FPS) if 'fps' in body else timelapse.DEFAULT_FPS
         valid_fps = timelapse.valid_fps(fps)
         if valid_fps is None:
@@ -1577,7 +1669,9 @@ class AdminApp:
         manager = self._build_manager
         if manager is None:
             return self._error(request, 503, 'build unavailable')
-        result = manager.start(valid_fps)
+        result = (
+            manager.start(valid_fps, session=session) if session
+            else manager.start(valid_fps))
         if not result.get('ok'):
             code = result.get('code')
             status = 409 if code == 'busy' else (507 if code == 'low_space' else 422)
@@ -1631,6 +1725,8 @@ class AdminApp:
             'ssh': self._ssh_status_view(now),
             'network': {'hostname': _bounded_hostname(self._hostname_fn)},
         }
+        if self._network is not None:
+            payload['network']['address'] = self._network.current_address()
         if view.error:
             payload['provisioning']['error'] = view.error
         return self._json(request, 200, payload)
@@ -1827,6 +1923,125 @@ class AdminApp:
             'ok': True, 'accepted': True, 'warning': DISRUPTIVE_ACTION_WARNING,
         })
 
+    # ------------------------------------------------------------------ #
+    # Network settings, NTP and GPIO pins (Pi-only console features)
+    # ------------------------------------------------------------------ #
+
+    def _handle_network_get(self, request, match, body_data, now):
+        """Live network/time status and the last apply result (never a secret)."""
+        if self._network is None:
+            return self._error(request, 501, 'network settings unavailable')
+        try:
+            status = self._network.status()
+        except Exception:  # noqa: BLE001 - a status read must never crash routing
+            log.warning('admin_http: network status failed')
+            return self._error(request, 503, 'network status unavailable')
+        payload = {'ok': True}
+        payload.update(status)
+        return self._json(request, 200, payload)
+
+    def _handle_network_scan(self, request, match, body_data, now):
+        """Cached Wi-Fi scan; a background thread refreshes it (rate limited)."""
+        if self._network is None:
+            return self._error(request, 501, 'network settings unavailable')
+        status, payload = self._network.scan()
+        return self._json(request, status, dict({'ok': status == 200}, **payload))
+
+    def _network_body(self, request, body_data, allowed):
+        """Shared size/shape gate; returns an error response or ``None``."""
+        if self._network is None:
+            return self._error(request, 501, 'network settings unavailable')
+        size_error = _integration_size_error(request)
+        if size_error is not None:
+            return size_error
+        if not isinstance(body_data, dict):
+            return self._error(request, 400, 'invalid request body')
+        if any(key not in allowed for key in body_data):
+            return self._error(request, 400, 'unknown field')
+        return None
+
+    def _handle_network_put(self, request, match, body_data, now):
+        """Validate a Wi-Fi/IPv4 change and start the root transaction (202).
+
+        Fresh re-auth window + CSRF + explicit ``confirm: true``. The new PSK is
+        never echoed, logged or placed in argv: it travels to the root unit on
+        stdin only. The response is *accepted*, not applied: the device may
+        change address, so the UI polls ``GET /api/network`` and shows where to
+        reconnect. The unit reverts to the old profile when the new one does not
+        come up.
+        """
+        allowed = {'ssid', 'psk', 'ipv4_method', 'address', 'prefix', 'gateway',
+                   'dns', 'confirm'}
+        error = self._network_body(request, body_data, allowed)
+        if error is not None:
+            return error
+        psk = body_data.get('psk')
+        secrets = (psk,) if isinstance(psk, str) and psk else ()
+        if body_data.get('confirm') is not True:
+            return self._json(request, 400, {
+                'ok': False, 'error': 'explicit confirmation is required',
+            }, secrets=secrets)
+        try:
+            checked = network_settings.validate_request(body_data)
+        except network_settings.ValidationError as e:
+            return self._json(request, 400, {'ok': False, 'error': str(e)}, secrets=secrets)
+        status, payload = self._network.apply(checked)
+        payload = dict(payload)
+        payload['ok'] = status == 202
+        if status == 202:
+            payload['warning'] = NETWORK_APPLY_WARNING
+        return self._json(request, status, payload, secrets=secrets)
+
+    def _handle_network_hostname_put(self, request, match, body_data, now):
+        """Apply and persist the hostname (fresh re-auth window + CSRF)."""
+        error = self._network_body(request, body_data, {'hostname'})
+        if error is not None:
+            return error
+        try:
+            name = network_settings.validate_hostname(body_data.get('hostname'))
+        except network_settings.ValidationError as e:
+            return self._json(request, 400, {'ok': False, 'error': str(e)})
+        status, payload = self._network.set_hostname(name)
+        payload = dict(payload)
+        payload['ok'] = status == 200
+        return self._json(request, status, payload)
+
+    def _handle_network_ntp_put(self, request, match, body_data, now):
+        """Save the NTP servers (blank = DHCP, then pool) and apply them."""
+        error = self._network_body(request, body_data, {'ntp_servers'})
+        if error is not None:
+            return error
+        try:
+            servers = network_settings.validate_ntp_servers(body_data.get('ntp_servers', []))
+        except network_settings.ValidationError as e:
+            return self._json(request, 400, {'ok': False, 'error': str(e)})
+        status, payload = self._network.set_ntp_servers(servers)
+        payload = dict(payload)
+        payload['ok'] = status == 200
+        return self._json(request, status, payload)
+
+    def _handle_gpio_pins(self, request, match, body_data, now):
+        """Safe GPIO pin table plus the runtime trigger status."""
+        status = None
+        provider = self._dashboard_provider
+        if provider is not None:
+            try:
+                document = provider()
+            except Exception:  # noqa: BLE001 - a provider must never crash routing
+                document = None
+            if isinstance(document, dict) and isinstance(
+                    document.get('timelapse_gpio'), dict):
+                status = document['timelapse_gpio']
+        return self._json(request, 200, {
+            'ok': True,
+            'pins': gpio_pins.pin_table(),
+            'defaults': {
+                'shot': gpio_pins.DEFAULT_SHOT_PIN,
+                'record': gpio_pins.DEFAULT_RECORD_PIN,
+            },
+            'status': status,
+        })
+
     def _handle_settings_patch(self, request, match, body_data, now):
         """Apply one bounded settings mutation through the live coordinator.
 
@@ -1853,7 +2068,9 @@ class AdminApp:
         value = body_data.get('value')
         if isinstance(value, str) and len(value) > MAX_INTEGRATION_FIELD_CHARS:
             return self._error(request, 400, 'value is too long')
-        if isinstance(value, float) or not isinstance(value, (str, int, bool)):
+        if value is None and field in _NULLABLE_SETTINGS:
+            pass  # e.g. clearing a GPIO pin
+        elif isinstance(value, float) or not isinstance(value, (str, int, bool)):
             return self._error(request, 400, 'value has an unsupported type')
 
         if self._settings_actions is None:

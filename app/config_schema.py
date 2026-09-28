@@ -50,6 +50,7 @@ _DEVICE_TABLES = {
     'prusa': ('server',),
     'mqtt': ('enabled', 'uri', 'client_id', 'discovery_prefix', 'topic_prefix', 'ca_file'),
     'admin': ('hostname',),
+    'network': ('ntp_servers',),
 }
 _META_TABLE = 'meta'
 
@@ -108,6 +109,7 @@ def default_device():
             'ca_file': '',
         },
         'admin': {'hostname': ''},
+        'network': {'ntp_servers': []},
     }
 
 
@@ -283,6 +285,34 @@ def _apply_device_table(cfg, table, section):
     elif table == 'admin':
         if 'hostname' in section:
             cfg['admin']['hostname'] = _expect_str(section['hostname'], 'admin.hostname')
+    elif table == 'network':
+        if 'ntp_servers' in section:
+            cfg['network']['ntp_servers'] = validate_ntp_servers(section['ntp_servers'])
+
+
+_NTP_HOST_RE = re.compile(
+    r'^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?'
+    r'(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$'
+)
+MAX_NTP_SERVERS = 3
+
+
+def validate_ntp_servers(value):
+    """Return a normalized list of up to 3 NTP hostnames or IPv4 addresses."""
+    if not isinstance(value, list):
+        raise ValidationError('network.ntp_servers must be a list')
+    if len(value) > MAX_NTP_SERVERS:
+        raise ValidationError(f'network.ntp_servers allows at most {MAX_NTP_SERVERS} entries')
+    servers = []
+    for item in value:
+        if not isinstance(item, str):
+            raise ValidationError('network.ntp_servers entries must be strings')
+        name = item.strip()
+        if not _NTP_HOST_RE.match(name):
+            raise ValidationError('network.ntp_servers entry is not a hostname or IPv4 address')
+        if name not in servers:
+            servers.append(name)
+    return servers
 
 
 def _expect_str(value, path):
@@ -382,6 +412,11 @@ def dumps_device(cfg):
         '',
         '[admin]',
         f'hostname = {_toml_str(merged["admin"]["hostname"])}',
+        '',
+        '[network]',
+        'ntp_servers = [' + ', '.join(
+            _toml_str(item) for item in validate_ntp_servers(merged['network']['ntp_servers'])
+        ) + ']',
     ]
     if _META_TABLE in merged:
         lines.append('')

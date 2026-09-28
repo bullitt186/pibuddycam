@@ -1,0 +1,28 @@
+# Console-triggered network change (Network settings, auto-revert). Root because
+# it rewrites the NetworkManager station profile and may start the setup hotspot
+# as a last resort.
+#
+# Triggered ONLY through the fixed-verb root helper (``pibuddycam-priv
+# network-apply`` -> ``systemctl --no-block start``), never by a timer and never
+# at boot. Like pibuddycam-updater-install.service it has no [Install] section and
+# is not pulled in by pibuddycam.target, so a network failure cannot stop the
+# camera stack, and an admin restart cannot kill the transaction half-way.
+#
+# The request (which may carry the new PSK) is read from the root-only
+# /run/pibuddycam-network-request.json and deleted immediately; the secret-free
+# result is written to /run/pibuddycam/network-result.json.
+[Unit]
+Description=PiBuddyCam network change with automatic revert
+# Needs /data so the restored profile lands on the bind-mounted keyfile store.
+After=NetworkManager.service data-ready.target
+Wants=NetworkManager.service
+Requires=data-ready.target
+ConditionPathExists=/run/pibuddycam-network-request.json
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/pibuddycam
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+TimeoutStartSec=240
+ExecStart=/opt/pibuddycam/venv/bin/python /opt/pibuddycam/network_apply.py

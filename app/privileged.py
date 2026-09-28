@@ -51,6 +51,10 @@ VERBS = frozenset({
     'rtsp-start',
     'rtsp-stop',
     'quality-restart',
+    'network-apply',
+    'hostname-apply',
+    'wifi-scan',
+    'ntp-apply',
 })
 
 #: Bounded wall-clock timeout for a privileged invocation.
@@ -81,6 +85,8 @@ class PrivilegedResult:
 
     ok: bool
     reason: str = ''
+    #: Captured stdout, only for verbs invoked with ``capture=True`` (wifi-scan).
+    output: str = ''
 
     def __bool__(self):
         return bool(self.ok)
@@ -120,7 +126,7 @@ def _returncode(result):
     return value if isinstance(value, int) else 1
 
 
-def _invoke(verb, *extra, input=None, runner=None, timeout=None):
+def _invoke(verb, *extra, input=None, runner=None, timeout=None, capture=False):
     """Invoke ``verb`` through the helper and normalize the outcome.
 
     Returns a :class:`PrivilegedResult`; never raises. ``extra`` are the verb's
@@ -148,7 +154,11 @@ def _invoke(verb, *extra, input=None, runner=None, timeout=None):
             False,
             _sanitize_reason(f'{verb} failed (exit {returncode})'),
         )
-    return PrivilegedResult(True, '')
+    output = ''
+    if capture:
+        raw = getattr(result, 'stdout', '') or ''
+        output = raw.decode('utf-8', 'replace') if isinstance(raw, bytes) else str(raw)
+    return PrivilegedResult(True, '', output=output)
 
 
 # --------------------------------------------------------------------------- #
@@ -275,6 +285,43 @@ def activate_station(ssid, psk, runner=None):
         'wifi-station-apply', ssid.strip(), input=psk, runner=runner,
         timeout=STATION_TIMEOUT_SECONDS,
     )
+
+
+def network_apply(request_json, runner=None):
+    """Start the root network-apply transaction; the request goes on stdin.
+
+    The JSON may carry the new Wi-Fi PSK, so it never appears in argv, a log
+    line or ``reason``. The verb returns once the oneshot unit is queued
+    (``--no-block``); the outcome is read from the root-written result file.
+    """
+    if not isinstance(request_json, str) or not request_json:
+        return PrivilegedResult(False, 'network request is required')
+    return _invoke('network-apply', input=request_json, runner=runner)
+
+
+def hostname_apply(name, runner=None):
+    """Set the transient hostname; the helper re-validates the RFC 1123 label."""
+    if not isinstance(name, str) or not name:
+        return PrivilegedResult(False, 'hostname is required')
+    return _invoke('hostname-apply', name, runner=runner)
+
+
+def ntp_apply(runner=None):
+    """Regenerate the timesyncd drop-in from ``device.toml`` as root."""
+    return _invoke('ntp-apply', runner=runner)
+
+
+def wifi_scan(runner=None):
+    """Scan for Wi-Fi networks as root; returns a list of ``{ssid, signal, secured}``.
+
+    Returns ``None`` when the scan could not run (old image, no radio) so callers
+    can tell it apart from "no networks in range" (an empty list).
+    """
+    import network_settings
+    result = _invoke('wifi-scan', runner=runner, timeout=30.0, capture=True)
+    if not result.ok:
+        return None
+    return network_settings.parse_scan_output(result.output)
 
 
 class PrivilegedHotspot:

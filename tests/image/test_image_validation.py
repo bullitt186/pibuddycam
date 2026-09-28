@@ -205,6 +205,23 @@ def make_rootfs(base):
         'SUBSYSTEM=="dma_heap", GROUP="video", MODE="0660"\n', encoding="utf-8"
     )
 
+    # GPIO access for the timelapse trigger: udev rule + gpio group membership.
+    (udev / "60-pibuddycam-gpio.rules").write_text(
+        'SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"\n',
+        encoding="utf-8",
+    )
+    (root / "etc" / "group").write_text(
+        "root:x:0:\nvideo:x:44:pibuddycam\ngpio:x:997:pibuddycam\n", encoding="utf-8"
+    )
+
+    # Time sync: timesyncd enabled, DHCP option 42 handed over by a dispatcher.
+    sysinit_wants = systemd / "sysinit.target.wants"
+    sysinit_wants.mkdir(parents=True)
+    os.symlink(
+        "/lib/systemd/system/systemd-timesyncd.service",
+        sysinit_wants / "systemd-timesyncd.service",
+    )
+
     # NetworkManager configuration.
     networkmanager = root / "etc" / "NetworkManager"
     networkmanager.mkdir(parents=True)
@@ -217,6 +234,15 @@ def make_rootfs(base):
     (nm_conf / "10-pibuddycam-mac.conf").write_text(
         "[device]\nwifi.scan-rand-mac-address=no\n", encoding="utf-8"
     )
+
+    dispatcher = networkmanager / "dispatcher.d"
+    dispatcher.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        REPO_ROOT / "image" / "assets" / "networkmanager" / "dispatcher.d"
+        / "50-pibuddycam-ntp",
+        dispatcher / "50-pibuddycam-ntp",
+    )
+    os.chmod(dispatcher / "50-pibuddycam-ntp", 0o755)
 
     # console-setup.service masked (headless, ro ROOT).
     os.symlink("/dev/null", systemd / "console-setup.service")
@@ -653,6 +679,97 @@ class RootfsValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing dma_heap udev rule", result.stdout)
+
+    def test_missing_gpio_udev_rule_fails(self):
+        root = self._root()
+        (root / "etc" / "udev" / "rules.d" / "60-pibuddycam-gpio.rules").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing gpiochip udev rule", result.stdout)
+
+    def test_missing_gpio_group_fails(self):
+        root = self._root()
+        (root / "etc" / "group").write_text("root:x:0:\nvideo:x:44:pibuddycam\n", encoding="utf-8")
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("gpio group missing", result.stdout)
+
+    def test_service_account_outside_gpio_group_fails(self):
+        root = self._root()
+        (root / "etc" / "group").write_text("root:x:0:\ngpio:x:997:someone\n", encoding="utf-8")
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("pibuddycam must be a member of the gpio group", result.stdout)
+
+    def test_gpio_checks_pass_on_the_healthy_fixture(self):
+        result = run_validator("--image", self.image, "--mount-root", self._root())
+        self.assertIn("gpiochip udev rule grants the gpio group access", result.stdout)
+        self.assertIn("pibuddycam is a member of the gpio group", result.stdout)
+
+    def test_missing_ntp_dispatcher_fails(self):
+        root = self._root()
+        (root / "etc" / "NetworkManager" / "dispatcher.d" / "50-pibuddycam-ntp").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("NTP dispatcher script missing", result.stdout)
+
+    def test_non_executable_ntp_dispatcher_fails(self):
+        root = self._root()
+        (root / "etc" / "NetworkManager" / "dispatcher.d" / "50-pibuddycam-ntp").chmod(0o644)
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("dispatcher must be root:root mode 0755", result.stdout)
+
+    def test_group_writable_ntp_dispatcher_fails(self):
+        root = self._root()
+        (root / "etc" / "NetworkManager" / "dispatcher.d" / "50-pibuddycam-ntp").chmod(0o775)
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_disabled_timesyncd_fails(self):
+        root = self._root()
+        (root / "etc" / "systemd" / "system" / "sysinit.target.wants"
+         / "systemd-timesyncd.service").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("systemd-timesyncd must be enabled", result.stdout)
+
+    def test_timesyncd_ordering_dropin_that_would_cycle_fails(self):
+        root = self._root()
+        dropin = root / "etc" / "systemd" / "system" / "systemd-timesyncd.service.d"
+        dropin.mkdir()
+        (dropin / "10-data-ready.conf").write_text(
+            "[Unit]\nAfter=pi-persist.service\n", encoding="utf-8")
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("dependency cycle", result.stdout)
+
+    def test_network_apply_unit_must_not_be_enabled(self):
+        root = self._root()
+        os.symlink(
+            "../pibuddycam-network-apply.service",
+            root / "etc" / "systemd" / "system" / "multi-user.target.wants"
+            / "pibuddycam-network-apply.service",
+        )
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("pibuddycam-network-apply.service must not be enabled", result.stdout)
+
+    def test_network_apply_unit_with_install_section_fails(self):
+        root = self._root()
+        unit = root / "etc" / "systemd" / "system" / "pibuddycam-network-apply.service"
+        unit.write_text(unit.read_text(encoding="utf-8") + "\n[Install]\nWantedBy=multi-user.target\n",
+                        encoding="utf-8")
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must not be enabled", result.stdout)
+
+    def test_missing_network_apply_unit_fails(self):
+        root = self._root()
+        (root / "etc" / "systemd" / "system" / "pibuddycam-network-apply.service").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("pibuddycam-network-apply.service is missing", result.stdout)
 
     def test_missing_stable_mac_conf_fails(self):
         root = self._root()

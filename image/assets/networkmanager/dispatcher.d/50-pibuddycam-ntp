@@ -1,0 +1,33 @@
+#!/bin/bash
+# NetworkManager dispatcher: hand DHCP-provided NTP servers (option 42) to the
+# root ntp_apply.py, which writes the timesyncd drop-in.
+#
+# systemd-timesyncd learns per-link NTP servers only from systemd-networkd, and
+# this image uses NetworkManager, so without this hook option 42 is ignored.
+# NM exports them as DHCP4_NTP_SERVERS (space separated) on `up` and
+# `dhcp4-change`. Only tokens that look like a hostname or IPv4 address are
+# passed on (at most three); anything else is dropped, so a hostile DHCP server
+# cannot inject options into the timesyncd drop-in.
+set -eu
+
+iface="${1:-}"
+action="${2:-}"
+case "$action" in
+   up|dhcp4-change) ;;
+   *) exit 0 ;;
+esac
+[ -n "$iface" ] && [ "$iface" != "lo" ] || exit 0
+
+APP_ROOT="${PIBUDDYCAM_APP_ROOT:-/opt/pibuddycam}"
+servers=""
+count=0
+for token in ${DHCP4_NTP_SERVERS:-}; do
+   if printf '%s' "$token" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$'; then
+      servers="$servers $token"
+      count=$((count + 1))
+      [ "$count" -lt 3 ] || break
+   fi
+done
+
+# shellcheck disable=SC2086 # deliberate word splitting of validated tokens
+exec "$APP_ROOT/venv/bin/python" "$APP_ROOT/ntp_apply.py" dhcp $servers

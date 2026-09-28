@@ -39,7 +39,7 @@ image/
     pibuddycam-priv, sudoers/     fixed-verb root helper and its sudoers rule
     pibuddycam-data-grow.sh       first-boot growth of PERSIST
     systemd/                      image-only units and drop-ins
-    udev/, networkmanager/        camera device access, stable Wi-Fi MAC
+    udev/, networkmanager/        camera and GPIO device access, stable Wi-Fi MAC, NTP dispatcher
     build-info.py                 writes /usr/share/pibuddycam/build-info.json
     icon/pibuddycam.png           Imager icon
   imager/os-list.template.json  Raspberry Pi Imager manifest template

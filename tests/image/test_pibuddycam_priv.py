@@ -57,10 +57,39 @@ class PrusaPrivAssetTests(unittest.TestCase):
             'rtsp-start',
             'rtsp-stop',
             'quality-restart',
+            'network-apply',
+            'hostname-apply',
+            'wifi-scan',
+            'ntp-apply',
         ):
             self.assertIn(f'{verb})', text)
         # Nothing else is dispatched.
         self.assertIn('*)\n      exit 2', text)
+
+    def test_hostname_apply_rejects_bad_labels_before_running_anything(self):
+        for bad in ('', 'Has_Underscore', '-lead', 'trail-', 'a b', 'x' * 64,
+                    'semi;colon', '$(id)', 'UPPER', 'dot.ted', 'ok\nname'):
+            result = run_helper(['hostname-apply', bad])
+            self.assertEqual(result.returncode, 2, repr(bad))
+
+    def test_network_apply_takes_the_request_from_stdin_only(self):
+        text = PIBUDDYCAM_PRIV.read_text(encoding='utf-8')
+        start = text.index('network-apply)\n')
+        branch = text[start:text.index('hostname-apply)', start)]
+        self.assertIn('head -c 8192 > "$request.tmp"', branch)
+        self.assertIn('umask 077', branch)
+        self.assertNotIn('$2', branch)
+        self.assertNotIn('$@', branch)
+        self.assertIn('pibuddycam-network-request.json', branch)
+        self.assertIn(
+            'exec "$SYSTEMCTL" --no-block start pibuddycam-network-apply.service', branch)
+
+    def test_wifi_scan_and_ntp_apply_are_fixed_commands(self):
+        text = PIBUDDYCAM_PRIV.read_text(encoding='utf-8')
+        self.assertIn(
+            'exec /usr/bin/nmcli -t -f SSID,SIGNAL,SECURITY dev wifi list --rescan yes',
+            text)
+        self.assertIn('exec "$PYTHON" "$APP_ROOT/ntp_apply.py" apply', text)
 
     def test_unknown_verb_exits_two(self):
         result = run_helper(['definitely-not-a-verb'])

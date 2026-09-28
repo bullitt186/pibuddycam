@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 import time
-from camera import capture_jpeg
+from camera import capture_jpeg, capture_jpeg_after
 from upload import make_session, upload_snapshot, upload_info
 from signaling import PrusaSignaling
 from local_http import start_local_http
@@ -56,6 +56,8 @@ import privileged
 import timezone
 import ota
 import timelapse
+import gpio_trigger
+import media_build
 import settings_store
 import app_metrics
 import app_version
@@ -398,9 +400,39 @@ def _find_candidate(msg):
     return find_webrtc_candidate(msg)
 
 
-async def timelapse_loop():
-    """Capture and store timelapse frames while enabled (GAP-TIMELAPSE-01)."""
+async def timelapse_loop(shot_queue=None, gpio=None):
+    """Capture and store timelapse frames while enabled (GAP-TIMELAPSE-01).
+
+    Two triggers: the firmware-shaped ``interval`` timer, and (Pi-only) ``gpio``,
+    where a Hackerboard layer pulse queued by :mod:`gpio_trigger` requests one
+    frame that is captured *after* the pulse (see ``capture_jpeg_after``) and
+    stored in the open per-print session folder, else the timelapse root.
+    """
     while True:
+        if state.timelapse_trigger == 'gpio' and shot_queue is not None:
+            try:
+                t_trigger = await asyncio.wait_for(shot_queue.get(), timeout=1)
+            except asyncio.TimeoutError:
+                continue
+            if not state.timelapse_enabled:
+                continue
+            try:
+                jpeg = await asyncio.to_thread(
+                    capture_jpeg_after, t_trigger, *state.resolution())
+                target = timelapse.session_frame_dir(timelapse.TIMELAPSE_DIR)
+                path = timelapse.save_frame(jpeg, dir=target)
+                latency = time.time() - t_trigger
+                if gpio is not None:
+                    gpio.note_latency(latency)
+                log.info(
+                    f'Timelapse: stored {os.path.basename(path)} '
+                    f'{latency:.1f}s after the GPIO pulse')
+            except Exception as e:
+                log.warning(f'Timelapse GPIO capture failed: {e}')
+            continue
+        if shot_queue is not None:
+            while not shot_queue.empty():   # pulses queued before switching back
+                shot_queue.get_nowait()
         if not state.timelapse_enabled:
             await asyncio.sleep(1)
             continue
@@ -595,6 +627,15 @@ async def main():
     # to the ``webrtc`` cell assigned below) so the coordinator can exist before
     # the startup restore, which also routes through it.
     webrtc = None
+    gpio = None       # GpioTrigger, created right after the coordinator
+    loop = asyncio.get_running_loop()
+
+    def apply_gpio(st):
+        """Coordinator hook: (re)arm or release the GPIO lines for the settings."""
+        if gpio is not None:
+            gpio.configure(
+                st.timelapse_trigger, st.timelapse_gpio_pin,
+                st.timelapse_gpio_record_pin)
 
     def start_webrtc_service():
         # GLib loop already running → just report status (GAP-WEBRTC-04).
@@ -619,6 +660,37 @@ async def main():
         rtsp_query=rtsp_service_active,
         webrtc_start=start_webrtc_service,
         webrtc_stop=stop_webrtc_service,
+        gpio_apply=apply_gpio,
+    )
+
+    # Pi-only GPIO timelapse trigger (Prusa GPIO Hackerboard). Layer pulses land
+    # in ``shot_queue``; the recording pin opens/closes per-print sessions whose
+    # automatic build goes through the serialized build manager (its retry queue
+    # keeps a session build that finds the manager busy, so none is dropped).
+    shot_queue = asyncio.Queue(maxsize=8)
+    session_builder = media_build.BuildManager(timelapse.TIMELAPSE_DIR)
+
+    def queue_shot(t_trigger):
+        try:
+            shot_queue.put_nowait(t_trigger)
+        except asyncio.QueueFull:
+            log.warning('GPIO layer pulse dropped: capture is behind')
+
+    def build_session(name):
+        width, height = state.oriented_resolution()
+        loop.run_in_executor(
+            None, lambda: session_builder.enqueue_session(
+                name, state.timelapse_fps, width, height))
+
+    gpio = gpio_trigger.GpioTrigger(
+        backend=gpio_trigger.LinuxGpio(),
+        loop=loop,
+        on_shot=queue_shot,
+        set_enabled=lambda flag: coordinator.set_timelapse_enabled(
+            'timelapse_enable' if flag else 'timelapse_disable'),
+        build_session=build_session,
+        is_enabled=lambda: state.timelapse_enabled,
+        timelapse_dir=timelapse.TIMELAPSE_DIR,
     )
 
     # GAP-QUALITY-03: start from the persisted tier and publish it everywhere.
@@ -695,7 +767,6 @@ async def main():
     await detect_timezone(session)
 
     sig = PrusaSignaling(fingerprint, token, state, mac=mac, ip=ip, ssid=ssid)
-    loop = asyncio.get_event_loop()
 
     # WP-R2 (AC-23/AC-24/AC-27): wire the optional MQTT service. MQTT stays
     # disabled until device.toml enables it; credentials come only from the
@@ -1192,6 +1263,7 @@ async def main():
                 'capture_ok': state.last_capture_ok,
             },
             secrets=(token, fingerprint) + mqtt_secrets,
+            gpio=dict(gpio.status(), trigger=state.timelapse_trigger),
         )
 
     settings_dispatcher = settings_dispatch.EventLoopMutationDispatcher(
@@ -1228,7 +1300,7 @@ async def main():
     asyncio.create_task(snapshot_loop(token, fingerprint, server, session))
     asyncio.create_task(info_service_loop(token, fingerprint, server, session, mac, ip, ssid))
     asyncio.create_task(ota_loop(token, fingerprint, session))
-    asyncio.create_task(timelapse_loop())
+    asyncio.create_task(timelapse_loop(shot_queue, gpio))
     http_runner = None
     try:
         http_runner = await start_local_http(onvif_context)
@@ -1265,6 +1337,8 @@ async def main():
             discovery_transport.close()
         if runtime_server is not None:
             runtime_server.stop()
+        gpio.release()
+        session_builder.stop()
         if http_runner is not None:
             await http_runner.cleanup()
         # GAP-HTTP-03: release the single long-lived session on shutdown.

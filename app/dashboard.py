@@ -60,6 +60,9 @@ SETTINGS_KEYS = (
     'timelapse_interval',
     'timelapse_enabled',
     'timelapse_fps',
+    'timelapse_trigger',
+    'timelapse_gpio_pin',
+    'timelapse_gpio_record_pin',
     'rtsp_mode',
     'webrtc_mode',
 )
@@ -252,7 +255,7 @@ def _updates_view(updates, now):
 def build_dashboard(*, now, settings=None, state=None, metrics=None,
                     application_version='', build_identity=None,
                     signaling=None, mqtt=None, updates=None, snapshot=None,
-                    runtime_available=True, reason='', secrets=()):
+                    runtime_available=True, reason='', secrets=(), gpio=None):
     """Build the bounded, redacted dashboard document.
 
     All inputs are injected so the function is pure and host testable. ``state``
@@ -375,6 +378,10 @@ def build_dashboard(*, now, settings=None, state=None, metrics=None,
 
     # -- signed updates --
     payload['updates'] = _updates_view(updates, now)
+
+    # -- Pi-only timelapse GPIO trigger status (armed/error, latency, session) --
+    if isinstance(gpio, dict):
+        payload['timelapse_gpio'] = gpio
 
     payload = _sanitize(payload)
     return admin_auth.redact(payload, secrets)

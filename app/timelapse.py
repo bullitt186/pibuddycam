@@ -8,6 +8,7 @@ The owner decision (2026-09-19) is a Pi storage-backed equivalent rooted at
 Stdlib-only and side-effect free on import so the logic is host-testable.
 """
 import os
+import re
 import struct
 import time
 
@@ -25,6 +26,14 @@ FRAME_PREFIX = 'timelapse_'
 FRAME_SUFFIX = '.jpg'
 AVI_SUFFIX = '.avi'
 CSV_NAME = '.timelapse_videos.csv'
+
+# Pi-only per-print sessions (GPIO recording pin). A session is a folder of
+# frames under the timelapse root; its built video lands in the *root* as
+# ``<session>.avi`` so the firmware-shaped file list (which only enumerates root
+# ``.avi`` files) and the media library still see it.
+SESSION_PREFIX = 'session_'
+SESSION_MARKER = '.active_session'
+SESSION_NAME_RE = re.compile(r'^session_[0-9]{8}-[0-9]{6}$')
 
 
 def sd_present(path=SD_MOUNT):
@@ -129,6 +138,82 @@ def _unique_name(dir, suffix, now):
         ms += 1
         path = os.path.join(dir, f'{FRAME_PREFIX}{_stamp(tm, ms)}{suffix}')
     return path
+
+
+def valid_session_name(name):
+    """True for ``session_<YYYYMMDD>-<HHMMSS>`` (never a path)."""
+    return isinstance(name, str) and SESSION_NAME_RE.match(name) is not None
+
+
+def _session_stamp(now):
+    return SESSION_PREFIX + time.strftime('%Y%m%d-%H%M%S', time.localtime(int(now)))
+
+
+def active_session(dir=TIMELAPSE_DIR):
+    """Name of the open session (marker + existing folder), else ``None``."""
+    try:
+        with open(os.path.join(dir, SESSION_MARKER), encoding='utf-8') as handle:
+            name = handle.read(64).strip()
+    except OSError:
+        return None
+    if not valid_session_name(name):
+        return None
+    path = os.path.join(dir, name)
+    if os.path.islink(path) or not os.path.isdir(path):
+        return None
+    return name
+
+
+def open_session(dir=TIMELAPSE_DIR, now=None):
+    """Create a fresh session folder and mark it active; returns its name.
+
+    The clock can be stale right after boot (no RTC), so a name that already
+    exists as a folder or as a built video is never reused: the second is bumped
+    until it is free, exactly like :func:`_unique_name` does for frames.
+    """
+    now = int(time.time() if now is None else now)
+    name = _session_stamp(now)
+    while (os.path.exists(os.path.join(dir, name))
+           or os.path.exists(os.path.join(dir, name + AVI_SUFFIX))):
+        now += 1
+        name = _session_stamp(now)
+    os.makedirs(os.path.join(dir, name))
+    marker = os.path.join(dir, SESSION_MARKER)
+    tmp = marker + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as handle:
+        handle.write(name + '\n')
+    os.replace(tmp, marker)
+    return name
+
+
+def close_session(dir=TIMELAPSE_DIR):
+    """Drop the active marker; returns the closed session name or ``None``."""
+    name = active_session(dir)
+    try:
+        os.remove(os.path.join(dir, SESSION_MARKER))
+    except OSError:
+        pass
+    return name
+
+
+def session_frame_dir(dir=TIMELAPSE_DIR):
+    """Directory a GPIO-triggered frame belongs in: the open session or the root."""
+    name = active_session(dir)
+    return os.path.join(dir, name) if name else dir
+
+
+def list_sessions(dir=TIMELAPSE_DIR):
+    """Session folder names (real directories only), sorted."""
+    try:
+        names = os.listdir(dir)
+    except OSError:
+        return []
+    return sorted(
+        n for n in names
+        if valid_session_name(n)
+        and os.path.isdir(os.path.join(dir, n))
+        and not os.path.islink(os.path.join(dir, n))
+    )
 
 
 def save_frame(data, dir=TIMELAPSE_DIR, now=None):
@@ -425,7 +510,8 @@ def file_list_entries(dir=TIMELAPSE_DIR):
 
 
 def build_avi(dir=TIMELAPSE_DIR, fps=DEFAULT_FPS, width=None, height=None, *,
-              names=None, progress=None, stop_event=None):
+              names=None, progress=None, stop_event=None,
+              out_dir=None, name=None):
     """Assemble sorted JPEG frames into an MJPEG-in-AVI file, streaming frames.
 
     Returns the ``.avi`` path, or ``None`` when no frames are stored. Dimensions
@@ -439,7 +525,13 @@ def build_avi(dir=TIMELAPSE_DIR, fps=DEFAULT_FPS, width=None, height=None, *,
     it catalogued); the default is every stored frame. Frames are read one at a
     time in bounded chunks, so a large backlog cannot exhaust Pi memory. A set
     ``stop_event`` raises :class:`BuildCancelled` between chunks.
+
+    ``out_dir`` and ``name`` are for session builds: frames are read from ``dir``
+    (the session folder) while the video and its index row go to ``out_dir`` (the
+    timelapse root) under ``name`` (``session_<stamp>.avi``). A ``name`` that is
+    taken falls back to the firmware timestamp name; nothing is overwritten.
     """
+    out_dir = out_dir or dir
     if names is None:
         frames = list_frames(dir)
     else:
@@ -466,7 +558,10 @@ def build_avi(dir=TIMELAPSE_DIR, fps=DEFAULT_FPS, width=None, height=None, *,
     width = width or 640
     height = height or 480
     fps = max(1, int(fps))
-    output_path = _unique_name(dir, AVI_SUFFIX, time.time())
+    output_path = os.path.join(out_dir, name) if name else None
+    if (output_path is None or os.path.exists(output_path)
+            or os.path.basename(name) != name or not name.endswith(AVI_SUFFIX)):
+        output_path = _unique_name(out_dir, AVI_SUFFIX, time.time())
     entries = [
         (name, size, (lambda path=path: open(path, 'rb')))
         for name, size, path in zip(frames, sizes, paths)
@@ -486,11 +581,11 @@ def build_avi(dir=TIMELAPSE_DIR, fps=DEFAULT_FPS, width=None, height=None, *,
         except OSError:
             pass
         try:
-            _append_video_index(dir, os.path.basename(output_path), VIDEO_STATUS_ERROR)
+            _append_video_index(out_dir, os.path.basename(output_path), VIDEO_STATUS_ERROR)
         except OSError:
             pass  # never mask the original build failure with an index write error
         raise
-    _append_video_index(dir, os.path.basename(output_path), VIDEO_STATUS_DONE)
+    _append_video_index(out_dir, os.path.basename(output_path), VIDEO_STATUS_DONE)
     return output_path
 
 

@@ -114,6 +114,9 @@ class DurableLayoutCreationTests(unittest.TestCase):
                 '/data/network',
                 '/data/network/system-connections',
                 '/data/pibuddycam/releases',
+                # timesyncd trusts the mtime of its clock file: the service account
+                # must never be able to set the system time through it.
+                '/data/pibuddycam/timesync',
             },
         )
 

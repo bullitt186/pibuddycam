@@ -1,0 +1,6 @@
+# The timelapse GPIO trigger (Prusa GPIO Hackerboard) reads the Raspberry Pi
+# header through the GPIO character device (/dev/gpiochipN, uAPI v2). Give the
+# gpio group -- pibuddycam is a member -- read/write access so the camera runtime
+# never needs root for it. Raspberry Pi OS ships an equivalent rule; a plain
+# Debian base does not, so the image pins it.
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"

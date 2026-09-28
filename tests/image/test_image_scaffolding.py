@@ -69,6 +69,7 @@ REUSED_UNITS = [
     "pibuddycam-updater.service",
     "pibuddycam-updater.timer",
     "pibuddycam-updater-install.service",
+    "pibuddycam-network-apply.service",
 ]
 
 IMAGE_ONLY_UNITS = [
@@ -629,6 +630,54 @@ class ImageScaffoldingTests(unittest.TestCase):
         installer = read_text(ASSETS / "install-factory-app.sh")
         self.assertIn("50-pibuddycam-camera.rules", installer)
         self.assertIn("etc/udev/rules.d/50-pibuddycam-camera.rules", installer)
+
+    def test_installer_creates_device_groups_and_grants_gpio_access(self):
+        # Nothing else guarantees the gpio group (no raspberrypi-sys-mods), and
+        # `usermod -aG a,b,c` fails as a whole when one group is missing, so the
+        # installer creates them first and no longer swallows a real failure.
+        installer = read_text(ASSETS / "install-factory-app.sh")
+        self.assertIn('getent group "$group"', installer)
+        self.assertIn('groupadd -r "$group"', installer)
+        self.assertIn('SERVICE_GROUPS="video render audio plugdev gpio i2c spi"', installer)
+        usermod = [
+            ln for ln in installer.splitlines()
+            if "usermod -aG" in ln and not ln.lstrip().startswith("#")
+        ]
+        self.assertEqual(len(usermod), 1)
+        self.assertNotIn("|| true", usermod[0])
+        self.assertNotIn("2>/dev/null", usermod[0])
+        rule = read_text(ASSETS / "udev" / "60-pibuddycam-gpio.rules")
+        self.assertIn('SUBSYSTEM=="gpio"', rule)
+        self.assertIn('KERNEL=="gpiochip*"', rule)
+        self.assertIn('GROUP="gpio"', rule)
+        self.assertIn('MODE="0660"', rule)
+        self.assertIn("etc/udev/rules.d/60-pibuddycam-gpio.rules", installer)
+
+    def test_installer_ships_the_ntp_dispatcher_and_no_cyclic_timesyncd_dropin(self):
+        installer = read_text(ASSETS / "install-factory-app.sh")
+        self.assertIn(
+            'install -D -o root -g root -m 0755 "$assets/networkmanager/dispatcher.d/50-pibuddycam-ntp"',
+            installer)
+        self.assertIn("etc/NetworkManager/dispatcher.d/50-pibuddycam-ntp", installer)
+        self.assertFalse((ASSET_SYSTEMD / "systemd-timesyncd.service.d").exists())
+        self.assertIn("systemctl enable systemd-timesyncd.service", installer)
+
+    def test_network_apply_unit_is_a_root_oneshot_only_the_helper_starts(self):
+        unit = parse_unit(REPO_SYSTEMD / "pibuddycam-network-apply.service")
+        service = unit["Service"]
+        self.assertEqual(service["Type"], "oneshot")
+        self.assertEqual(service["User"], "root")
+        self.assertIn("network_apply.py", service["ExecStart"])
+        self.assertNotIn("Install", unit)
+        self.assertIn("data-ready.target", unit["Unit"]["Requires"].split())
+        self.assertEqual(
+            unit["Unit"]["ConditionPathExists"], "/run/pibuddycam-network-request.json")
+        installer = read_text(ASSETS / "install-factory-app.sh")
+        self.assertIn("pibuddycam-network-apply.service", installer)
+        enable_block = installer.split("systemctl enable", 1)[1].split("|| true", 1)[0]
+        self.assertNotIn("pibuddycam-network-apply.service", enable_block)
+        target = read_text(ASSET_SYSTEMD / "pibuddycam.target")
+        self.assertNotIn("pibuddycam-network-apply.service", target)
 
     def test_installer_disables_wifi_mac_randomization(self):
         # Scan-time MAC randomization flips the MAC-derived fingerprint and

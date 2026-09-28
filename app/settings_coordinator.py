@@ -41,6 +41,9 @@ MUTATION_FIELDS = (
     'timelapse_enabled',
     'timelapse_interval',
     'timelapse_fps',
+    'timelapse_trigger',
+    'timelapse_gpio_pin',
+    'timelapse_gpio_record_pin',
     'rtsp_mode',
     'webrtc_mode',
 )
@@ -61,6 +64,9 @@ _KEY_SNAPSHOT_UPLOAD = 'snapshot_upload_enabled'
 _KEY_TIMELAPSE_INTERVAL = 'timelapse_interval'
 _KEY_TIMELAPSE_ENABLED = 'timelapse_enabled'
 _KEY_TIMELAPSE_FPS = 'timelapse_fps'
+_KEY_TIMELAPSE_TRIGGER = 'timelapse_trigger'
+_KEY_TIMELAPSE_GPIO_PIN = 'timelapse_gpio_pin'
+_KEY_TIMELAPSE_GPIO_RECORD_PIN = 'timelapse_gpio_record_pin'
 _KEY_RTSP_MODE = 'rtsp_mode'
 _KEY_WEBRTC_MODE = 'webrtc_mode'
 
@@ -109,7 +115,7 @@ class SettingsCoordinator:
                  rotation_apply=None,
                  rtsp_start=None, rtsp_stop=None, rtsp_query=None,
                  webrtc_start=None, webrtc_stop=None,
-                 timelapse_enable=None):
+                 timelapse_enable=None, gpio_apply=None):
         self.state = state
         self._persist = persist if persist is not None else persist_state
         self._publish = publish if publish is not None else state.mark_info_dirty
@@ -124,6 +130,9 @@ class SettingsCoordinator:
         self._timelapse_enable = (
             timelapse_enable if timelapse_enable is not None else timelapse.apply_enable
         )
+        # Reconfigures the GPIO trigger line(s) after a trigger/pin change or a
+        # restore. It must not raise into the coordinator (guarded below).
+        self._gpio_apply = gpio_apply
 
     def authoritative(self):
         """Return the durable settings snapshot (the ``state.json`` key set)."""
@@ -150,6 +159,14 @@ class SettingsCoordinator:
             log.warning(f'settings: persist callback failed: {e}')
             return False
 
+    def _apply_gpio(self):
+        if self._gpio_apply is None:
+            return
+        try:
+            self._gpio_apply(self.state)
+        except Exception as e:  # never let a GPIO fault mask the mutation
+            log.warning(f'settings: gpio apply failed: {type(e).__name__}')
+
     def _commit(self, changed):
         """Persist + publish after a successful transition, then report it."""
         self._persist_state()
@@ -162,6 +179,7 @@ class SettingsCoordinator:
         """Apply persisted settings at startup; never rewrites the file."""
         applied = self.state.apply_persisted(persisted)
         self._publish_state()
+        self._apply_gpio()
         return self._result(True, None, applied)
 
     # -- quality -----------------------------------------------------------
@@ -268,6 +286,37 @@ class SettingsCoordinator:
         self.state.timelapse_fps = valid
         return self._commit([_KEY_TIMELAPSE_FPS])
 
+    def set_timelapse_trigger(self, trigger):
+        if not isinstance(trigger, str) or trigger not in ('interval', 'gpio'):
+            return self._result(False, 'timelapse trigger must be interval or gpio')
+        if not self.state.set_timelapse_trigger(trigger):
+            return self._result(False, 'choose a layer pin before using the GPIO trigger')
+        result = self._commit([_KEY_TIMELAPSE_TRIGGER])
+        self._apply_gpio()
+        return result
+
+    def set_timelapse_gpio_pin(self, pin):
+        if pin is not None and type(pin) is not int:
+            return self._result(False, 'GPIO pin must be a BCM number or null')
+        if not self.state.set_timelapse_gpio_pin(pin):
+            if pin is None:
+                return self._result(False, 'switch the trigger back to interval first')
+            return self._result(
+                False, 'GPIO pin is not offered or is already the recording pin')
+        result = self._commit([_KEY_TIMELAPSE_GPIO_PIN])
+        self._apply_gpio()
+        return result
+
+    def set_timelapse_gpio_record_pin(self, pin):
+        if pin is not None and type(pin) is not int:
+            return self._result(False, 'GPIO pin must be a BCM number or null')
+        if not self.state.set_timelapse_gpio_record_pin(pin):
+            return self._result(
+                False, 'GPIO pin is not offered or is already the layer pin')
+        result = self._commit([_KEY_TIMELAPSE_GPIO_RECORD_PIN])
+        self._apply_gpio()
+        return result
+
     # -- streaming modes ---------------------------------------------------
 
     def set_rtsp_mode(self, mode):
@@ -363,6 +412,15 @@ class SettingsCoordinator:
 
     def _mutate_timelapse_fps(self, value):
         return self.set_timelapse_fps(value)
+
+    def _mutate_timelapse_trigger(self, value):
+        return self.set_timelapse_trigger(value)
+
+    def _mutate_timelapse_gpio_pin(self, value):
+        return self.set_timelapse_gpio_pin(value)
+
+    def _mutate_timelapse_gpio_record_pin(self, value):
+        return self.set_timelapse_gpio_record_pin(value)
 
     def _mutate_rtsp_mode(self, value):
         if not isinstance(value, str) or value not in _RTSP_NAMES:

@@ -152,6 +152,51 @@ class ParseDeviceTests(unittest.TestCase):
             config_schema.parse_device('camera_name = "unterminated\n')
 
 
+class NtpServersTests(unittest.TestCase):
+    def test_default_is_empty_and_independent(self):
+        cfg = config_schema.default_device()
+        self.assertEqual(cfg['network'], {'ntp_servers': []})
+        cfg['network']['ntp_servers'].append('x')
+        self.assertEqual(config_schema.default_device()['network']['ntp_servers'], [])
+
+    def test_round_trip(self):
+        cfg = config_schema.default_device()
+        cfg['network']['ntp_servers'] = ['time.example', '192.0.2.1']
+        text = config_schema.dumps_device(cfg)
+        self.assertIn('[network]\nntp_servers = ["time.example", "192.0.2.1"]', text)
+        self.assertEqual(
+            config_schema.parse_device(text)['network']['ntp_servers'],
+            ['time.example', '192.0.2.1'])
+
+    def test_empty_list_round_trip_and_missing_table(self):
+        text = config_schema.dumps_device(config_schema.default_device())
+        self.assertIn('ntp_servers = []', text)
+        self.assertEqual(config_schema.parse_device(text)['network']['ntp_servers'], [])
+        old = 'schema_version = 1\n[admin]\nhostname = "x"\n'   # pre-NTP document
+        self.assertEqual(config_schema.parse_device(old)['network']['ntp_servers'], [])
+
+    def test_validation(self):
+        for bad in ('ntp_servers = ["a", "b", "c", "d"]', 'ntp_servers = ["bad host"]',
+                    'ntp_servers = [5]', 'ntp_servers = "pool.ntp.org"',
+                    'ntp_servers = ["x;reboot"]', 'ntp_servers = ["-lead"]'):
+            with self.assertRaises(config_schema.ValidationError, msg=bad):
+                config_schema.parse_device(f'[network]\n{bad}\n')
+
+    def test_unknown_network_key_is_rejected(self):
+        with self.assertRaises(config_schema.UnknownKeyError):
+            config_schema.parse_device('[network]\nproxy = "x"\n')
+
+    def test_duplicates_are_collapsed(self):
+        cfg = config_schema.parse_device('[network]\nntp_servers = ["a.b", "a.b"]\n')
+        self.assertEqual(cfg['network']['ntp_servers'], ['a.b'])
+
+    def test_dumps_refuses_an_invalid_list(self):
+        cfg = config_schema.default_device()
+        cfg['network']['ntp_servers'] = ['bad host']
+        with self.assertRaises(config_schema.ValidationError):
+            config_schema.dumps_device(cfg)
+
+
 class ParseSecretsTests(unittest.TestCase):
     def test_allowlisted_keys(self):
         text = ('[prusa]\ntoken = "t"\n[mqtt]\nusername = "u"\npassword = "p"\n'

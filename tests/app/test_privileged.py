@@ -70,6 +70,7 @@ class AllowlistTests(unittest.TestCase):
                 'hotspot-stop', 'wifi-station-apply', 'install-update',
                 'check-update', 'reboot',
                 'rtsp-start', 'rtsp-stop', 'quality-restart',
+                'network-apply', 'hostname-apply', 'wifi-scan', 'ntp-apply',
             }),
         )
 
@@ -90,6 +91,58 @@ class AllowlistTests(unittest.TestCase):
         result = privileged._invoke('rm-rf', runner=runner)
         self.assertFalse(result)
         self.assertEqual(runner.calls, [])
+
+
+class NetworkVerbTests(unittest.TestCase):
+    HELPER = ['sudo', '-n', '/usr/libexec/pibuddycam/pibuddycam-priv']
+
+    def test_network_apply_sends_the_request_on_stdin_only(self):
+        runner = make_runner()
+        body = '{"ssid": "Home", "psk": "%s"}' % PSK
+        result = privileged.network_apply(body, runner=runner)
+        self.assertTrue(result)
+        self.assertEqual(runner.calls[0][0], self.HELPER + ['network-apply'])
+        self.assertEqual(runner.calls[0][2], body)
+        self.assertNotIn(PSK, ' '.join(all_argv(runner)))
+        self.assertNotIn(PSK, result.reason)
+
+    def test_network_apply_failure_reason_carries_no_secret(self):
+        runner = make_runner(default=FakeResult(1, PSK, PSK))
+        result = privileged.network_apply('{"psk": "%s"}' % PSK, runner=runner)
+        self.assertFalse(result)
+        self.assertNotIn(PSK, result.reason)
+
+    def test_network_apply_requires_a_body(self):
+        runner = make_runner()
+        self.assertFalse(privileged.network_apply('', runner=runner))
+        self.assertEqual(runner.calls, [])
+
+    def test_hostname_apply_passes_the_label_as_argument(self):
+        runner = make_runner()
+        self.assertTrue(privileged.hostname_apply('cam-1', runner=runner))
+        self.assertEqual(runner.calls[0][0], self.HELPER + ['hostname-apply', 'cam-1'])
+        self.assertFalse(privileged.hostname_apply('', runner=runner))
+
+    def test_ntp_apply_verb(self):
+        runner = make_runner()
+        self.assertTrue(privileged.ntp_apply(runner=runner))
+        self.assertEqual(runner.calls[0][0], self.HELPER + ['ntp-apply'])
+
+    def test_wifi_scan_parses_stdout_and_reports_failure_as_none(self):
+        out = 'HomeNet:81:WPA2\nOpen\\:Cafe:40:\nHomeNet:60:WPA2\n:70:WPA2\n'
+        runner = make_runner(default=FakeResult(0, out))
+        networks = privileged.wifi_scan(runner=runner)
+        self.assertEqual(runner.calls[0][0], self.HELPER + ['wifi-scan'])
+        self.assertEqual(networks, [
+            {'ssid': 'HomeNet', 'signal': 81, 'secured': True},
+            {'ssid': 'Open:Cafe', 'signal': 40, 'secured': False},
+        ])
+        self.assertIsNone(privileged.wifi_scan(runner=make_runner(default=FakeResult(2))))
+
+    def test_old_image_unknown_verb_shows_exit_two_in_the_reason(self):
+        runner = make_runner(default=FakeResult(2))
+        result = privileged.network_apply('{}', runner=runner)
+        self.assertIn('exit 2', result.reason)
 
 
 class WrapperTests(unittest.TestCase):

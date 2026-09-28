@@ -9,13 +9,18 @@ Runs as root from ``pi-persist.service`` before the camera/RTSP units. It:
    and ``/data/network/system-connections`` onto
    ``/etc/NetworkManager/system-connections`` so the station profile created at
    claim survives the read-only-root reboot (B4);
-3. provisions the durable admin self-signed keypair and recreates the volatile
+3. re-applies the configured hostname (``device.toml [admin].hostname``) so the
+   certificate SAN and the mDNS name match it, then provisions the durable admin self-signed keypair and recreates the volatile
    ``/etc/pibuddycam/admin.env`` so ``pibuddycam-admin.service`` can serve HTTPS
    (appliance image/security defect; see :mod:`admin_tls`);
 4. restores ``quality.env``, ``rotation.env`` and ``rtsp.mode`` from
    ``state.json``;
-5. prunes the oldest timelapse JPEG frames when ``/data`` free space is low
-   (``.avi`` and the CSV index are never deleted).
+5. keeps the last known clock across reboots (there is no RTC): the timesyncd
+   state directory is bind-mounted from ``/data`` and timesyncd is restarted, and
+   the NTP drop-in is regenerated from ``device.toml [network] ntp_servers``;
+6. prunes the oldest timelapse JPEG frames, including the ones inside per-print
+   ``session_*`` folders, when ``/data`` free space is low (``.avi`` and the CSV
+   index are never deleted).
 
 The top level is side-effect free: importing this module must not touch the
 filesystem, so the work lives in :func:`main` behind the ``__main__`` guard.
@@ -29,11 +34,15 @@ import subprocess
 import sys
 
 import admin_tls
+import config_schema
 import migrations
+import network_settings
+import ntp_apply
 import quality
 import rotation
 import rtsp_control
 import settings_store
+import timelapse
 
 log = logging.getLogger('pibuddycam.persist')
 
@@ -49,6 +58,10 @@ SD_MOUNT = '/mnt/sdcard'
 #: NetworkManager keyfile store. Bind-mounted from DATA_NETWORK_CONNECTIONS so
 #: the station profile created at claim survives the read-only-root reboot (B4).
 NM_CONNECTIONS = '/etc/NetworkManager/system-connections'
+#: timesyncd's clock file lives here; /var is tmpfs, so without a durable mount the
+#: clock falls back to the image build time at every boot (no RTC).
+DATA_TIMESYNC = DATA_PIBUDDYCAM + '/timesync'
+TIMESYNC_STATE = '/var/lib/systemd/timesync'
 TIMELAPSE_DIR = DATA_SDCARD + '/timelapse'
 FRAME_SUFFIX = '.jpg'
 
@@ -75,6 +88,7 @@ DATA_LAYOUT = (
     (DATA_BACKUPS_DIR, 0o750),
     (DATA_NETWORK_DIR, 0o700),
     (DATA_NETWORK_CONNECTIONS, 0o700),
+    (DATA_TIMESYNC, 0o755),
 )
 
 #: Layout entries that must stay root-owned. The NetworkManager keyfile store is
@@ -88,6 +102,7 @@ DATA_LAYOUT = (
 #: explicitly re-asserted) as root by ``pi-persist.service``; they are never
 #: handed to the service user.
 ROOT_ONLY_DIRS = frozenset({
+    DATA_TIMESYNC,
     DATA_NETWORK_DIR,
     DATA_NETWORK_CONNECTIONS,
     DATA_RELEASES_DIR,
@@ -205,6 +220,66 @@ def _provision_admin_tls(service_user=DEFAULT_SERVICE_USER):
         log.warning(f'persist: admin TLS provisioning failed unexpectedly: {e}')
 
 
+def _apply_hostname(device_path=None, runner=subprocess.run):
+    """Re-apply ``device.toml [admin].hostname`` as the transient hostname.
+
+    The root filesystem is read-only, so the console's hostname change is stored
+    in ``device.toml`` and re-applied here at every boot, before the admin
+    certificate is provisioned (it is regenerated when the names change). An
+    unset or invalid hostname leaves the image default. Best-effort, never raises.
+    """
+    try:
+        device = (
+            config_schema.load_device(device_path)
+            if device_path is not None else config_schema.load_device()
+        )
+        raw = (device.get('admin') or {}).get('hostname', '')
+        name = network_settings.validate_hostname(raw) if raw else ''
+    except (config_schema.ConfigError, network_settings.ValidationError):
+        return False
+    except Exception as e:  # noqa: BLE001 - never block the settings restore
+        log.warning(f'persist: could not read the hostname: {type(e).__name__}')
+        return False
+    if not name:
+        return False
+    try:
+        result = runner(
+            ['hostnamectl', 'set-hostname', '--transient', name],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning(f'persist: hostnamectl failed: {type(e).__name__}')
+        return False
+    if result.returncode != 0:
+        log.warning(f'persist: hostnamectl exited {result.returncode}')
+        return False
+    log.info(f'persist: hostname applied ({name})')
+    return True
+
+
+def _restore_time_sync(runner=subprocess.run):
+    """Persist timesyncd's clock and apply the NTP servers (best-effort).
+
+    The state directory may be a symlink into ``/var/lib/private`` (DynamicUser),
+    so the bind target is its resolved path. **[assumption]** verify on hardware
+    that timesyncd keeps the clock file there. The drop-in is written first and
+    timesyncd is restarted once, so it starts with both the durable clock and the
+    configured servers.
+    """
+    target = os.path.realpath(TIMESYNC_STATE)
+    mounted = _bind_mount(DATA_TIMESYNC, target)
+    try:
+        ntp_apply.apply(restart=lambda: None)
+    except Exception as e:  # noqa: BLE001 - never block the settings restore
+        log.warning(f'persist: NTP drop-in failed: {type(e).__name__}')
+    try:
+        runner(['systemctl', 'try-restart', ntp_apply.UNIT],
+               capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning(f'persist: could not restart timesyncd: {type(e).__name__}')
+    return mounted
+
+
 def _restore_settings(service_user=DEFAULT_SERVICE_USER):
     """Materialize quality.env, rotation.env and rtsp.mode from state.json.
 
@@ -242,30 +317,69 @@ def _restore_settings(service_user=DEFAULT_SERVICE_USER):
 
 
 def _frame_inventory(directory):
-    """Return ``(name, size, mtime)`` for regular ``.jpg`` frames in ``directory``."""
+    """Return ``(name, size, mtime)`` for regular ``.jpg`` frames in ``directory``.
+
+    Frames inside per-print ``session_*`` folders are included with a relative
+    ``session_x/frame.jpg`` name, so a session can never escape the free-space
+    guard.
+    """
     try:
         names = os.listdir(directory)
     except OSError:
         return []
     frames = []
     for name in names:
-        if not name.endswith(FRAME_SUFFIX):
-            continue
         path = os.path.join(directory, name)
-        try:
-            st = os.stat(path)
-        except OSError:
+        if timelapse.valid_session_name(name):
+            if os.path.islink(path) or not os.path.isdir(path):
+                continue
+            for inner_name, size, mtime in _frame_inventory_flat(path):
+                frames.append((f'{name}/{inner_name}', size, mtime))
             continue
-        if not stat.S_ISREG(st.st_mode):
-            continue
-        frames.append((name, st.st_size, st.st_mtime))
+        item = _frame_stat(directory, name)
+        if item is not None:
+            frames.append(item)
     return frames
+
+
+def _frame_stat(directory, name):
+    if not name.endswith(FRAME_SUFFIX):
+        return None
+    try:
+        st = os.lstat(os.path.join(directory, name))
+    except OSError:
+        return None
+    if not stat.S_ISREG(st.st_mode):
+        return None
+    return (name, st.st_size, st.st_mtime)
+
+
+def _frame_inventory_flat(directory):
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return []
+    return [item for item in (_frame_stat(directory, n) for n in names) if item]
+
+
+def _remove_empty_sessions(directory):
+    """Remove emptied session folders (never the one named by the marker)."""
+    active = timelapse.active_session(directory)
+    for name in timelapse.list_sessions(directory):
+        if name == active:
+            continue
+        try:
+            os.rmdir(os.path.join(directory, name))   # only succeeds when empty
+        except OSError:
+            pass
 
 
 def _prune_timelapse(directory=TIMELAPSE_DIR, mount=DATA_MOUNT):
     """Delete oldest JPEG frames when free space is below the threshold.
 
-    ``.avi`` and the ``.timelapse_videos.csv`` index are never touched.
+    Frames in ``session_*`` folders are pruned too (oldest first across all
+    folders) and emptied session folders are removed. ``.avi`` and the
+    ``.timelapse_videos.csv`` index are never touched.
     """
     try:
         free = shutil.disk_usage(mount).free
@@ -289,6 +403,7 @@ def _prune_timelapse(directory=TIMELAPSE_DIR, mount=DATA_MOUNT):
             removed += 1
         except OSError as e:
             log.warning(f'persist: could not prune {name}: {e}')
+    _remove_empty_sessions(directory)
     log.info(
         f'persist: free {free // (1024 * 1024)} MB < '
         f'{PRUNE_FREE_THRESHOLD_BYTES // (1024 * 1024)} MB; pruned {removed} frame(s)'
@@ -314,10 +429,12 @@ def main():
 
     service_user = os.environ.get('SERVICE_USER', DEFAULT_SERVICE_USER)
     ensure_durable_layout(service_user)
+    _apply_hostname()
     _provision_admin_tls(service_user)
 
     _bind_mount(DATA_SDCARD, SD_MOUNT)
     _bind_mount(DATA_NETWORK_CONNECTIONS, NM_CONNECTIONS)
+    _restore_time_sync()
     _restore_settings(service_user)
     _prune_timelapse()
     return 0
