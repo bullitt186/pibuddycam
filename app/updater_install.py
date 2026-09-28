@@ -1216,7 +1216,10 @@ UPDATE_STATE_KEYS = (
 )
 
 
-def read_update_state(path=DEFAULT_UPDATE_STATE_PATH):
+_UNSET = object()   # resolved at call time so tests can redirect the state file
+
+
+def read_update_state(path=_UNSET):
     """Read and normalize the persisted HA update-state document.
 
     Returns a dict with exactly :data:`UPDATE_STATE_KEYS`, or ``None`` when the
@@ -1225,6 +1228,8 @@ def read_update_state(path=DEFAULT_UPDATE_STATE_PATH):
     :func:`update_state_document` so unknown keys and control characters cannot
     reach the MQTT publisher.
     """
+    if path is _UNSET:
+        path = DEFAULT_UPDATE_STATE_PATH
     if not isinstance(path, str) or not path:
         return None
     try:
@@ -1250,7 +1255,7 @@ def read_update_state(path=DEFAULT_UPDATE_STATE_PATH):
     )
 
 
-def write_update_state(document, path=DEFAULT_UPDATE_STATE_PATH):
+def write_update_state(document, path=_UNSET):
     """Atomically write the HA update-state document; never raises.
 
     The state area is root-owned (only the root updater writes this file) and the
@@ -1260,6 +1265,8 @@ def write_update_state(document, path=DEFAULT_UPDATE_STATE_PATH):
     success; a non-dict document, a non-string/empty path, an oversized
     encoding, or any filesystem error returns ``False``.
     """
+    if path is _UNSET:
+        path = DEFAULT_UPDATE_STATE_PATH
     if not isinstance(document, dict) or not isinstance(path, str) or not path:
         return False
     try:

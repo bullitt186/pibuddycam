@@ -259,7 +259,7 @@ def _remove_passwd_file(path):
 # --------------------------------------------------------------------------- #
 
 def apply(ssid, psk='', ifname=DEFAULT_IFNAME, runner=None, passwd_dir=None,
-          ipv4=None, keep_psk=False, existing=False):
+          ipv4=None, keep_psk=False, existing=None):
     """Create/update and activate the station profile.
 
     Returns ``(ok, reason)``. ``psk`` may be empty for an open network. The PSK
@@ -269,9 +269,10 @@ def apply(ssid, psk='', ifname=DEFAULT_IFNAME, runner=None, passwd_dir=None,
     directory for tests. ``ipv4`` selects DHCP (default) or a static profile (see
     :func:`_ipv4_args`). ``keep_psk`` re-uses the key already stored in the
     profile (the console's blank-password case): no passwd-file is written and
-    the stored security settings are left untouched. ``existing`` says the
-    profile is known to exist, so it is modified in place first (NetworkManager
-    would otherwise accept a duplicate ``add`` under the same name). Never raises.
+    the stored security settings are left untouched. ``existing`` says whether
+    the profile is known to exist (``None`` asks NetworkManager): an existing profile
+    is modified in place first, because NetworkManager would otherwise accept a
+    duplicate ``add`` under the same name. Never raises.
     """
     runner = runner or _default_runner
     if not isinstance(ssid, str) or not ssid.strip():
@@ -286,6 +287,11 @@ def apply(ssid, psk='', ifname=DEFAULT_IFNAME, runner=None, passwd_dir=None,
     wpa = bool(psk) or keep_psk
     write_psk = bool(psk) and not keep_psk
 
+    if existing is None:
+        code, _out, _failure = _run(
+            runner, ['nmcli', 'connection', 'show', CONNECTION_NAME],
+            COMMAND_TIMEOUT_SECONDS)
+        existing = code == 0
     add = _add_command(ssid, ifname, wpa, ipv4)
     modify = _modify_command(ssid, ifname, wpa, ipv4)
     first, second = (modify, add) if existing else (add, modify)

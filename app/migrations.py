@@ -233,7 +233,12 @@ MIGRATIONS = [
 # -- runner ----------------------------------------------------------------- #
 
 
-def _load_state(path=MIGRATION_STATE_PATH):
+_UNSET = object()   # resolved at call time so tests can redirect the state file
+
+
+def _load_state(path=_UNSET):
+    if path is _UNSET:
+        path = MIGRATION_STATE_PATH
     try:
         with open(path) as f:
             data = json.load(f)
@@ -242,7 +247,9 @@ def _load_state(path=MIGRATION_STATE_PATH):
         return set()
 
 
-def _save_state(applied, path=MIGRATION_STATE_PATH):
+def _save_state(applied, path=_UNSET):
+    if path is _UNSET:
+        path = MIGRATION_STATE_PATH
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + '.tmp'
     with open(tmp, 'w') as f:
@@ -262,12 +269,14 @@ def _remount(mode):
     return True
 
 
-def run_pending(root='/', state_path=MIGRATION_STATE_PATH):
+def run_pending(root='/', state_path=_UNSET):
     """Apply any migrations not yet recorded in the state file.
 
     Returns the list of newly applied migration names.  ROOT is only
     remounted when there is at least one pending migration.
     """
+    if state_path is _UNSET:
+        state_path = MIGRATION_STATE_PATH
     applied = _load_state(state_path)
     pending = [(name, fn) for name, fn in MIGRATIONS if name not in applied]
     if not pending:

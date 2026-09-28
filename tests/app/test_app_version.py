@@ -16,6 +16,49 @@ sys.path.insert(0, str(PI_DIR))
 import app_version  # noqa: E402
 
 
+class PrecedenceTests(unittest.TestCase):
+    """release.json > update-state.json > build-info.json > env > default."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.paths = {
+            'build_info_path': str(self.root / 'build-info.json'),
+            'release_metadata_path': str(self.root / 'release.json'),
+            'release_state_path': str(self.root / 'update-state.json'),
+        }
+        self.env = {'PIBUDDYCAM_APP_VERSION': '5.0.0'}
+
+    def _write(self, key, doc):
+        Path(self.paths[key]).write_text(json.dumps(doc), encoding='utf-8')
+
+    def version(self):
+        return app_version.application_version(env=self.env, **self.paths)
+
+    def test_full_chain_from_the_bottom_up(self):
+        self.assertEqual(self.version(), '5.0.0')            # env
+        self.env = {}
+        self.assertEqual(self.version(), app_version.DEFAULT_VERSION)
+        self.env = {'PIBUDDYCAM_APP_VERSION': '5.0.0'}
+        self._write('build_info_path', {'version': '4.0.0'})
+        self.assertEqual(self.version(), '4.0.0')            # build-info beats env
+        self._write('release_state_path', {'installed_version': '3.0.0'})
+        self.assertEqual(self.version(), '3.0.0')            # update-state beats build-info
+        self._write('release_metadata_path', {'version': '2.0.0'})
+        self.assertEqual(self.version(), '2.0.0')            # release.json beats all
+
+    def test_build_identity_uses_the_same_order(self):
+        self._write('build_info_path', {'version': '4.0.0', 'source_commit': 'img'})
+        identity = app_version.build_identity(**self.paths)
+        self.assertEqual((identity['version'], identity['source_commit']), ('4.0.0', 'img'))
+        self._write('release_state_path', {'installed_version': '3.0.0'})
+        self.assertEqual(app_version.build_identity(**self.paths)['version'], '3.0.0')
+        self._write('release_metadata_path', {'version': '2.0.0', 'source_commit': 'rel'})
+        identity = app_version.build_identity(**self.paths)
+        self.assertEqual((identity['version'], identity['source_commit']), ('2.0.0', 'rel'))
+
+
 class ApplicationVersionTests(unittest.TestCase):
     def _write_build_info(self, directory, doc):
         path = os.path.join(directory, 'build-info.json')

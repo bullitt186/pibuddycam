@@ -52,6 +52,10 @@ RELEASE_METADATA_FIELDS = ('version', 'source_commit', 'channel', 'release_date'
 #: Bound the sanitized version string.
 MAX_VERSION_LENGTH = 128
 
+#: Marks "use the module default", looked up at call time so tests can point the
+#: module paths at a temporary tree instead of the real ``/data``.
+_UNSET = object()
+
 
 def _sanitize(value):
     """Return a bounded, printable version string (or ``''``)."""
@@ -98,7 +102,7 @@ def _read_json_document(path, max_bytes=MAX_RELEASE_METADATA_BYTES):
     return doc if isinstance(doc, dict) else {}
 
 
-def active_release_metadata(path=RELEASE_METADATA_PATH):
+def active_release_metadata(path=_UNSET):
     """Return the bounded, non-secret identity of the active application release.
 
     Projects the bundled ``release.json`` onto :data:`RELEASE_METADATA_FIELDS`;
@@ -107,6 +111,8 @@ def active_release_metadata(path=RELEASE_METADATA_PATH):
     mapping rather than raising, so the caller can fall through to the image
     build-info. Never raises.
     """
+    if path is _UNSET:
+        path = RELEASE_METADATA_PATH
     doc = _read_json_document(path)
     return {
         field: _sanitize(doc.get(field))[:MAX_IDENTITY_LENGTH]
@@ -114,12 +120,14 @@ def active_release_metadata(path=RELEASE_METADATA_PATH):
     }
 
 
-def installed_release_version(path=RELEASE_STATE_PATH):
+def installed_release_version(path=_UNSET):
     """Return the root updater's ``installed_version``, or ``''``.
 
     The update state is the fallback identity for a release installed before
     bundles carried ``release.json``. Bounded and never raises.
     """
+    if path is _UNSET:
+        path = RELEASE_STATE_PATH
     doc = _read_json_document(path)
     return _sanitize(doc.get('installed_version'))[:MAX_VERSION_LENGTH]
 
@@ -138,9 +146,9 @@ BUILD_IDENTITY_FIELDS = (
 MAX_IDENTITY_LENGTH = 128
 
 
-def build_identity(build_info_path=BUILD_INFO_PATH,
-                   release_metadata_path=RELEASE_METADATA_PATH,
-                   release_state_path=RELEASE_STATE_PATH):
+def build_identity(build_info_path=_UNSET,
+                   release_metadata_path=_UNSET,
+                   release_state_path=_UNSET):
     """Return the bounded, non-secret build identity for the dashboard.
 
     The active signed release is authoritative when present: its
@@ -152,6 +160,8 @@ def build_identity(build_info_path=BUILD_INFO_PATH,
     (printable, bounded); the document paths and any unlisted key are never
     returned. Never raises.
     """
+    if build_info_path is _UNSET:
+        build_info_path = BUILD_INFO_PATH
     doc = _build_info_document(build_info_path)
     identity = {}
     for field in BUILD_IDENTITY_FIELDS:
@@ -169,9 +179,9 @@ def build_identity(build_info_path=BUILD_INFO_PATH,
     return identity
 
 
-def application_version(build_info_path=BUILD_INFO_PATH, env=None,
-                        release_metadata_path=RELEASE_METADATA_PATH,
-                        release_state_path=RELEASE_STATE_PATH):
+def application_version(build_info_path=_UNSET, env=None,
+                        release_metadata_path=_UNSET,
+                        release_state_path=_UNSET):
     """Resolve the application version; never raises.
 
     Precedence: the active signed release (``release.json``), then the updater's
@@ -180,6 +190,8 @@ def application_version(build_info_path=BUILD_INFO_PATH, env=None,
     :data:`DEFAULT_VERSION`. The release paths and ``env`` are injectable so the
     precedence is host-testable.
     """
+    if build_info_path is _UNSET:
+        build_info_path = BUILD_INFO_PATH
     metadata = active_release_metadata(release_metadata_path)
     version = metadata.get('version') or installed_release_version(release_state_path)
     if version:

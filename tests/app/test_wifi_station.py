@@ -87,7 +87,7 @@ class ConstantTests(unittest.TestCase):
 class ApplyTests(unittest.TestCase):
     def test_open_network_adds_autoconnect_auto_profile(self):
         runner = make_runner(default=FakeResult(0, ''))
-        ok, reason = wifi_station.apply('HomeNet', '', runner=runner)
+        ok, reason = wifi_station.apply('HomeNet', '', runner=runner, existing=False)
         self.assertTrue(ok, reason)
 
         add = runner.calls[0][0]
@@ -117,8 +117,7 @@ class ApplyTests(unittest.TestCase):
             captured = {}
             runner = make_runner(default=FakeResult(0, ''), captured=captured)
             ok, reason = wifi_station.apply(
-                'HomeNet', PSK, runner=runner, passwd_dir=tmp
-            )
+                'HomeNet', PSK, runner=runner, passwd_dir=tmp, existing=False)
             self.assertTrue(ok, reason)
 
             # The PSK is never on the command line.
@@ -187,6 +186,38 @@ class ApplyTests(unittest.TestCase):
         self.assertEqual(modify[3], 'pibuddycam-station')
         self.assertEqual(modify[modify.index('ipv4.method') + 1], 'auto')
 
+    def test_profile_presence_is_probed_once_and_decides_the_order(self):
+        # NetworkManager accepts a duplicate ``add`` under the same name, so an
+        # existing profile must be modified in place, never added again.
+        def scripted(show_rc):
+            def runner(args, timeout, input=None):
+                runner.calls.append(list(args))
+                if args[:3] == ['nmcli', 'connection', 'show']:
+                    return FakeResult(show_rc, '')
+                return FakeResult(0, '')
+            runner.calls = []
+            return runner
+
+        present = scripted(0)
+        ok, _reason = wifi_station.apply('HomeNet', PSK, runner=present)
+        self.assertTrue(ok)
+        verbs = [c[2] for c in present.calls if c[:2] == ['nmcli', 'connection']]
+        self.assertEqual(verbs[:2], ['show', 'modify'])
+        self.assertNotIn('add', verbs)
+
+        absent = scripted(10)
+        ok, _reason = wifi_station.apply('HomeNet', PSK, runner=absent)
+        self.assertTrue(ok)
+        verbs = [c[2] for c in absent.calls if c[:2] == ['nmcli', 'connection']]
+        self.assertEqual(verbs[:2], ['show', 'add'])
+        self.assertNotIn('modify', verbs)
+
+    def test_a_known_answer_skips_the_probe(self):
+        runner = make_runner()
+        wifi_station.apply('HomeNet', PSK, runner=runner, existing=True)
+        self.assertFalse(any(a[:3] == ['nmcli', 'connection', 'show']
+                             for a, _t, _i in runner.calls))
+
     def test_add_and_modify_failure_is_reported(self):
         runner = make_runner(default=FakeResult(1, ''))
         ok, reason = wifi_station.apply('HomeNet', PSK, runner=runner)
@@ -203,13 +234,13 @@ class ApplyTests(unittest.TestCase):
 
     def test_timeout_is_reported(self):
         runner = make_runner(timeout_match='connection add')
-        ok, reason = wifi_station.apply('HomeNet', PSK, runner=runner)
+        ok, reason = wifi_station.apply('HomeNet', PSK, runner=runner, existing=False)
         self.assertFalse(ok)
         self.assertIn('timed out', reason)
 
     def test_missing_tool_is_reported(self):
         runner = make_runner(unavailable_match='connection add')
-        ok, reason = wifi_station.apply('HomeNet', PSK, runner=runner)
+        ok, reason = wifi_station.apply('HomeNet', PSK, runner=runner, existing=False)
         self.assertFalse(ok)
         self.assertIn('unavailable', reason)
 
