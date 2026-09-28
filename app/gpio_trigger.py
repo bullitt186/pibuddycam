@@ -250,12 +250,14 @@ class GpioTrigger:
     * ``set_enabled(bool)`` - flip ``timelapse_enabled`` through the coordinator;
     * ``build_session(name)`` - queue the automatic build of a closed session;
     * ``is_enabled()`` - the current ``timelapse_enabled``.
+    * ``on_change()`` - optional; the recording flag or the latency changed, so a
+      status mirror (the runtime state read by MQTT) can refresh.
     """
 
     def __init__(self, *, backend, loop, on_shot, set_enabled, build_session,
                  is_enabled, timelapse_dir=timelapse.TIMELAPSE_DIR,
                  clock=time.monotonic, wall=time.time,
-                 min_shot_gap=MIN_SHOT_GAP_SECONDS):
+                 min_shot_gap=MIN_SHOT_GAP_SECONDS, on_change=None):
         self._backend = backend
         self._loop = loop
         self._on_shot = on_shot
@@ -266,6 +268,7 @@ class GpioTrigger:
         self._clock = clock
         self._wall = wall
         self._min_gap = min_shot_gap
+        self._on_change = on_change
         self._fd = None
         self._config = None       # (shot_pin, record_pin) currently requested
         self._error = ''
@@ -324,10 +327,21 @@ class GpioTrigger:
         if record_pin is not None:
             self._arm_recording()
 
+    def _changed(self):
+        if self._on_change is None:
+            return
+        try:
+            self._on_change()
+        except Exception as e:  # noqa: BLE001 - a mirror must never break the trigger
+            log.warning(f'GPIO status mirror failed: {type(e).__name__}')
+
     def release(self):
         """Stop watching and hand the lines back."""
         fd, self._fd = self._fd, None
         self._config = None
+        was_recording, self._recording = self._recording, False
+        if was_recording:
+            self._changed()
         if fd is None:
             return
         try:
@@ -401,17 +415,21 @@ class GpioTrigger:
                 self._error = 'could not create the session folder'
                 log.warning(f'GPIO session not opened: {e.__class__.__name__}')
                 return
+        changed = not self._recording
         self._recording = True
         self._set_enabled(True)
         log.info(f'GPIO recording active ({name})')
+        if changed:
+            self._changed()
 
     def _record_inactive(self):
-        self._recording = False
         self._set_enabled(False)
         self._close_and_build()
 
     def _close_and_build(self):
-        self._recording = False
+        changed, self._recording = self._recording, False
+        if changed:
+            self._changed()
         name = timelapse.close_session(self._dir)
         if name is None:
             return
@@ -430,6 +448,7 @@ class GpioTrigger:
     def note_latency(self, seconds):
         """Record the last trigger -> stored frame latency (seconds)."""
         self._latency = round(float(seconds), 2)
+        self._changed()
 
     def status(self):
         """Bounded, secret-free status for the console."""

@@ -1063,7 +1063,7 @@ class DiscoveryLifecycleTests(ServiceTestCase):
         document = self.last_discovery(service, backend)
         platforms = {component['p'] for component in document['cmps'].values()}
         self.assertNotIn('camera', platforms)
-        self.assertEqual(len(document['cmps']), 18)
+        self.assertEqual(len(document['cmps']), 20)
 
 
 # --------------------------------------------------------------------------- #

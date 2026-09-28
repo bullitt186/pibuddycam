@@ -30,6 +30,8 @@ EXPECTED_STATE = {
     'timelapse_enabled': True,
     'timelapse_interval': 60,
     'timelapse_fps': 15,
+    'timelapse_recording': False,
+    'timelapse_trigger_latency_s': None,
     'prusa_rtsp': True,
     'webrtc': False,
     'prusa_connected': True,
@@ -50,6 +52,8 @@ EXPECTED_PLATFORMS = {
     'timelapse_interval': 'number',
     'timelapse_fps': 'number',
     'timelapse_build': 'button',
+    'timelapse_recording': 'binary_sensor',
+    'timelapse_latency': 'sensor',
     'prusa_rtsp': 'switch',
     'webrtc': 'switch',
     'restart': 'button',
@@ -74,7 +78,7 @@ class StateSchemaTests(unittest.TestCase):
     def test_state_keys_exact_and_ordered(self):
         document = mqtt_state.build_state()
         self.assertEqual(tuple(document.keys()), mqtt_state.STATE_KEYS)
-        self.assertEqual(len(document), 17)
+        self.assertEqual(len(document), 19)
 
     def test_state_uses_native_json_values(self):
         document = mqtt_state.build_state(
@@ -98,6 +102,32 @@ class StateSchemaTests(unittest.TestCase):
         self.assertIsNone(document['last_command_error'])
         # Round-trips through JSON with the documented key set.
         self.assertEqual(json.loads(json.dumps(document)), EXPECTED_STATE)
+
+    def test_gpio_trigger_diagnostics_are_runtime_values_with_safe_defaults(self):
+        idle = mqtt_state.build_state()
+        self.assertIs(idle['timelapse_recording'], False)
+        self.assertIsNone(idle['timelapse_trigger_latency_s'])
+        live = mqtt_state.build_state(
+            {'timelapse_recording': True, 'timelapse_trigger_latency': 4.25})
+        self.assertIs(live['timelapse_recording'], True)
+        self.assertEqual(live['timelapse_trigger_latency_s'], 4.25)
+        junk = mqtt_state.build_state(
+            {'timelapse_recording': 'yes-ish', 'timelapse_trigger_latency': 'slow'})
+        self.assertIs(junk['timelapse_recording'], True)          # truthy string
+        self.assertIsNone(junk['timelapse_trigger_latency_s'])
+
+    def test_gpio_diagnostics_are_off_by_default_in_home_assistant(self):
+        document = mqtt_state.build_discovery(DEVICE_ID, 'Printer Camera', '1.0.0')
+        recording = document['cmps'][mqtt_state.component_unique_id(DEVICE_ID, 'timelapse_recording')]
+        latency = document['cmps'][mqtt_state.component_unique_id(DEVICE_ID, 'timelapse_latency')]
+        self.assertIs(recording['enabled_by_default'], False)
+        self.assertEqual(recording['device_class'], 'running')
+        self.assertIs(latency['enabled_by_default'], False)
+        self.assertEqual((latency['device_class'], latency['unit_of_measurement']),
+                         ('duration', 's'))
+        self.assertEqual(latency['entity_category'], 'diagnostic')
+        self.assertIn('timelapse_trigger_latency_s', latency['value_template'])
+        self.assertIn('timelapse_recording', recording['value_template'])
 
     def test_missing_metrics_become_null(self):
         document = mqtt_state.build_state()
@@ -262,7 +292,7 @@ class DiscoveryDocumentTests(unittest.TestCase):
         components = document['cmps']
         self.assertEqual(
             set(components), {self.uid(key) for key in EXPECTED_PLATFORMS})
-        self.assertEqual(len(components), 18)
+        self.assertEqual(len(components), 20)
         for key, platform in EXPECTED_PLATFORMS.items():
             self.assertEqual(self.comp(document, key)['p'], platform, key)
 

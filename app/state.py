@@ -84,6 +84,10 @@ class CameraState:
         self.timelapse_trigger = 'interval'
         self.timelapse_gpio_pin = None
         self.timelapse_gpio_record_pin = None
+        # Runtime-only GPIO trigger diagnostics (never persisted): a print session
+        # is being recorded, and the last pulse-to-stored-frame time in seconds.
+        self.timelapse_recording = False
+        self.timelapse_trigger_latency = None
         # GAP-DEVICE-02: explicit hardware availability. The Pi has no IR
         # illuminator, speaker, fan, or MicroSD slot, so no control path may
         # imply otherwise or report a fake applied mode. ``ir_mode`` stays None

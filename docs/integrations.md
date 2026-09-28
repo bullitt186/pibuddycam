@@ -87,6 +87,12 @@ device. The media camera itself comes from ONVIF, so no duplicate camera entity 
 Home Assistant publishes `online`, discovery and state are republished after a short random
 delay, so entities survive broker and Home Assistant restarts.
 
+Two entities exist for the [GPIO timelapse trigger](user-guide.md#timelapse-gpio-trigger-prusa-gpio-hackerboard)
+and are disabled by default in Home Assistant: *Timelapse recording* (on while a print session
+is recording) and *Timelapse pulse-to-frame time* (seconds from the last layer pulse to the stored
+frame). Their state fields, `timelapse_recording` and `timelapse_trigger_latency_s`, are `false`
+and `null` unless the GPIO trigger is armed.
+
 Both prefixes (`homeassistant`, `pibuddycam`) are configurable. MQTT failures are isolated: they
 never affect Prusa Connect, RTSP or ONVIF.
 

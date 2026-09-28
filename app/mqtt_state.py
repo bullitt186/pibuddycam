@@ -51,6 +51,8 @@ STATE_KEYS = (
     'timelapse_enabled',
     'timelapse_interval',
     'timelapse_fps',
+    'timelapse_recording',
+    'timelapse_trigger_latency_s',
     'prusa_rtsp',
     'webrtc',
     'prusa_connected',
@@ -98,7 +100,8 @@ MODEL = 'PiBuddyCam'
 DEVICE_NAME_SUFFIX = ' Controls'
 DEFAULT_CAMERA_NAME = 'PiBuddyCam'
 
-#: The 18 component unique-id suffixes in §6.4 table order.
+#: The component unique-id suffixes in §6.4 table order (plus the two Pi-only GPIO
+#: timelapse diagnostics, which stay empty unless the GPIO trigger is used).
 COMPONENT_KEYS = (
     'quality',
     'snapshot_upload',
@@ -107,6 +110,8 @@ COMPONENT_KEYS = (
     'timelapse_interval',
     'timelapse_fps',
     'timelapse_build',
+    'timelapse_recording',
+    'timelapse_latency',
     'prusa_rtsp',
     'webrtc',
     'restart',
@@ -307,6 +312,10 @@ def build_state(state=None, *, quality=None, snapshot_upload=None,
         'timelapse_enabled': timelapse_enabled_value,
         'timelapse_interval': timelapse_interval_value,
         'timelapse_fps': timelapse_fps_value,
+        # Pi-only GPIO trigger diagnostics: false/null unless the trigger is armed.
+        'timelapse_recording': bool(_attr(state, 'timelapse_recording', False)),
+        'timelapse_trigger_latency_s': _as_float(
+            _attr(state, 'timelapse_trigger_latency', None)),
         'prusa_rtsp': prusa_rtsp_value,
         'webrtc': webrtc_value,
         'prusa_connected': prusa_connected_value,
@@ -424,7 +433,7 @@ def build_discovery(device_id_value, camera_name, application_version='', *,
             'payload_press': 'press',
         }
 
-    def binary_sensor(key, label, device_class, template):
+    def binary_sensor(key, label, device_class, template, enabled_by_default=True):
         component = {
             'p': 'binary_sensor',
             'name': label,
@@ -434,6 +443,8 @@ def build_discovery(device_id_value, camera_name, application_version='', *,
         }
         if device_class:
             component['device_class'] = device_class
+        if not enabled_by_default:
+            component['enabled_by_default'] = False
         return component
 
     def sensor(key, label, value_template, *, device_class=None, unit=None,
@@ -488,6 +499,15 @@ def build_discovery(device_id_value, camera_name, application_version='', *,
         'timelapse_build': button(
             'timelapse_build', 'Build timelapse',
             mqtt_topics.timelapse_build(device_id_value, base_prefix)),
+        'timelapse_recording': binary_sensor(
+            'timelapse_recording', 'Timelapse recording', 'running',
+            "{{ 'ON' if value_json.timelapse_recording else 'OFF' }}",
+            enabled_by_default=False),
+        'timelapse_latency': sensor(
+            'timelapse_latency', 'Timelapse pulse-to-frame time',
+            '{{ value_json.timelapse_trigger_latency_s }}',
+            device_class='duration', unit='s', state_class='measurement',
+            enabled_by_default=False),
         'prusa_rtsp': switch(
             'prusa_rtsp', 'Prusa RTSP mode',
             mqtt_topics.prusa_rtsp(device_id_value, base_prefix)),

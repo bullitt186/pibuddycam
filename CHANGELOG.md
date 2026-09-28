@@ -21,6 +21,8 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   - Wiring and printer G-code are shown in the console and in the [user guide](docs/user-guide.md).
 - `http://<address>` now redirects to the HTTPS console instead of showing plain text.
 
+- Home Assistant gets two optional entities for the GPIO trigger (recording, pulse-to-frame
+  time); the MQTT state document gains `timelapse_recording` and `timelapse_trigger_latency_s`.
 - Finished print sessions can be deleted from the Timelapses view (frames, optionally the built
   video), after an acknowledgement and your password. Loose frames and videos still cannot.
 - Network watchdog: a claimed camera with no usable Wi-Fi for 10 minutes starts the setup hotspot

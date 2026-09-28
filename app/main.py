@@ -691,7 +691,16 @@ async def main():
         build_session=build_session,
         is_enabled=lambda: state.timelapse_enabled,
         timelapse_dir=timelapse.TIMELAPSE_DIR,
+        on_change=lambda: mirror_gpio_state(),
     )
+
+    def mirror_gpio_state():
+        """Copy the trigger's recording flag and latency into the shared state that
+        MQTT reads, and publish it."""
+        status = gpio.status()
+        state.timelapse_recording = bool(status['recording'])
+        state.timelapse_trigger_latency = status['latency_seconds']
+        state.mark_info_dirty()
 
     # GAP-QUALITY-03: start from the persisted tier and publish it everywhere.
     qenum, _, _ = quality.read_current()

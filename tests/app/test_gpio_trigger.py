@@ -350,6 +350,45 @@ class ShotTests(Harness):
         self.assertEqual(self.shots, [])
 
 
+class StatusMirrorTests(Harness):
+    def setUp(self):
+        super().setUp()
+        self.enabled[0] = False
+        self.changes = []
+        self.backend = FakeBackend(level_bits=0b11)
+        self.trigger = self.make(on_change=lambda: self.changes.append(
+            (self.trigger.status()['recording'], self.trigger.status()['latency_seconds'])))
+        self.trigger.configure('gpio', 17, 27)
+
+    def test_recording_start_and_end_notify_once_each(self):
+        self.trigger.handle_edge(27, gt.EDGE_FALLING)
+        self.trigger.handle_edge(27, gt.EDGE_FALLING)        # repeated edge: no change
+        self.trigger.handle_edge(27, gt.EDGE_RISING)
+        self.trigger.handle_edge(27, gt.EDGE_RISING)
+        self.assertEqual(self.changes, [(True, None), (False, None)])
+
+    def test_a_latency_measurement_notifies(self):
+        self.trigger.note_latency(3.14159)
+        self.assertEqual(self.changes, [(False, 3.14)])
+
+    def test_releasing_a_recording_trigger_clears_the_mirror(self):
+        self.trigger.handle_edge(27, gt.EDGE_FALLING)
+        self.changes.clear()
+        self.trigger.release()
+        self.assertEqual(self.changes, [(False, None)])
+        self.trigger.release()
+        self.assertEqual(len(self.changes), 1)
+
+    def test_a_failing_mirror_never_breaks_the_trigger(self):
+        def boom():
+            raise RuntimeError('mirror gone')
+        trigger = self.make(on_change=boom)
+        trigger.configure('gpio', 17, 27)
+        trigger.handle_edge(27, gt.EDGE_FALLING)
+        trigger.note_latency(1.0)
+        self.assertTrue(trigger.status()['recording'])
+
+
 class RecordingTests(Harness):
     def setUp(self):
         super().setUp()
