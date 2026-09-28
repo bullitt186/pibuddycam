@@ -45,6 +45,20 @@ pin.
 (`image/assets/udev/60-pibuddycam-gpio.rules`); both ship with the image. **[assumption]** The
 chip label on a Pi Zero 2 W is `pinctrl-bcm2835`; verify with `gpioinfo` on a device.
 
+**Self-test.** With a jumper between two offered pins, stop the camera runtime and run the
+test as the service account (it exercises the group and udev rule too):
+
+```sh
+sudo systemctl stop pibuddycam.service
+sudo -u pibuddycam /opt/pibuddycam/venv/bin/python /opt/pibuddycam/gpio_selftest.py \
+     --out-pin 27 --in-pin 17
+sudo systemctl start pibuddycam.service
+```
+
+It finds the chip, checks that the pull-up reads high, that falling and rising edges arrive
+when the output toggles, and that a glitch shorter than the debounce time is filtered. It
+changes no configuration. Its result settles the chip-label assumption above.
+
 ## Camera and rotation
 
 - **Sensor:** the OV5647 (Pi Camera v1) is tested. Other libcamera sensors are expected to work

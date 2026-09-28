@@ -57,13 +57,16 @@ CONSUMER = b'pibuddycam'
 _REQUEST_SIZE = 4 * MAX_LINES + 32 + (8 + 4 + 20 + 24 * MAX_ATTRS) + 4 + 4 + 20 + 4
 GPIO_V2_GET_LINE_IOCTL = _ioc(_IOC_READ | _IOC_WRITE, 0x07, _REQUEST_SIZE)
 GPIO_V2_LINE_GET_VALUES_IOCTL = _ioc(_IOC_READ | _IOC_WRITE, 0x0E, _LINE_VALUES.size)
+GPIO_V2_LINE_SET_VALUES_IOCTL = _ioc(_IOC_READ | _IOC_WRITE, 0x0F, _LINE_VALUES.size)
 
 FLAG_INPUT = 1 << 2
+FLAG_OUTPUT = 1 << 3
 FLAG_EDGE_RISING = 1 << 4
 FLAG_EDGE_FALLING = 1 << 5
 FLAG_BIAS_PULL_UP = 1 << 8
 
 ATTR_FLAGS = 1
+ATTR_OUTPUT_VALUES = 2
 ATTR_DEBOUNCE = 3
 
 EDGE_RISING = 1
@@ -126,6 +129,25 @@ def pack_request(lines):
     return request
 
 
+def pack_output_request(offset, value):
+    """Pack a ``gpio_v2_line_request`` for one push-pull output at ``value``.
+
+    Only the hardware self-test (``tools/gpio_selftest.py``) drives a line; the
+    camera runtime never does.
+    """
+    attrs = _ATTR_ENTRY.pack(ATTR_OUTPUT_VALUES, 0, 1 if value else 0, 1)
+    attr_blob = attrs.ljust(24 * MAX_ATTRS, b'\0')
+    request = b''.join((
+        struct.pack('<%dI' % MAX_LINES, offset, *([0] * (MAX_LINES - 1))),
+        CONSUMER.ljust(32, b'\0'),
+        struct.pack('<QI5I', FLAG_OUTPUT, 1, *([0] * 5)),
+        attr_blob,
+        struct.pack('<II5Ii', 1, 0, *([0] * 5), 0),
+    ))
+    assert len(request) == _REQUEST_SIZE, len(request)
+    return request
+
+
 class LinuxGpio:
     """The real GPIO character-device layer; every syscall is injectable."""
 
@@ -173,6 +195,26 @@ class LinuxGpio:
             raise GpioError(_error_message(e)) from None
         finally:
             self._close(chip_fd)
+
+    def request_output(self, chip_path, offset, value):
+        """Request one output line at ``value`` (self-test only); returns its fd."""
+        try:
+            chip_fd = self._open(chip_path, os.O_RDONLY | os.O_CLOEXEC)
+        except OSError as e:
+            raise GpioError(_error_message(e)) from None
+        try:
+            result = self._ioctl(chip_fd, GPIO_V2_GET_LINE_IOCTL,
+                                 pack_output_request(offset, value))
+            return struct.unpack('<i', bytes(result)[-4:])[0]
+        except OSError as e:
+            raise GpioError(_error_message(e)) from None
+        finally:
+            self._close(chip_fd)
+
+    def set_value(self, fd, value):
+        """Drive the single output line behind ``fd`` (self-test only)."""
+        self._ioctl(fd, GPIO_V2_LINE_SET_VALUES_IOCTL,
+                    _LINE_VALUES.pack(1 if value else 0, 1))
 
     def get_values(self, fd, count):
         """Return the raw input bits of the first ``count`` lines (1 = high)."""
