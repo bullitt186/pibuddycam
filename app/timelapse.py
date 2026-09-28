@@ -9,6 +9,7 @@ Stdlib-only and side-effect free on import so the logic is host-testable.
 """
 import os
 import re
+import stat
 import struct
 import time
 
@@ -214,6 +215,67 @@ def list_sessions(dir=TIMELAPSE_DIR):
         and os.path.isdir(os.path.join(dir, n))
         and not os.path.islink(os.path.join(dir, n))
     )
+
+
+class SessionError(Exception):
+    """A session could not be deleted; ``code`` says why (safe to show)."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def delete_session(dir, name, delete_video=False):
+    """Delete one per-print session folder (its frames), optionally its video.
+
+    Only a real, non-symlink ``session_<stamp>`` directory that holds nothing but
+    regular ``timelapse_*.jpg`` frames is removed, and never the session that is
+    open right now. Nothing is deleted unless the whole folder passes the check, so
+    a planted symlink or foreign file makes the call fail instead of following it.
+    The built ``<name>.avi`` in the root goes only with ``delete_video``; the
+    hidden video index keeps its historical row. Returns
+    ``{'frames': <removed>, 'video': <bool>}``.
+    """
+    if not valid_session_name(name):
+        raise SessionError('bad_name', 'invalid session')
+    if active_session(dir) == name:
+        raise SessionError('active', 'the session is still recording')
+    path = os.path.join(dir, name)
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        raise SessionError('not_found', 'unknown session') from None
+    except OSError:
+        raise SessionError('not_found', 'unknown session') from None
+    if not stat.S_ISDIR(info.st_mode):
+        raise SessionError('not_found', 'unknown session')
+    try:
+        entries = list(os.scandir(path))
+    except OSError:
+        raise SessionError('not_found', 'unknown session') from None
+    frames = []
+    for entry in entries:
+        if (entry.is_symlink() or not entry.is_file(follow_symlinks=False)
+                or not entry.name.startswith(FRAME_PREFIX)
+                or not entry.name.endswith(FRAME_SUFFIX)):
+            raise SessionError(
+                'unexpected_content',
+                'the session folder holds files that are not timelapse frames')
+        frames.append(entry.path)
+    for frame in frames:
+        os.unlink(frame)
+    os.rmdir(path)
+    video_removed = False
+    if delete_video:
+        video = os.path.join(dir, name + AVI_SUFFIX)
+        try:
+            if stat.S_ISREG(os.lstat(video).st_mode):
+                os.unlink(video)
+                video_removed = True
+        except OSError:
+            pass
+    return {'frames': len(frames), 'video': video_removed}
 
 
 def save_frame(data, dir=TIMELAPSE_DIR, now=None):

@@ -6,7 +6,7 @@
  * than the entry point that loads it.
  */
 
-import { SESSION_STATE, els, formatBytes, formatMediaTimestamp, handleExpired, request, setText } from './common.js?v=__ASSET_VERSION__';
+import { SESSION_STATE, els, formatBytes, formatMediaTimestamp, handleExpired, request, requestReauth, setText } from './common.js?v=__ASSET_VERSION__';
 import { gpioEl } from './gpio.js?v=__ASSET_VERSION__';
 
 
@@ -437,13 +437,67 @@ function renderSessionPicker(data) {
 
 function updateSessionInfo() {
   const info = gpioEl('timelapse-session-info');
-  if (!info) return;
-  info.textContent = timelapse.session
-    ? 'Showing the frames of one print. Build video assembles this session.'
-    : '';
+  if (info) {
+    info.textContent = timelapse.session
+      ? 'Showing the frames of one print. Build video assembles this session.'
+      : '';
+  }
+  const panel = gpioEl('timelapse-session-delete');
+  if (panel) panel.hidden = !timelapse.session;
+  const ack = gpioEl('timelapse-session-delete-confirm');
+  if (ack) ack.checked = false;
+}
+
+/**
+ * Delete the selected print session. Only whole sessions can be deleted (loose
+ * frames and videos stay), it needs an acknowledgement and a fresh re-auth, and
+ * the server refuses the recording session and any time a build is running.
+ */
+async function deleteSession() {
+  const name = timelapse.session;
+  const status = gpioEl('timelapse-session-delete-status');
+  if (!name) return;
+  const ack = gpioEl('timelapse-session-delete-confirm');
+  if (!(ack && ack.checked)) {
+    setText(status, 'Check the acknowledgement first.');
+    return;
+  }
+  const confirmed = await requestReauth();
+  if (!confirmed) {
+    setText(status, 'Re-authentication is required to delete a session.');
+    return;
+  }
+  const withVideo = gpioEl('timelapse-session-delete-video');
+  const button = gpioEl('timelapse-session-delete-button');
+  if (button) button.disabled = true;
+  setText(status, 'Deleting…');
+  const result = await request(`/api/media/sessions/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+    csrf: true,
+    body: { confirm: true, delete_video: !!(withVideo && withVideo.checked) },
+  });
+  if (button) button.disabled = false;
+  if (result.status === 401) {
+    handleExpired();
+    return;
+  }
+  const data = result.data || {};
+  if (result.ok && data.ok) {
+    setText(status, `Deleted ${name}: ${data.frames} frames${data.video ? ' and its video' : ''}.`);
+    timelapse.session = '';
+    timelapse.framesPage = 1;
+    if (withVideo) withVideo.checked = false;
+    await loadTimelapseExtras();
+    fetchTimelapseVideos();
+    fetchTimelapseFrames();
+    return;
+  }
+  setText(status, data.error || 'The session could not be deleted.');
 }
 
 function wireTimelapseSession() {
+  const remove = gpioEl('timelapse-session-delete-button');
+  if (remove) remove.addEventListener('click', deleteSession);
   const select = gpioEl('timelapse-session');
   if (!select) return;
   select.addEventListener('change', () => {

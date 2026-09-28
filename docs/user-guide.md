@@ -111,8 +111,11 @@ PiBuddyCam extension: Prusa Connect still sees only the enable flag and the inte
   [Network](#network)): new frames and sessions could carry a wrong date until then.
 - A filterable, paginated gallery with downloads and a frame browser. Inline playback depends on
   your browser's MJPEG AVI support; downloading always works.
-- There is deliberately no delete button. Use the Samba share `smb://<device>/sdcard` for bulk
-  export. The oldest frames are pruned automatically when space runs low.
+- Loose frames and videos have deliberately no delete button. A finished **print session** can be
+  deleted (its frames, and optionally its built video) after an acknowledgement and your
+  password. The recording session and any moment a build is running are refused. Use the Samba
+  share `smb://<device>/sdcard` for bulk export. The oldest frames, including those inside
+  sessions, are pruned automatically when space runs low.
 
 ### System
 

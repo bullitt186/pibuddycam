@@ -247,6 +247,22 @@ def session_dir(directory, session):
     return path if stat.S_ISDIR(info.st_mode) else None
 
 
+def build_running(directory=DEFAULT_MEDIA_DIR, stale_seconds=3600.0, now=None):
+    """True while a build holds the on-disk lock (this process or the runtime's).
+
+    ``media_build`` keeps ``.timelapse_build.lock`` in the media root for the life of a
+    build, so this sees builds started by either process. A lock older than
+    ``stale_seconds`` is a crashed build and does not count.
+    """
+    import time
+    path = os.path.join(directory, '.timelapse_build.lock')
+    try:
+        age = (time.time() if now is None else now) - os.lstat(path).st_mtime
+    except OSError:
+        return False
+    return age <= stale_seconds
+
+
 def catalog_sessions(directory=DEFAULT_MEDIA_DIR):
     """Return ``(sessions, truncated)``: one dict per per-print session folder.
 

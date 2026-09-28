@@ -113,6 +113,7 @@ ROUTES = (
     ('GET', '/api/media/frames'),
     ('GET', '/api/media/frames/{name}'),
     ('GET', '/api/media/sessions'),
+    ('DELETE', '/api/media/sessions/{name}'),
     ('POST', '/api/media/timelapses/build'),
     ('GET', '/api/media/jobs/{id}'),
     ('GET', '/api/system'),

@@ -21,6 +21,8 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   - Wiring and printer G-code are shown in the console and in the [user guide](docs/user-guide.md).
 - `http://<address>` now redirects to the HTTPS console instead of showing plain text.
 
+- Finished print sessions can be deleted from the Timelapses view (frames, optionally the built
+  video), after an acknowledgement and your password. Loose frames and videos still cannot.
 - Network watchdog: a claimed camera with no usable Wi-Fi for 10 minutes starts the setup hotspot
   and retries its network every 10 minutes (disable with `PIBUDDYCAM_NETWORK_WATCHDOG_MINUTES=0`).
   Needs a new image. The hotspot is open, so its login page is reachable in range while it runs.

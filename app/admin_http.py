@@ -672,6 +672,11 @@ class _AdminAppCore:
                 'GET', re.compile(r'^/api/media/sessions$'),
                 _AUTHENTICATED, self._handle_media_sessions,
             ),
+            # Deleting a print session is destructive: fresh re-auth window only.
+            Route(
+                'DELETE', re.compile(r'^/api/media/sessions/(?P<name>[^/]+)$'),
+                _REAUTH_WINDOW_ONLY, self._handle_media_session_delete,
+            ),
             Route(
                 'POST', re.compile(r'^/api/media/timelapses/build$'),
                 _AUTHENTICATED, self._handle_media_build,

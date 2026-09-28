@@ -800,6 +800,15 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
         self.assertIn("params.set('session'", code)
         self.assertIn('buildBody', code)
 
+    def test_session_delete_is_acknowledged_and_reauthenticated_first(self):
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'deleteSession')
+        self.assertIn('await requestReauth()', body)
+        self.assertLess(body.index('acknowledgement'), body.index('await requestReauth()'))
+        self.assertLess(body.index('await requestReauth()'), body.index("method: 'DELETE'"))
+        self.assertIn('confirm: true', body)
+        self.assertIn('id="timelapse-session-delete-confirm"', self.html)
+
     def test_new_routes_are_declared_in_the_core(self):
         routes = {(route.method, route.pattern.pattern)
                   for route in admin_http.AdminApp()._routes}
@@ -808,6 +817,7 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
             ('GET', r'^/api/network/scan$'), ('PUT', r'^/api/network/hostname$'),
             ('PUT', r'^/api/network/ntp$'), ('GET', r'^/api/gpio/pins$'),
             ('GET', r'^/api/media/sessions$'),
+            ('DELETE', r'^/api/media/sessions/(?P<name>[^/]+)$'),
         ):
             self.assertIn((method, pattern), routes)
 
@@ -1041,15 +1051,19 @@ class AdminTimelapseUiTests(unittest.TestCase):
         for status in ('all', 'completed', 'error', 'pending', 'unknown'):
             self.assertIn(f'data-timelapse-filter="{status}"', self.html)
 
-    def test_library_mentions_smb_and_offers_no_deletion(self):
+    def test_library_offers_no_delete_for_loose_frames_and_videos_only_for_sessions(self):
         self.assertIn('SMB', self.html)
-        self.assertIn('Deletion is not offered', self.html)
+        self.assertIn('Loose frames and videos cannot be deleted here', self.html)
         for forbidden in (
             'timelapse-delete', 'media-delete', 'data-delete',
-            "method: 'DELETE'", 'Delete video', 'Delete frame',
+            'Delete video', 'Delete frame',
         ):
             self.assertNotIn(forbidden, self.html, forbidden)
             self.assertNotIn(forbidden, self.code, forbidden)
+        # The one delete in the console targets a print session, nothing else.
+        self.assertEqual(self.code.count("method: 'DELETE'"), 1)
+        self.assertIn('/api/media/sessions/', self.code)
+        self.assertNotIn('/api/media/timelapses/${', self.code.split("method: 'DELETE'")[0][-200:])
         self.assertNotIn('/delete', self.code)
 
     def test_js_lists_paginated_videos_and_frames(self):

@@ -6,11 +6,14 @@ handlers of one area so ``admin_http`` stays reviewable. It is imported by
 ``admin_http`` after those helpers exist, so it must not be imported on its own.
 """
 
+import logging
+
 import media_library
 import timelapse
 
 from admin_http import (  # noqa: E402 - partially initialised, see above
     MAX_MEDIA_BUILD_BODY_BYTES,
+    MAX_SYSTEM_ACTION_BODY_BYTES,
     MEDIA_DEFAULT_PAGE_SIZE,
     MEDIA_JOB_UNKNOWN,
     MEDIA_MAX_SESSIONS,
@@ -19,6 +22,8 @@ from admin_http import (  # noqa: E402 - partially initialised, see above
     _header,
     _query_int,
 )
+
+log = logging.getLogger('pibuddycam.admin_http')
 
 
 class MediaHandlers:
@@ -138,6 +143,44 @@ class MediaHandlers:
             'active': timelapse.active_session(self._media_dir),
             'sessions': sessions[:MEDIA_MAX_SESSIONS],
         })
+
+    def _handle_media_session_delete(self, request, match, body_data, now):
+        """Delete one finished print session (frames, optionally its video).
+
+        Fresh re-auth window + CSRF (route policy) and an explicit
+        ``confirm: true``. The session must be a real ``session_<stamp>`` folder;
+        the open recording session and any time a build is running are refused
+        (409), a folder holding anything but timelapse frames is refused (422).
+        Loose frames and videos in the root are never deletable here.
+        """
+        if _body_size(request) > MAX_SYSTEM_ACTION_BODY_BYTES:
+            return self._error(request, 413, 'request body too large')
+        if not isinstance(body_data, dict):
+            return self._error(request, 400, 'invalid request body')
+        if any(key not in ('confirm', 'delete_video') for key in body_data):
+            return self._error(request, 400, 'unknown field')
+        if body_data.get('confirm') is not True:
+            return self._json(request, 400, {
+                'ok': False, 'error': 'explicit confirmation is required'})
+        delete_video = body_data.get('delete_video', False)
+        if type(delete_video) is not bool:
+            return self._error(request, 400, 'delete_video must be a boolean')
+        name = match.group('name')
+        if not timelapse.valid_session_name(name):
+            return self._error(request, 400, 'invalid session')
+        if media_library.build_running(self._media_dir):
+            return self._json(request, 409, {
+                'ok': False, 'error': 'a build is running; try again when it has finished'})
+        try:
+            result = timelapse.delete_session(self._media_dir, name, delete_video)
+        except timelapse.SessionError as exc:
+            status = {'not_found': 404, 'active': 409, 'bad_name': 400,
+                      'unexpected_content': 422}.get(exc.code, 400)
+            return self._json(request, status, {'ok': False, 'error': exc.message})
+        except OSError:
+            log.warning('admin_http: session delete failed')
+            return self._error(request, 500, 'the session could not be deleted')
+        return self._json(request, 200, {'ok': True, 'session': name, **result})
 
     def _handle_media_video_download(self, request, match, body_data, now):
         """Serve one allowlisted AVI with a single byte range (AC-12).

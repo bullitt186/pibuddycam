@@ -164,6 +164,106 @@ class BuildIntoRootTests(Tmp):
         self.assertTrue(os.path.basename(path).startswith('timelapse_'))
 
 
+class DeleteSessionTests(Tmp):
+    def make(self, name='session_20260101-000000', frames=3):
+        self.put_frames(name, frames)
+        return name
+
+    def test_removes_the_frames_and_the_folder_but_keeps_the_video_by_default(self):
+        name = self.make()
+        video = os.path.join(self.dir, name + '.avi')
+        with open(video, 'wb') as handle:
+            handle.write(b'RIFF')
+        result = timelapse.delete_session(self.dir, name)
+        self.assertEqual(result, {'frames': 3, 'video': False})
+        self.assertFalse(os.path.exists(os.path.join(self.dir, name)))
+        self.assertTrue(os.path.exists(video))
+
+    def test_the_video_goes_only_on_request(self):
+        name = self.make()
+        video = os.path.join(self.dir, name + '.avi')
+        with open(video, 'wb') as handle:
+            handle.write(b'RIFF')
+        result = timelapse.delete_session(self.dir, name, delete_video=True)
+        self.assertEqual(result, {'frames': 3, 'video': True})
+        self.assertFalse(os.path.exists(video))
+
+    def test_loose_root_frames_and_videos_are_untouched(self):
+        name = self.make()
+        self.put_frames(None, 2)
+        with open(os.path.join(self.dir, 'timelapse_00-00-00-000.avi'), 'wb'):
+            pass
+        timelapse.delete_session(self.dir, name, delete_video=True)
+        self.assertEqual(len(timelapse.list_frames(self.dir)), 2)
+        self.assertEqual(len(timelapse.list_videos(self.dir)), 1)
+
+    def test_the_open_session_cannot_be_deleted(self):
+        name = timelapse.open_session(self.dir, now=1_700_000_000)
+        self.put_frames(name, 1)
+        with self.assertRaises(timelapse.SessionError) as ctx:
+            timelapse.delete_session(self.dir, name)
+        self.assertEqual(ctx.exception.code, 'active')
+        self.assertTrue(os.path.isdir(os.path.join(self.dir, name)))
+        timelapse.close_session(self.dir)
+        timelapse.delete_session(self.dir, name)
+
+    def test_names_that_are_not_sessions_are_refused(self):
+        self.put_frames(None, 1)
+        for bad in ('../x', 'session_x', 'timelapse_00-00-00-000.jpg', '', None,
+                    'session_20260101-000000/..'):
+            with self.assertRaises(timelapse.SessionError, msg=repr(bad)) as ctx:
+                timelapse.delete_session(self.dir, bad)
+            self.assertEqual(ctx.exception.code, 'bad_name')
+        self.assertEqual(len(timelapse.list_frames(self.dir)), 1)
+
+    def test_unknown_and_file_sessions_are_not_found(self):
+        with open(os.path.join(self.dir, 'session_20260102-000000'), 'w'):
+            pass
+        for name in ('session_20260101-000000', 'session_20260102-000000'):
+            with self.assertRaises(timelapse.SessionError) as ctx:
+                timelapse.delete_session(self.dir, name)
+            self.assertEqual(ctx.exception.code, 'not_found')
+
+    def test_a_symlinked_session_is_never_followed(self):
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        keep = os.path.join(outside.name, 'timelapse_00-00-01-000.jpg')
+        with open(keep, 'wb') as handle:
+            handle.write(b'x')
+        os.symlink(outside.name, os.path.join(self.dir, 'session_20260101-000000'))
+        with self.assertRaises(timelapse.SessionError):
+            timelapse.delete_session(self.dir, 'session_20260101-000000')
+        self.assertTrue(os.path.exists(keep))
+
+    def test_foreign_content_makes_the_whole_call_fail_without_deleting_anything(self):
+        name = self.make()
+        folder = os.path.join(self.dir, name)
+        with open(os.path.join(folder, 'notes.txt'), 'w'):
+            pass
+        with self.assertRaises(timelapse.SessionError) as ctx:
+            timelapse.delete_session(self.dir, name)
+        self.assertEqual(ctx.exception.code, 'unexpected_content')
+        self.assertEqual(len(timelapse.list_frames(folder)), 3)
+
+    def test_a_symlinked_frame_is_foreign_content(self):
+        name = self.make(frames=1)
+        target = os.path.join(self.dir, 'elsewhere.jpg')
+        with open(target, 'wb') as handle:
+            handle.write(b'x')
+        os.symlink(target, os.path.join(self.dir, name, 'timelapse_00-00-09-000.jpg'))
+        with self.assertRaises(timelapse.SessionError):
+            timelapse.delete_session(self.dir, name)
+        self.assertTrue(os.path.exists(target))
+
+    def test_build_running_follows_the_lock_file(self):
+        self.assertFalse(media_library.build_running(self.dir))
+        lock = os.path.join(self.dir, '.timelapse_build.lock')
+        with open(lock, 'w'):
+            pass
+        self.assertTrue(media_library.build_running(self.dir))
+        self.assertFalse(media_library.build_running(self.dir, now=time.time() + 7200))
+
+
 class CatalogTests(Tmp):
     def test_sessions_catalog(self):
         self.put_frames('session_20260101-000000', 3)
@@ -416,6 +516,68 @@ class ApiTests(Tmp):
         # traversal through the session parameter never leaves the media root
         bad = self.call('GET', f'/api/media/frames/{name}', query={'session': '../media'})
         self.assertEqual(bad.status, 404)
+
+    def reauth(self):
+        response = self.app.handle(admin_http.Request(
+            'POST', '/api/reauth', {}, {
+                'Cookie': f'{admin_auth.SESSION_COOKIE_NAME}={self.token}',
+                'X-CSRF-Token': self.csrf, 'Content-Type': 'application/json'},
+            json.dumps({'password': ADMIN_PASSWORD}).encode(), '10.0.0.5', NOW))
+        self.assertEqual(response.status, 200)
+
+    def delete(self, name, body=None):
+        return self.call('DELETE', f'/api/media/sessions/{name}',
+                         body={'confirm': True} if body is None else body)
+
+    def test_delete_needs_the_reauth_window_csrf_and_confirmation(self):
+        anonymous = self.app.handle(admin_http.Request(
+            'DELETE', f'/api/media/sessions/{self.session}', {}, {}, b'', '10.0.0.5', NOW))
+        self.assertEqual(anonymous.status, 401)
+        self.assertIn(self.delete(self.session).status, (401, 403))   # no fresh re-auth
+        self.assertTrue(os.path.isdir(os.path.join(self.media, self.session)))
+        self.reauth()
+        self.assertEqual(self.delete(self.session, body={}).status, 400)
+        self.assertEqual(self.delete(self.session, body={'confirm': 'yes'}).status, 400)
+        self.assertEqual(self.delete(self.session, body={'confirm': True, 'x': 1}).status, 400)
+        self.assertEqual(self.delete(self.session, body={
+            'confirm': True, 'delete_video': 'yes'}).status, 400)
+        self.assertTrue(os.path.isdir(os.path.join(self.media, self.session)))
+
+    def test_delete_removes_the_session_and_reports_the_counts(self):
+        self.reauth()
+        with open(os.path.join(self.media, self.session + '.avi'), 'wb') as handle:
+            handle.write(b'RIFF')
+        response = self.delete(self.session, body={'confirm': True, 'delete_video': True})
+        self.assertEqual(response.status, 200, response.body)
+        body = json.loads(response.body)
+        self.assertEqual((body['frames'], body['video']), (3, True))
+        self.assertFalse(os.path.exists(os.path.join(self.media, self.session)))
+        sessions = json.loads(self.call('GET', '/api/media/sessions').body)['sessions']
+        self.assertEqual(sessions, [])
+        # loose frames survive
+        self.assertEqual(json.loads(self.call('GET', '/api/media/frames').body)['total'], 1)
+
+    def test_delete_refuses_bad_names_unknown_active_and_busy(self):
+        self.reauth()
+        self.assertEqual(self.delete('session_x').status, 400)
+        self.assertEqual(self.delete('session_20990101-000000').status, 404)
+        self.assertEqual(self.delete('timelapse_00-00-09-000.jpg').status, 400)
+        active = timelapse.open_session(self.media, now=1_700_000_000)
+        self.assertEqual(self.delete(active).status, 409)
+        timelapse.close_session(self.media)
+        with open(os.path.join(self.media, '.timelapse_build.lock'), 'w'):
+            pass
+        busy = self.delete(self.session)
+        self.assertEqual(busy.status, 409)
+        self.assertIn('build is running', json.loads(busy.body)['error'])
+        self.assertTrue(os.path.isdir(os.path.join(self.media, self.session)))
+
+    def test_delete_refuses_foreign_content(self):
+        self.reauth()
+        with open(os.path.join(self.media, self.session, 'notes.txt'), 'w'):
+            pass
+        self.assertEqual(self.delete(self.session).status, 422)
+        self.assertEqual(len(os.listdir(os.path.join(self.media, self.session))), 4)
 
     def test_build_with_a_session(self):
         response = self.call('POST', '/api/media/timelapses/build',

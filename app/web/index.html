@@ -409,7 +409,7 @@ G4 S<span data-gpio="dwell">8</span></code></pre>
                 <dd id="timelapse-library-size" class="metric__value">—</dd>
               </div>
             </dl>
-            <p class="field__hint">For bulk export, use the Samba (SMB) share on the emulated SD card. Deletion is not offered here.</p>
+            <p class="field__hint">For bulk export, use the Samba (SMB) share on the emulated SD card. Loose frames and videos cannot be deleted here; a finished print session can.</p>
           </section>
 
           <section class="card" aria-labelledby="timelapse-build-title">
@@ -465,6 +465,14 @@ G4 S<span data-gpio="dwell">8</span></code></pre>
                 <option value="">Loose frames (interval or no session)</option>
               </select>
               <span id="timelapse-session-info" class="field__hint"></span>
+            </div>
+            <div id="timelapse-session-delete" class="field" hidden>
+              <label class="check"><input id="timelapse-session-delete-video" type="checkbox"> Also delete this session&rsquo;s built video</label>
+              <label class="check"><input id="timelapse-session-delete-confirm" type="checkbox"> I understand this permanently deletes the frames of the selected print</label>
+              <div class="form-actions">
+                <button id="timelapse-session-delete-button" class="btn btn--danger" type="button">Delete session</button>
+              </div>
+              <span id="timelapse-session-delete-status" class="field__hint" role="status" aria-live="polite"></span>
             </div>
             <p id="timelapse-frames-empty" class="placeholder__text" hidden>No frames stored yet.</p>
             <div id="timelapse-frames-grid" class="media-grid"></div>

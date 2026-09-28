@@ -775,9 +775,28 @@ const TESTS = [
       await waitForText(page.locator('#timelapse-build-status'), 'Build complete', 12000);
       assertEqual((await counters(request, base)).build_session, 1, 'the session was built');
 
+      // Loose frames offer no delete; a session does, behind an acknowledgement and re-auth.
       await page.locator('#timelapse-session').selectOption('');
       await page.waitForFunction(
         () => document.querySelectorAll('#timelapse-frames-grid figure').length === 12);
+      assertEqual(await page.locator('#timelapse-session-delete').isVisible(), false, 'no delete for loose frames');
+
+      await page.locator('#timelapse-session').selectOption('session_20260101-000000');
+      await waitForVisible(page.locator('#timelapse-session-delete'));
+      await page.locator('#timelapse-session-delete-button').click();
+      await waitForText(page.locator('#timelapse-session-delete-status'), 'acknowledgement');
+      assertEqual(await page.locator('#timelapse-session option').count(), 3, 'nothing deleted without acknowledgement');
+
+      await page.locator('#timelapse-session-delete-confirm').check();
+      await page.locator('#timelapse-session-delete-button').click();
+      await completeReauth(page);
+      await waitForText(page.locator('#timelapse-session-delete-status'), 'Deleted session_20260101-000000: 3 frames');
+      await page.waitForFunction(
+        () => document.querySelectorAll('#timelapse-session option').length === 2);
+      assertEqual(await page.locator('#timelapse-session').inputValue(), '', 'selection falls back to loose frames');
+      await page.waitForFunction(
+        () => document.querySelectorAll('#timelapse-frames-grid figure').length === 12);
+      assertEqual(await page.locator('#timelapse-session-delete').isVisible(), false, 'delete hidden again');
 
       // Synchronized clock: the warning disappears on the next visit.
       await setScenario(request, base, { clock: 'synced' });
