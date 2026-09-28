@@ -81,17 +81,20 @@ jobs:
           py=()
           other=()
           for f in "${changed[@]}"; do
-            # tests/ and docs/ carry intentional synthetic/example fixtures;
-            # scan-secrets.sh defines the patterns and image/README.md
-            # documents them (the AC-35 self-match waiver), so neither is content.
+            # Test directories, fixtures and docs (including archived docs)
+            # carry intentional synthetic/example values; scan-secrets.sh
+            # defines the patterns and image/README.md documents them, so
+            # neither is content.
             case "$f" in
-              tests/* | docs/* | image/scripts/scan-secrets.sh | image/README.md) continue ;;
+              tests/* | */tests/* | */fixtures/* | docs/* | _archive/docs/* \
+                | image/scripts/scan-secrets.sh | image/README.md) continue ;;
             esac
             [ -f "$f" ] || continue
-            # Program source (Python, Rust) uses the high-signal source-tree
-            # mode; variables named token/password are code, not secrets.
+            # Program source and schemas (Python, Rust, protobuf) use the
+            # high-signal source-tree mode; fields named token/password are
+            # code, not secrets.
             case "$f" in
-              *.py | *.rs) py+=("$f") ;;
+              *.py | *.rs | *.proto) py+=("$f") ;;
               *) other+=("$f") ;;
             esac
           done

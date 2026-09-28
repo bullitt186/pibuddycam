@@ -69,8 +69,8 @@ Keeping CI green:
 - **Required files.** A file the build or tests need must be tracked, with a `.gitignore`
   negation if a pattern like `*.png` would exclude it. Add it to the required-files list in
   `tests/image/test_image_scaffolding.py`.
-- **Secret scan.** The scan uses source mode for `.py`/`.rs` files and artifact mode for
-  everything else; `tests/` and `docs/` are excluded. Names like `token=…` or `password=…` in
+- **Secret scan.** The scan uses source mode for `.py`/`.rs`/`.proto` files and artifact mode for
+  everything else. Test directories, fixtures and docs (including `_archive/docs/`) are excluded. Names like `token=…` or `password=…` in
   shell or YAML trip it, so pick neutral variable names. Placeholders use `<PLACEHOLDER>` form.
 
 Releases are built by `.github/workflows/release.yml` on a native arm64 runner. See

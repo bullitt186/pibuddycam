@@ -25,14 +25,14 @@ mod tests {
     fn trigger_round_trips() {
         let msg = Trigger {
             field1: 1,
-            token: "I47hvQfXx6SOPWD4bO00".to_string(),
+            token: "SYNTHETICTOKEN00000A".to_string(),
             ..Default::default()
         };
         let mut buf = Vec::new();
         msg.encode(&mut buf).unwrap();
         let decoded = Trigger::decode(buf.as_slice()).unwrap();
         assert_eq!(decoded.field1, 1);
-        assert_eq!(decoded.token, "I47hvQfXx6SOPWD4bO00");
+        assert_eq!(decoded.token, "SYNTHETICTOKEN00000A");
     }
 
     #[test]
@@ -83,7 +83,7 @@ mod tests {
 
     // Verify that a real captured Trigger 1 wire frame decodes correctly.
     // Wire bytes: 08 01 5a 14 <20 bytes of token>
-    // f1=varint(1), f11=string("I47hvQfXx6SOPWD4bO00")
+    // f1=varint(1), f11=string("SYNTHETICTOKEN00000A")
     #[test]
     fn trigger_decode_real_wire() {
         let wire: &[u8] = &[
@@ -94,14 +94,14 @@ mod tests {
         ];
         let decoded = Trigger::decode(wire).unwrap();
         assert_eq!(decoded.field1, 1);
-        assert_eq!(decoded.token, "I47hvQfXx6SOPWD4bO00");
+        assert_eq!(decoded.token, "SYNTHETICTOKEN00000A");
     }
 
     // Verify ClientAuthentication top-level field numbers using real captured prefix.
     // Wire starts: 0a 14 [20-byte token] 12 06 "client" 1a ...
     #[test]
     fn client_auth_decode_real_prefix() {
-        let token = b"I47hvQfXx6SOPWD4bO00";
+        let token = b"SYNTHETICTOKEN00000A";
         let kind = b"client";
         let mut wire = Vec::new();
         wire.push(0x0a);
@@ -111,7 +111,7 @@ mod tests {
         wire.push(kind.len() as u8);
         wire.extend_from_slice(kind);
         let decoded = ClientAuthentication::decode(wire.as_slice()).unwrap();
-        assert_eq!(decoded.token, "I47hvQfXx6SOPWD4bO00");
+        assert_eq!(decoded.token, "SYNTHETICTOKEN00000A");
         assert_eq!(decoded.client_kind, "client");
     }
 }

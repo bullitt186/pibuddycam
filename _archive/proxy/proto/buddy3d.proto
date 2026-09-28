@@ -20,7 +20,7 @@ package buddy3d;
 //   12 06  "client"
 //   1a 88 06  [JWT, ~1050 bytes]
 message ClientAuthentication {
-  string token       = 1;  // 20-char session token, e.g. "I47hvQfXx6SOPWD4bO00"
+  string token       = 1;  // 20-char session token, e.g. "SYNTHETICTOKEN00000A"
   string client_kind = 2;  // literal "client" in observed captures
   string access_jwt  = 3;  // Bearer JWT for Prusa Connect auth
 }

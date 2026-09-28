@@ -8,7 +8,7 @@
 ///    1a 88 06  \[JWT, ~1050 bytes\]
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ClientAuthentication {
-    /// 20-char session token, e.g. "I47hvQfXx6SOPWD4bO00"
+    /// 20-char session token, e.g. "SYNTHETICTOKEN00000A"
     #[prost(string, tag = "1")]
     pub token: ::prost::alloc::string::String,
     /// literal "client" in observed captures

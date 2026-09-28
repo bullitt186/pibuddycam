@@ -77,7 +77,7 @@ pub fn encode_varint(buf: &mut Vec<u8>, mut value: u64) {
 mod tests {
     use super::*;
 
-    const TOKEN: &str = "I47hvQfXx6SOPWD4bO00";
+    const TOKEN: &str = "SYNTHETICTOKEN00000A";
 
     #[test]
     fn restart_camera_matches_captured_payload() {

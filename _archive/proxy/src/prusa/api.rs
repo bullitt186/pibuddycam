@@ -174,7 +174,7 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/app/printers/u1/cameras"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "cameras": [{"id": 380125, "name": "Front", "token": "I47hvQfXx6SOPWD4bO00"}],
+                "cameras": [{"id": 100001, "name": "Front", "token": "SYNTHETICTOKEN00000A"}],
             })))
             .mount(&server)
             .await;
@@ -182,8 +182,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(cameras.len(), 1);
-        assert_eq!(cameras[0].id, 380125);
-        assert_eq!(cameras[0].token, "I47hvQfXx6SOPWD4bO00");
+        assert_eq!(cameras[0].id, 100001);
+        assert_eq!(cameras[0].token, "SYNTHETICTOKEN00000A");
     }
 
     #[tokio::test]
