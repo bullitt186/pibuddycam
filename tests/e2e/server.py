@@ -52,6 +52,9 @@ E2E_ADMIN_HASH = admin_auth.hash_password(E2E_ADMIN_PASSWORD)
 #: Synthetic Prusa server host (``.invalid`` is reserved and never resolves).
 E2E_PRUSA_SERVER = 'connect.e2e.invalid'
 
+#: The safe BCM pins offered by the GPIO trigger (see gpio_pins.SAFE_PINS).
+E2E_SAFE_PINS = (4, 5, 6, 12, 13, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27)
+
 #: Number of synthetic videos/frames; large enough to paginate.
 E2E_VIDEO_COUNT = 14
 E2E_FRAME_COUNT = 14
@@ -90,6 +93,9 @@ class FakeRuntime:
             'timelapse_enabled': True,
             'timelapse_interval': 30,
             'timelapse_fps': 10,
+            'timelapse_trigger': 'interval',
+            'timelapse_gpio_pin': None,
+            'timelapse_gpio_record_pin': None,
             'rtsp_mode': 2,               # enabled
             'webrtc_mode': 1,             # enabled
         }
@@ -98,6 +104,8 @@ class FakeRuntime:
             'settings': 0, 'mqtt_test': 0, 'mqtt_test_stored_password': 0,
             'reboot': 0, 'ssh': 0, 'recovery': 0, 'reset': 0,
             'update_check': 0, 'update_install': 0, 'build_busy': 0,
+            'network_apply': 0, 'network_psk_seen': 0, 'hostname': 0, 'ntp': 0,
+            'build_session': 0,
         }
         self.scenarios = {
             'live': 'live',            # live | stale
@@ -105,6 +113,9 @@ class FakeRuntime:
             'mqtt_test': 'ok',         # ok | fail
             'update_check': 'ok',      # ok | busy
             'update_install': 'ok',    # ok | busy
+            'network': 'ok',           # ok | revert | old_image
+            'gpio': 'ok',              # ok | error
+            'clock': 'synced',         # synced | unsynced
         }
 
     # -- settings ---------------------------------------------------------- #
@@ -159,6 +170,32 @@ class FakeRuntime:
             if value not in names:
                 return self._reject('unknown WebRTC mode')
             settings['webrtc_mode'] = names[value]
+        elif field == 'timelapse_trigger':
+            if value not in ('interval', 'gpio'):
+                return self._reject('timelapse trigger must be interval or gpio')
+            if value == 'gpio' and settings['timelapse_gpio_pin'] is None:
+                return self._reject('choose a layer pin before using the GPIO trigger')
+            settings['timelapse_trigger'] = value
+        elif field == 'timelapse_gpio_pin':
+            if value is None:
+                if settings['timelapse_trigger'] == 'gpio':
+                    return self._reject('switch the trigger back to interval first')
+                settings['timelapse_gpio_pin'] = None
+            elif type(value) is not int or value not in E2E_SAFE_PINS \
+                    or value == settings['timelapse_gpio_record_pin']:
+                return self._reject(
+                    'GPIO pin is not offered or is already the recording pin')
+            else:
+                settings['timelapse_gpio_pin'] = value
+        elif field == 'timelapse_gpio_record_pin':
+            if value is None:
+                settings['timelapse_gpio_record_pin'] = None
+            elif type(value) is not int or value not in E2E_SAFE_PINS \
+                    or value == settings['timelapse_gpio_pin']:
+                return self._reject(
+                    'GPIO pin is not offered or is already the layer pin')
+            else:
+                settings['timelapse_gpio_record_pin'] = value
         else:
             return self._reject('setting field is not supported')
         return {
@@ -197,6 +234,26 @@ class FakeRuntime:
             },
             'version': {'release': '1.2.3-e2e', 'application': '1.2.3'},
             'settings': dict(s),
+            'timelapse_gpio': self._gpio_status(),
+        }
+
+    def _gpio_status(self):
+        s = self.settings
+        armed = s['timelapse_trigger'] == 'gpio'
+        error = ''
+        if armed and self.scenarios['gpio'] == 'error':
+            armed = False
+            error = 'permission denied (needs the gpio group and udev rule; new image)'
+        return {
+            'armed': armed, 'error': error, 'trigger': s['timelapse_trigger'],
+            'shot_pin': s['timelapse_gpio_pin'] if armed else None,
+            'record_pin': s['timelapse_gpio_record_pin'] if armed else None,
+            'last_trigger_at': 1_767_225_600.0 if armed else None,
+            'latency_seconds': 4.2 if armed else None,
+            'triggers': 3 if armed else 0, 'ignored': 0,
+            'recording': bool(armed and s['timelapse_gpio_record_pin'] is not None),
+            'session': 'session_20260101-000000' if armed
+            and s['timelapse_gpio_record_pin'] is not None else None,
         }
 
 
@@ -241,7 +298,9 @@ class FakeBuildManager:
         self.job_id = 'e2e' + '0' * 29
         self.polls = 0
 
-    def start(self, fps=10, width=None, height=None):
+    def start(self, fps=10, width=None, height=None, session=None):
+        if session:
+            self.runtime.counters['build_session'] += 1
         mode = self.runtime.scenarios['build']
         if mode == 'busy':
             self.runtime.counters['build_busy'] += 1
@@ -408,6 +467,108 @@ class FakeFactoryReset:
         return FakeResetReport()
 
 
+class FakeNetwork:
+    """Deterministic stand-in for ``network_settings.NetworkController``.
+
+    ``apply`` answers 202 like the real controller; the next two status reads
+    then report ``applying`` and finally the scenario outcome (``ok`` applies,
+    ``revert`` reports the automatic revert), so the UI's polling path is
+    exercised without a radio or a root unit.
+    """
+
+    def __init__(self, runtime):
+        self.runtime = runtime
+        self.clock = 1000
+        self.pending = False
+        self.polls = 0
+        self.result = None
+        self.link = {
+            'connected': True, 'ssid': 'E2E-WiFi', 'address': '192.0.2.10',
+            'prefix': 24, 'gateway': '192.0.2.1', 'dns': ['192.0.2.1'],
+            'ipv4': {'method': 'auto'},
+        }
+        self.hostname = 'pibuddycam-e2e'
+        self.ntp_servers = []
+        self.scanned = 0
+
+    def _tick(self):
+        self.clock += 1
+        return self.clock
+
+    def current_address(self):
+        return self.link['address']
+
+    def status(self):
+        if self.pending:
+            self.polls += 1
+            if self.polls == 1:
+                self.result = {'state': 'applying', 'reason': '',
+                               'updated_at': self._tick()}
+            else:
+                self.pending = False
+                if self.runtime.scenarios['network'] == 'revert':
+                    self.result = {'state': 'reverted', 'reason': 'gateway unreachable',
+                                   'updated_at': self._tick()}
+                else:
+                    self.link = dict(self.link, **self.next_link)
+                    self.result = {'state': 'applied', 'reason': '',
+                                   'updated_at': self._tick()}
+        synced = self.runtime.scenarios['clock'] == 'synced'
+        return {
+            'link': dict(self.link),
+            'hostname': self.hostname,
+            'ntp_servers': list(self.ntp_servers),
+            'psk_set': True,
+            'time': {'synchronized': synced,
+                     'server': 'time.e2e.invalid' if synced else '', 'now': 1_767_225_600},
+            'result': self.result,
+            'busy': self.pending,
+        }
+
+    def scan(self):
+        self.scanned += 1
+        if self.scanned == 1:
+            return 200, {'scanning': True, 'networks': []}
+        return 200, {'scanning': False, 'networks': [
+            {'ssid': 'E2E-WiFi', 'signal': 81, 'secured': True},
+            {'ssid': 'E2E-Guest', 'signal': 44, 'secured': False},
+        ]}
+
+    def apply(self, request):
+        counters = self.runtime.counters
+        counters['network_apply'] += 1
+        if request.get('psk'):
+            counters['network_psk_seen'] += 1
+        if self.runtime.scenarios['network'] == 'old_image':
+            return 501, {'error': 'network changes need a newer image'}
+        if self.pending:
+            return 409, {'error': 'a network change is already in progress'}
+        self.pending = True
+        self.polls = 0
+        manual = request['ipv4_method'] == 'manual'
+        self.next_link = {
+            'ssid': request['ssid'],
+            'address': request.get('address', '192.0.2.10'),
+            'prefix': request.get('prefix', 24),
+            'gateway': request.get('gateway', '192.0.2.1'),
+            'ipv4': {'method': 'manual', 'address': request['address'],
+                     'prefix': request['prefix'], 'gateway': request['gateway'],
+                     'dns': request.get('dns', [])} if manual else {'method': 'auto'},
+        }
+        return 202, {'accepted': True,
+                     'expected_address': request.get('address', '')}
+
+    def set_hostname(self, name):
+        self.runtime.counters['hostname'] += 1
+        self.hostname = name
+        return 200, {'ok': True, 'hostname': name, 'reboot_recommended': True}
+
+    def set_ntp_servers(self, servers):
+        self.runtime.counters['ntp'] += 1
+        self.ntp_servers = list(servers)
+        return 200, {'ok': True, 'ntp_servers': list(servers), 'applied': True}
+
+
 class Environment:
     """One synthetic temp tree plus the app/fakes bound to it."""
 
@@ -456,6 +617,13 @@ class Environment:
         for index in range(E2E_FRAME_COUNT):
             name = f'timelapse_00-{index // 60:02d}-{index % 60:02d}-000.jpg'
             (self.media_dir / name).write_bytes(_jpeg(8 + index, 8 + index))
+        # Two per-print sessions (frames only; the video count stays unchanged).
+        for session, count in (('session_20260101-000000', 3),
+                               ('session_20260102-000000', 2)):
+            folder = self.media_dir / session
+            folder.mkdir()
+            for index in range(count):
+                (folder / f'timelapse_01-00-{index:02d}-000.jpg').write_bytes(_jpeg())
 
     def _build_app(self):
         self.live_monitor = FakeLiveMonitor(self.runtime)
@@ -465,6 +633,7 @@ class Environment:
         self.reboot = FakeReboot(self.runtime)
         self.ssh_runner = FakeSshRunner(self.runtime)
         self.factory_reset = FakeFactoryReset(self.runtime)
+        self.network = FakeNetwork(self.runtime)
         return admin_http.AdminApp(
             mode='admin',
             admin_hash=E2E_ADMIN_HASH,
@@ -491,6 +660,7 @@ class Environment:
             },
             application_version_fn=lambda: '1.2.3',
             hostname_fn=lambda: 'pibuddycam-e2e',
+            network_controller=self.network,
         )
 
     def _mqtt_probe(self, config):

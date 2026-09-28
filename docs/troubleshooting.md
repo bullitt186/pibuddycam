@@ -34,6 +34,26 @@ Logs live in RAM. For problems that happen **before a reboot or during boot**, l
 - Check the password and that the network hands out DHCP addresses and working DNS.
 - Enter hidden networks manually.
 
+**I changed the network and lost the camera.**
+- The camera reverts to the old settings on its own if the new ones do not come up (about a
+  minute). If that also fails it starts the setup hotspot `PiBuddyCam-Setup-<id>`; join it and
+  re-run setup or use [recovery](user-guide.md#recovery-and-factory-reset).
+- After a successful change to a new static address, reconnect at the address the console showed.
+  A wrong prefix length or gateway is the usual cause of an automatic revert.
+- The Network card says *needs a newer camera image* on an image older than the release after
+  1.4.0; reflash to use it.
+
+**`http://<address>` used to show plain text.** It now redirects to `https://<address>/admin`.
+If it still shows only `PiBuddyCam`, the request had no usable `Host` header; open the `https`
+address directly.
+
+**Wrong timestamps, or the console warns the clock is not synchronized.**
+- The camera has no clock chip; time comes from NTP once Wi-Fi is up. Check that the network
+  allows outbound NTP (UDP 123), or set your own time server under System, Network, *Time servers*.
+- Until the first sync, frame and session names, logs and a freshly generated certificate can
+  carry an old date. The last known time is kept across reboots, so this mostly affects the first
+  boot.
+
 **The token is rejected.**
 - Get a fresh token from Prusa Connect. The wizard keeps your last working credentials.
 
@@ -68,6 +88,26 @@ verified on all hardware yet. See [hardware](hardware.md#camera-and-rotation). S
 **Home Assistant doesn't find the camera.**
 - Discovery needs multicast on the same network segment. Otherwise add the ONVIF integration
   manually with the device IP and port 80 (see [integrations](integrations.md#home-assistant-onvif)).
+
+## Timelapse GPIO trigger
+
+**Status says *permission denied*.** The image is older than the release that adds the `gpio`
+group and udev rule. Reflash.
+
+**Status says *no GPIO chip found* or *line is busy*.** Another program holds the pin, or the
+device is not a Pi with the `pinctrl-bcm2835` controller. `gpioinfo` (package `gpiod`) shows the
+holder.
+
+**Armed but no frames.** Check the wiring (OUT0 to the layer pin, Hackerboard GND to a Pi ground
+pin), that `M262 P0 B0` runs in the Start G-code, and that timelapse capture is enabled. A pulse
+inside one second of the previous one, or while capture is disabled, is ignored on purpose.
+
+**The frame shows the wrong layer.** The dwell in the layer-change G-code is shorter than the
+pulse-to-frame time shown in the console. Increase it.
+
+**No video after a print.** The recording pin must be released (the End G-code
+`M264 P1 B0`) for the session to close and build. A session with no frames is closed without a
+build. Builds run one at a time; a second one waits.
 
 ## MQTT
 

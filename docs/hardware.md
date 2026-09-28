@@ -20,6 +20,31 @@ tmpfs (`/var`, `/etc/pibuddycam`), so a power cut can't corrupt the system. The 
 service ordering and build are in [`image/README.md`](../image/README.md). What lives on `/data` is
 in the [user guide](user-guide.md#your-data).
 
+## GPIO header
+
+The timelapse [GPIO trigger](user-guide.md#timelapse-gpio-trigger-prusa-gpio-hackerboard) reads
+the 40-pin header through the kernel's GPIO character device (`/dev/gpiochip*`, uAPI v2), with
+the internal pull-up enabled and a falling edge as the event.
+
+**Electrical reasoning.** A Prusa GPIO Hackerboard output is open-drain: when active it connects
+the pin to ground, otherwise it floats. OUT0–OUT3 switch up to 24 V / 500 mA to ground; OUT4–OUT7
+are 3.3 V logic. An input with a pull-up to 3.3 V therefore reads any of them directly. The only
+wires are `OUTn` to the Pi GPIO and Hackerboard GND to a Pi ground pin. Never put a printer
+voltage on the Pi.
+
+**Offered pins** (BCM number, header pin, nearest ground pin): GPIO4 (7, 9), 5 (29, 30),
+6 (31, 30), 12 (32, 34), 13 (33, 34), 16 (36, 34), 17 (11, 9), 18 (12, 14), 19 (35, 34),
+20 (38, 39), 21 (40, 39), 22 (15, 14), 23 (16, 14), 24 (18, 20), 25 (22, 20), 26 (37, 39),
+27 (13, 14). The suggested defaults are GPIO17 for the layer pulse and GPIO27 for the recording
+pin.
+
+**Never offered:** GPIO0/1 (HAT ID EEPROM), GPIO2/3 (I2C1 with fixed 1.8 kΩ pull-ups), GPIO7–11
+(SPI0) and GPIO14/15 (UART console).
+
+**Access.** The `pibuddycam` account needs the `gpio` group and a udev rule
+(`image/assets/udev/60-pibuddycam-gpio.rules`); both ship with the image. **[assumption]** The
+chip label on a Pi Zero 2 W is `pinctrl-bcm2835`; verify with `gpioinfo` on a device.
+
 ## Camera and rotation
 
 - **Sensor:** the OV5647 (Pi Camera v1) is tested. Other libcamera sensors are expected to work

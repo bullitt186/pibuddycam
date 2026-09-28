@@ -75,6 +75,9 @@ A rejected token returns you to the wizard without overwriting working credentia
   [user guide](user-guide.md).
 - **Home Assistant, RTSP, ONVIF, MQTT:** see [integrations](integrations.md).
 
+The Wi-Fi network, IP address (DHCP or static), hostname and time servers can be changed later in
+the console under System, Network, so the wizard does not need to be re-run.
+
 Updates arrive over the air from this project's GitHub releases and are only installed when you
 approve them. See [user guide: updates](user-guide.md#updates).
 

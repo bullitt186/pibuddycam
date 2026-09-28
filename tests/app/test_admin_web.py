@@ -677,6 +677,97 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
         self.assertIn("form.dataset.setting", body)
         self.assertIn('if (!field) return', body)
 
+    def test_camera_view_has_the_gpio_trigger_form_without_a_data_setting(self):
+        # It writes three fields in a safe order, so it owns its submit handler and
+        # must not be routed through the single-field settings handler.
+        self.assertIn('id="timelapse-gpio-form"', self.html)
+        form = self.html.split('id="timelapse-gpio-form"', 1)[1].split('</form>', 1)[0]
+        self.assertNotIn('data-setting', form.split('>', 1)[0])
+        for element in ('timelapse-trigger', 'timelapse-gpio-pin',
+                        'timelapse-gpio-record-pin', 'timelapse-gpio-status',
+                        'gpio-help'):
+            self.assertIn(f'id="{element}"', form, element)
+        code = _strip_js_comments(self.js)
+        self.assertIn("'/api/gpio/pins'", code)
+        self.assertIn('submitGpioForm', code)
+        self.assertIn("'timelapse_gpio_record_pin'", code)
+
+    def test_gpio_help_panel_has_the_printer_gcode_and_safety_warnings(self):
+        panel = self.html.split('id="gpio-help"', 1)[1].split('</details>', 1)[0]
+        for text in ('OUT0', 'M262 P0 B0', 'M264 P0 B1', 'G4 P100', 'M264 P0 B0',
+                     'M264 P1 B1', 'G4 P300', 'travel_speed*60', 'Never connect a printer voltage',
+                     'internal pull-up'):
+            self.assertIn(text, panel, text)
+        self.assertNotIn('<script', panel)
+
+    def test_gpio_saves_are_ordered_to_never_pass_through_an_invalid_state(self):
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'submitGpioForm')
+        # Going to the timer: the trigger is switched first. Going to GPIO: the
+        # recording pin is cleared before the layer pin moves, and the trigger is
+        # switched to gpio last.
+        interval_branch, gpio_branch = body.split('} else {', 1)
+        self.assertIn("['timelapse_trigger', 'interval']", interval_branch)
+        order = [
+            gpio_branch.index("['timelapse_gpio_record_pin', null]"),
+            gpio_branch.index("['timelapse_gpio_pin', shot]"),
+            gpio_branch.index("['timelapse_trigger', 'gpio']"),
+        ]
+        self.assertEqual(order, sorted(order))
+        self.assertIn('must differ', body)
+
+    def test_network_card_exists_and_its_password_field_is_write_only(self):
+        self.assertIn('id="network-card"', self.html)
+        for element in ('network-ssid', 'network-psk', 'network-static',
+                        'network-hostname-form', 'network-ntp-form', 'network-scan',
+                        'network-result'):
+            self.assertIn(f'id="{element}"', self.html, element)
+        psk = self.html.split('id="network-psk"', 1)[1].split('>', 1)[0]
+        self.assertIn('type="password"', psk)
+        self.assertIn('autocomplete="new-password"', psk)
+        self.assertNotIn('value=', psk)
+        code = _strip_js_comments(self.js)
+        # the stored password is never read back into the form
+        self.assertIsNone(re.search(r'data\.psk(?!_set)', code))
+        self.assertIn('psk_set', code)
+
+    def test_network_changes_reauthenticate_before_the_put(self):
+        code = _strip_js_comments(self.js)
+        for name, url in (('submitNetwork', '/api/network'),
+                          ('submitHostname', '/api/network/hostname')):
+            body = _function_body(code, name)
+            self.assertIn('await requestReauth()', body, name)
+            self.assertLess(body.index('await requestReauth()'),
+                            body.index(f"request('{url}'"), name)
+        self.assertIn('confirm: true', _function_body(code, 'submitNetwork'))
+
+    def test_network_apply_polls_and_ignores_a_stale_result(self):
+        code = _strip_js_comments(self.js)
+        body = _function_body(code, 'pollNetworkApply')
+        self.assertIn('netUi.baseline', body)
+        self.assertIn("'reverted'", body)
+        self.assertIn("'hotspot'", body)
+        self.assertIn('NETWORK_POLL_MAX', body)
+
+    def test_timelapses_view_has_the_session_picker_and_clock_warning(self):
+        for element in ('timelapse-session', 'timelapse-clock-warning'):
+            self.assertIn(f'id="{element}"', self.html, element)
+        code = _strip_js_comments(self.js)
+        self.assertIn("'/api/media/sessions'", code)
+        self.assertIn("params.set('session'", code)
+        self.assertIn('buildBody', code)
+
+    def test_new_routes_are_declared_in_the_core(self):
+        routes = {(route.method, route.pattern.pattern)
+                  for route in admin_http.AdminApp()._routes}
+        for method, pattern in (
+            ('GET', r'^/api/network$'), ('PUT', r'^/api/network$'),
+            ('GET', r'^/api/network/scan$'), ('PUT', r'^/api/network/hostname$'),
+            ('PUT', r'^/api/network/ntp$'), ('GET', r'^/api/gpio/pins$'),
+            ('GET', r'^/api/media/sessions$'),
+        ):
+            self.assertIn((method, pattern), routes)
+
     def test_js_refresh_converges_with_dashboard_settings(self):
         code = _strip_js_comments(self.js)
         self.assertIn('applySettings(data.settings)', code)

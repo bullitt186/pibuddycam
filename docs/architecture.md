@@ -36,6 +36,7 @@ reader never stalls the others.
 | `pibuddycam-provisioning` | `admin_app.py` (setup mode) | Setup hotspot and wizard; runs only while unclaimed |
 | `pi-persist` | `persist_restore.py` | Boot-time restore of `/data` state into tmpfs (`quality.env`, `rotation.env`, RTSP mode, admin TLS) and the Samba bind mount |
 | `pibuddycam-updater` / `-install` | `updater_install.py` | Daily report-only check, and the approved install with rollback |
+| `pibuddycam-network-apply` | `network_apply.py` | Root oneshot started only by the helper: applies a console network change with automatic revert |
 | `pibuddycam-boot-mode`, `-data-grow`, `-data-ready` | image helpers | Choose setup vs. camera runtime; grow and verify `/data` |
 
 The units in `app/systemd/` are installed verbatim by the image. The image-only units, the
@@ -86,10 +87,72 @@ narrow sudoers rule. Its verbs:
 | Group | Verbs |
 |---|---|
 | Services | `start-camera`, `stop-provisioning`, `rtsp-start`, `rtsp-stop`, `quality-restart` |
-| Network | `hotspot-start`, `hotspot-stop`, `wifi-station-apply` |
+| Network | `hotspot-start`, `hotspot-stop`, `wifi-station-apply`, `network-apply`, `hostname-apply`, `wifi-scan` |
+| Time | `ntp-apply` |
 | Updates and power | `check-update`, `install-update`, `reboot` |
 
-No argument or command can be passed through from the browser, MQTT or Connect.
+No argument or command can be passed through from the browser, MQTT or Connect. Two verbs take
+input, and both re-validate it as root: `hostname-apply <label>` accepts only an RFC 1123 label,
+and `network-apply` reads a size-limited JSON request from **stdin** (it can carry the new Wi-Fi
+PSK, so it never appears in argv or a log) into a root-only file that `network_apply.py` deletes
+as soon as it has read it.
+
+## Network changes
+
+`PUT /api/network` (fresh re-authentication, CSRF and an explicit confirmation) validates the
+request in `network_settings.py` and calls `network-apply`, which starts the root oneshot
+`pibuddycam-network-apply.service` with `--no-block`. The unit has no `[Install]` section, so an
+admin restart or a dropped HTTP connection cannot interrupt the transaction. `network_apply.py`:
+
+1. snapshots the stored `pibuddycam-station` keyfile;
+2. applies the new profile (`wifi_station.apply`, DHCP or static IPv4; the PSK goes only through
+   a `0600` passwd-file, an empty PSK on an unchanged SSID keeps the stored key);
+3. waits up to about 60 s for an activated link with an address and a default route (a static
+   profile must also reach its gateway);
+4. on failure restores the snapshot and re-activates it, and as a last resort starts the setup
+   hotspot;
+5. writes a secret-free `network-result.json` (`applying`, `applied`, `reverted` or `hotspot`).
+
+The console answers 202 and polls `GET /api/network`; the PSK is saved to `secrets.toml` only
+after the result is `applied`. Reads (`nmcli`, `timedatectl`) are unprivileged **[assumption]:
+the service account can read the non-secret connection settings; verify on a device**.
+
+The hostname is stored in `device.toml [admin].hostname`; `persist_restore.py` re-applies it at
+boot before the admin certificate is provisioned, and `admin_tls.ensure` regenerates the
+certificate when the names change.
+
+## Time sync
+
+There is no RTC. `systemd-timesyncd` (default Debian pool) sets the clock once the network is
+up. Servers are resolved as: `device.toml [network] ntp_servers`, then DHCP option 42, then the
+default pool. `ntp_apply.py` (root) writes `/run/systemd/timesyncd.conf.d/50-pibuddycam.conf` and
+restarts timesyncd only when the content changed. Triggers: the `ntp-apply` verb after the
+console saves the setting, a NetworkManager dispatcher script
+(`/etc/NetworkManager/dispatcher.d/50-pibuddycam-ntp`, which passes only validated hostname or
+IPv4 tokens from `DHCP4_NTP_SERVERS`; timesyncd learns per-link servers only from
+systemd-networkd, so option 42 would otherwise be ignored under NetworkManager), and
+`persist_restore.py` at boot. **[assumption]** NetworkManager's internal DHCP client requests
+option 42 and exports it to dispatcher scripts; verify on a device.
+
+`persist_restore.py` bind-mounts `/data/pibuddycam/timesync` onto timesyncd's state directory
+(resolved through the `/var/lib/private` symlink if present) and restarts timesyncd, so the last
+known time survives a reboot. There is deliberately no `After=pi-persist.service` drop-in on
+timesyncd: timesyncd runs before `sysinit.target` and `pi-persist.service` after it, which would
+be a dependency cycle. The console shows the sync state; session names never collide on a stale
+clock.
+
+## GPIO timelapse trigger
+
+`gpio_trigger.py` (stdlib only) requests the layer pin and the optional recording pin as inputs
+with pull-up in one GPIO uAPI v2 line request and reads edge events from the event loop. It ignores
+pulses less than 1 s apart and everything while the timelapse is disabled. The recording pin opens
+and closes per-print session folders (`session_<stamp>` with an `.active_session` marker); the
+closed session is queued in the serialized `media_build.BuildManager`, which retries a build that
+finds it busy. `camera.capture_jpeg_after` skips the multiplexer's cached bootstrap keyframe and
+returns the first live frame newer than the pulse. The settings (`timelapse_trigger`,
+`timelapse_gpio_pin`, `timelapse_gpio_record_pin`) go through the settings coordinator like every
+other setting; its apply hook re-arms or releases the lines. Errors (no chip, permission, busy
+line) are reported as status, never raised. The safe pin list is `gpio_pins.py`.
 
 ## Robustness
 

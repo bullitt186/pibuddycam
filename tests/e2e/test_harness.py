@@ -176,6 +176,57 @@ class E2EHarnessTests(unittest.TestCase):
                      'update_check', 'update_install'):
             self.assertEqual(counters[name], 0, name)
 
+    def test_network_gpio_and_session_fakes_follow_the_real_contracts(self):
+        client = self.login()
+        status, _h, pins = client.json('GET', '/api/gpio/pins')
+        self.assertEqual(status, 200)
+        self.assertIn(17, [pin['bcm'] for pin in pins['pins']])
+        self.assertFalse(set(range(0, 4)) & {pin['bcm'] for pin in pins['pins']})
+        self.assertFalse(pins['status']['armed'])
+
+        # GPIO trigger: the coordinator rules the console relies on.
+        def patch(field, value):
+            return client.json('PATCH', '/api/settings',
+                               body={'field': field, 'value': value}, csrf=True)[2]
+
+        self.assertFalse(patch('timelapse_trigger', 'gpio')['ok'])    # no layer pin yet
+        self.assertTrue(patch('timelapse_gpio_pin', 17)['ok'])
+        self.assertFalse(patch('timelapse_gpio_record_pin', 17)['ok'])
+        self.assertTrue(patch('timelapse_gpio_record_pin', 27)['ok'])
+        self.assertTrue(patch('timelapse_trigger', 'gpio')['ok'])
+        self.assertFalse(patch('timelapse_gpio_pin', None)['ok'])
+        status, _h, pins = client.json('GET', '/api/gpio/pins')
+        self.assertTrue(pins['status']['armed'])
+
+        status, _h, sessions = client.json('GET', '/api/media/sessions')
+        self.assertEqual([s['name'] for s in sessions['sessions']],
+                         ['session_20260102-000000', 'session_20260101-000000'])
+        status, _h, frames = client.json(
+            'GET', '/api/media/frames?session=session_20260101-000000')
+        self.assertEqual(frames['total'], 3)
+
+        status, _h, network = client.json('GET', '/api/network')
+        self.assertEqual(network['link']['ssid'], 'E2E-WiFi')
+        self.assertTrue(network['psk_set'])
+        self.assertNotIn('"psk"', json.dumps(network))
+
+    def test_network_apply_needs_the_reauth_window_and_never_echoes_the_psk(self):
+        client = self.login()
+        body = {'ssid': 'Other', 'psk': 'e2e-secret-psk', 'ipv4_method': 'auto',
+                'confirm': True}
+        status, _h, _p = client.call('PUT', '/api/network', body=body, csrf=True)
+        self.assertEqual(status, 403)
+        client.json('POST', '/api/reauth', body={'password': e2e_server.E2E_ADMIN_PASSWORD},
+                    csrf=True)
+        status, _h, payload = client.call('PUT', '/api/network', body=body, csrf=True)
+        self.assertEqual(status, 202)
+        self.assertNotIn(b'e2e-secret-psk', payload)
+        status, _h, first = client.json('GET', '/api/network')
+        self.assertEqual(first['result']['state'], 'applying')
+        status, _h, second = client.json('GET', '/api/network')
+        self.assertEqual(second['result']['state'], 'applied')
+        self.assertEqual(second['link']['ssid'], 'Other')
+
     def test_reset_restores_pristine_state(self):
         client = self.login()
         client.json('PATCH', '/api/settings',

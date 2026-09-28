@@ -618,6 +618,175 @@ const TESTS = [
     },
   },
   {
+    name: 'network card: status, scan, static apply with re-auth, hostname and NTP',
+    async run({ page, base, request }) {
+      await login(page, base);
+      await openView(page, 'System');
+      await waitForText(page.locator('#network-current-ssid'), 'E2E-WiFi');
+      assertIncludes(await page.locator('#network-current-address').textContent(), '192.0.2.10/24', 'address');
+      assertIncludes(await page.locator('#network-current-time').textContent(), 'synchronized', 'clock state');
+      assertEqual(await page.locator('#network-static').isVisible(), false, 'static fields hidden for DHCP');
+
+      // Scan fills the datalist (the first poll starts the scan, the next returns it).
+      await page.locator('#network-scan').click();
+      await waitForText(page.locator('#network-scan-status'), '2 networks found', 10000);
+      assertEqual(await page.locator('#network-ssid-list option').count(), 2, 'scan options');
+
+      // Static: the fields appear and are validated client-side.
+      await page.locator('input[name="network_ipv4"][value="manual"]').check();
+      await waitForVisible(page.locator('#network-static'));
+      await page.locator('#network-ssid').fill('E2E-WiFi');
+      await page.locator('#network-address').fill('192.0.2.50');
+      await page.locator('#network-prefix').fill('24');
+      await page.locator('#network-gateway').fill('192.0.2.1');
+      await page.locator('#network-dns').fill('192.0.2.1, 9.9.9.9');
+      await page.locator('#network-psk').fill('e2e-wifi-password');
+      const networkForm = page.locator('#network-form');
+      await networkForm.getByRole('button', { name: 'Apply network settings' }).click();
+      await waitForText(networkForm.locator('.form-status'), 'acknowledgement');
+      assertEqual((await counters(request, base)).network_apply, 0, 'nothing sent without acknowledgement');
+
+      await page.locator('#network-confirm').check();
+      await networkForm.getByRole('button', { name: 'Apply network settings' }).click();
+      await completeReauth(page);
+      await waitForText(page.locator('#network-result'), 'new network settings are active', 25000);
+      const after = await counters(request, base);
+      assertEqual(after.network_apply, 1, 'one apply');
+      assertEqual(after.network_psk_seen, 1, 'the password reached the server once');
+      assertEqual(await page.locator('#network-psk').inputValue(), '', 'password field is cleared');
+      assert(!(await page.content()).includes('e2e-wifi-password'), 'the password never appears in the page');
+      assertIncludes(await page.locator('#network-current-address').textContent(), '192.0.2.50/24', 'new address shown');
+
+      // Hostname: re-auth, then the reboot hint.
+      await page.locator('#network-hostname').fill('cam-two');
+      await page.locator('#network-hostname-form').getByRole('button', { name: 'Save hostname' }).click();
+      await completeReauth(page);
+      await waitForText(page.locator('#network-hostname-form .form-status'), 'Reboot the camera');
+      assertEqual((await counters(request, base)).hostname, 1, 'hostname applied');
+
+      // NTP: saved without re-auth.
+      await page.locator('#network-ntp').fill('time.e2e.invalid, 192.0.2.1');
+      await page.locator('#network-ntp-form').getByRole('button', { name: 'Save time servers' }).click();
+      await waitForText(page.locator('#network-ntp-form .form-status'), 'Saved');
+      assertEqual((await counters(request, base)).ntp, 1, 'ntp saved');
+    },
+  },
+  {
+    name: 'network card: a failed change reports the automatic revert; an old image says so',
+    async run({ page, base, request }) {
+      await setScenario(request, base, { network: 'revert' });
+      await login(page, base);
+      await openView(page, 'System');
+      await waitForText(page.locator('#network-current-ssid'), 'E2E-WiFi');
+      await page.locator('#network-ssid').fill('Other-Net');
+      await page.locator('#network-psk').fill('another-password');
+      await page.locator('#network-confirm').check();
+      await page.locator('#network-form').getByRole('button', { name: 'Apply network settings' }).click();
+      await completeReauth(page);
+      await waitForText(page.locator('#network-result'), 'returned to the previous settings', 25000);
+      assertIncludes(await page.locator('#network-result').textContent(), 'gateway unreachable', 'reason shown');
+      assertIncludes(await page.locator('#network-current-ssid').textContent(), 'E2E-WiFi', 'old network kept');
+
+      await setScenario(request, base, { network: 'old_image' });
+      await page.locator('#network-psk').fill('another-password');
+      await page.locator('#network-form').getByRole('button', { name: 'Apply network settings' }).click();
+      await completeReauth(page);
+      await waitForText(page.locator('#network-form .form-status'), 'needs a newer camera image');
+    },
+  },
+  {
+    name: 'timelapse GPIO trigger: pins, wiring panel, validation, live status and errors',
+    async run({ page, base, request }) {
+      await login(page, base);
+      await openView(page, 'Camera');
+      const form = page.locator('#timelapse-gpio-form');
+      await waitForVisible(form);
+      assertEqual(await page.locator('#timelapse-gpio-fields').isVisible(), false, 'pin fields hidden for the timer');
+      assertEqual(await page.locator('#timelapse-interval-form').isVisible(), true, 'interval field shown for the timer');
+
+      await page.locator('#timelapse-trigger').selectOption('gpio');
+      await waitForVisible(page.locator('#timelapse-gpio-fields'));
+      assertEqual(await page.locator('#timelapse-interval-form').isVisible(), false, 'interval field hidden for GPIO');
+      // The dropdown offers the safe pins with header numbers and a ground pin.
+      const labels = await page.locator('#timelapse-gpio-pin option').allTextContents();
+      assert(labels.includes('GPIO17 — header pin 11 (GND: pin 9)'), 'GPIO17 label');
+      assert(!labels.some((label) => /^GPIO(0|1|2|3|7|8|9|10|11|14|15) /.test(label)), 'unsafe pins are not offered');
+      assertEqual(await page.locator('#timelapse-gpio-pin').inputValue(), '17', 'default layer pin');
+      assertEqual(await page.locator('#timelapse-gpio-record-pin').inputValue(), '', 'recording pin defaults to none');
+
+      // The same pin twice is refused before anything is sent.
+      await page.locator('#timelapse-gpio-record-pin').selectOption('17');
+      const settingsBefore = (await counters(request, base)).settings;
+      await form.getByRole('button', { name: 'Save trigger' }).click();
+      await waitForText(form.locator('.form-status'), 'must differ');
+      assertEqual((await counters(request, base)).settings, settingsBefore, 'nothing sent for a conflicting pin pair');
+
+      // Wiring panel follows the chosen pins and shows the recording G-code.
+      await page.locator('#timelapse-gpio-pin').selectOption('22');
+      await page.locator('#timelapse-gpio-record-pin').selectOption('27');
+      await page.locator('#gpio-help summary').click();
+      assertEqual(await page.locator('[data-gpio="shot-header"]').first().textContent(), '15', 'layer header pin');
+      assertEqual(await page.locator('[data-gpio="ground-header"]').first().textContent(), '14', 'ground header pin');
+      assertEqual(await page.locator('[data-gpio="record-header"]').first().textContent(), '13', 'record header pin');
+      assertEqual(await page.locator('#gpio-help-record-start').isVisible(), true, 'recording G-code shown');
+      assertIncludes(await page.locator('#gpio-help').textContent(), 'M264 P0 B1', 'layer pulse G-code');
+      assertIncludes(await page.locator('#gpio-help').textContent(), 'G4 P100', 'explicit 100 ms pulse');
+
+      await form.getByRole('button', { name: 'Save trigger' }).click();
+      await waitForText(form.locator('.form-status'), 'Saved.');
+      await waitForText(page.locator('#timelapse-gpio-status'), 'Armed on GPIO22', 12000);
+      assertIncludes(await page.locator('#timelapse-gpio-status').textContent(), 'recording on GPIO27', 'record pin in status');
+      assertIncludes(await page.locator('#timelapse-gpio-status').textContent(), 'pulse to frame 4.2 s', 'latency shown');
+      // dwell = ceil(4.2 s) + 2 s margin
+      assertEqual(await page.locator('[data-gpio="dwell"]').first().textContent(), '7', 'dwell from the measured latency');
+
+      // A permission problem is shown, not swallowed.
+      await setScenario(request, base, { gpio: 'error' });
+      await waitForVisible(page.locator('#timelapse-gpio-error'), 12000);
+      assertIncludes(await page.locator('#timelapse-gpio-error').textContent(), 'permission denied', 'gpio error');
+
+      // Back to the timer: the interval field returns.
+      await setScenario(request, base, { gpio: 'ok' });
+      await page.locator('#timelapse-trigger').selectOption('interval');
+      await form.getByRole('button', { name: 'Save trigger' }).click();
+      await waitForText(form.locator('.form-status'), 'Saved.');
+      await waitForVisible(page.locator('#timelapse-interval-form'));
+    },
+  },
+  {
+    name: 'timelapses: print sessions, session build and the clock warning',
+    async run({ page, base, request }) {
+      await setScenario(request, base, { clock: 'unsynced' });
+      await login(page, base);
+      await openView(page, 'Timelapses');
+      await waitForVisible(page.locator('#timelapse-clock-warning'));
+      const options = await page.locator('#timelapse-session option').allTextContents();
+      assertEqual(options.length, 3, 'loose frames plus two sessions');
+      assertIncludes(options[1], 'session_20260102-000000', 'newest session first');
+      assertIncludes(options[2], '3 frames', 'frame count in the picker');
+
+      await page.locator('#timelapse-session').selectOption('session_20260101-000000');
+      await page.waitForFunction(
+        () => document.querySelectorAll('#timelapse-frames-grid figure').length === 3);
+      const src = await page.locator('#timelapse-frames-grid img').first().getAttribute('src');
+      assertIncludes(src, 'session=session_20260101-000000', 'preview URL carries the session');
+
+      await page.locator('#timelapse-build').click();
+      await waitForText(page.locator('#timelapse-build-status'), 'Build complete', 12000);
+      assertEqual((await counters(request, base)).build_session, 1, 'the session was built');
+
+      await page.locator('#timelapse-session').selectOption('');
+      await page.waitForFunction(
+        () => document.querySelectorAll('#timelapse-frames-grid figure').length === 12);
+
+      // Synchronized clock: the warning disappears on the next visit.
+      await setScenario(request, base, { clock: 'synced' });
+      await openView(page, 'Overview');
+      await openView(page, 'Timelapses');
+      await page.waitForFunction(() => document.getElementById('timelapse-clock-warning').hidden);
+    },
+  },
+  {
     name: 'keyboard/focus/ARIA/overview and no horizontal overflow at 360px',
     async run({ page, base, viewport }) {
       // Keyboard: the login view autofocuses the password; Tab reaches submit.

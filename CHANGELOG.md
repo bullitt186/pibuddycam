@@ -6,6 +6,36 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 
 ## [Unreleased]
 
+### Added
+- Network settings in the console (System, Network). Changes need a new image, see below.
+  - Change Wi-Fi network and password, DHCP or a static IPv4 address, DNS servers, and the
+    hostname, and scan for networks.
+  - A change that does not come up within about a minute is reverted automatically; as a last
+    resort the setup hotspot starts.
+  - Time servers (up to three; blank means DHCP, then the Debian pool) and a clock status.
+- Timelapse GPIO trigger for the Prusa GPIO Hackerboard (Camera, Timelapse trigger).
+  - A layer pulse captures a frame taken after the pulse.
+  - An optional recording pin creates one session folder per print and builds its video
+    automatically.
+  - The Timelapses view has a print-session picker and a warning while the clock is unsynchronized.
+  - Wiring and printer G-code are shown in the console and in the [user guide](docs/user-guide.md).
+- `http://<address>` now redirects to the HTTPS console instead of showing plain text.
+
+### Changed
+- The setup wizard's Wi-Fi scan uses the root `wifi-scan` verb.
+- `pibuddycam-priv` gains the verbs `network-apply`, `hostname-apply`, `wifi-scan` and `ntp-apply`.
+
+### Upgrade notes
+- **OTA-deliverable:** the HTTP redirect, the Network and timelapse UI, the API, the settings and
+  the session storage and builds.
+- **Needs a new image:** applying network changes, the hostname, Wi-Fi scanning (root helper verbs,
+  the `pibuddycam-network-apply` unit), access to the GPIO chip (the `gpio` group and udev rule),
+  and the persistent clock and DHCP time servers (the NetworkManager dispatcher script and the
+  state-directory mount). On an older image the UI degrades: the Network card reports *needs a
+  newer image*, and the GPIO status shows *permission denied*.
+- The image installer now creates missing device groups (`gpio` among them) and no longer ignores
+  a failing group assignment.
+
 ## [1.4.0]: 2026-09-28 (needs a new image)
 
 The project is now **PiBuddyCam** and is prepared for open source. This is the first image with

@@ -453,7 +453,8 @@ p {
   font-weight: 600;
 }
 
-.field input {
+.field input,
+.field select {
   min-height: var(--target);
   padding: 0.5rem 0.75rem;
   font: inherit;
@@ -880,6 +881,49 @@ p {
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ------------------------------------------------------------------ */
+/* Network card and GPIO trigger help                                  */
+/* ------------------------------------------------------------------ */
+
+.network-form {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.gpio-help {
+  margin: 0.5rem 0 0.9rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.gpio-help summary {
+  min-height: var(--target);
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gpio-help__list {
+  margin: 0 0 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.gpio-help__code {
+  margin: 0.25rem 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 /* ------------------------------------------------------------------ */

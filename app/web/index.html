@@ -255,7 +255,78 @@
             </fieldset>
           </form>
 
-          <form class="setting-form" data-setting="timelapse_interval" novalidate>
+          <form id="timelapse-gpio-form" class="setting-form" novalidate>
+            <fieldset class="card">
+              <legend class="card__title">Timelapse trigger</legend>
+              <div class="field">
+                <label for="timelapse-trigger">What captures a frame</label>
+                <select id="timelapse-trigger" name="timelapse_trigger">
+                  <option value="interval">Every N seconds</option>
+                  <option value="gpio">GPIO pulse (Prusa GPIO Hackerboard)</option>
+                </select>
+              </div>
+              <div id="timelapse-gpio-fields" hidden>
+                <div class="field">
+                  <label for="timelapse-gpio-pin">Layer / shot pin</label>
+                  <select id="timelapse-gpio-pin" name="timelapse_gpio_pin"></select>
+                  <span class="field__hint">One falling edge on this pin captures one frame after the print head parked.</span>
+                </div>
+                <div class="field">
+                  <label for="timelapse-gpio-record-pin">Recording pin (optional)</label>
+                  <select id="timelapse-gpio-record-pin" name="timelapse_gpio_record_pin">
+                    <option value="">None</option>
+                  </select>
+                  <span class="field__hint">Active (low) while a print runs: opens a session for each print and builds its video automatically when the pin is released.</span>
+                </div>
+                <p id="timelapse-gpio-status" class="field__hint" role="status" aria-live="polite">GPIO status unknown</p>
+                <p id="timelapse-gpio-error" class="notice notice--warn" role="alert" hidden></p>
+
+                <details id="gpio-help" class="gpio-help">
+                  <summary>Wiring &amp; printer setup</summary>
+                  <h4 class="card__subtitle">1. Wiring</h4>
+                  <p class="field__hint">The Hackerboard outputs are open-drain (they connect the pin to ground when active), so the Pi reads them directly with its internal pull-up. No level shifter and no extra parts are needed.</p>
+                  <ul class="gpio-help__list">
+                    <li>Hackerboard <strong>OUT0</strong> &rarr; Pi header pin <strong data-gpio="shot-header">11</strong> (GPIO<span data-gpio="shot-bcm">17</span>): layer pulse</li>
+                    <li id="gpio-help-record-wiring" hidden>Hackerboard <strong>OUT1</strong> &rarr; Pi header pin <strong data-gpio="record-header">13</strong> (GPIO<span data-gpio="record-bcm">27</span>): recording</li>
+                    <li>Hackerboard <strong>GND</strong> &rarr; Pi header pin <strong data-gpio="ground-header">9</strong> (ground)</li>
+                  </ul>
+                  <p class="field__hint">Any of OUT0&ndash;OUT7 works; OUT0&ndash;OUT3 need no jumper. The G-code below assumes OUT0 (and OUT1 for recording).</p>
+                  <p class="notice notice--warn">Never connect a printer voltage (24&nbsp;V or 5&nbsp;V) to the Pi. Do not add an external pull-up to anything other than 3.3&nbsp;V; the Pi&rsquo;s internal pull-up is sufficient.</p>
+
+                  <h4 class="card__subtitle">2. PrusaSlicer &rarr; Printer Settings &rarr; Custom G-code</h4>
+                  <p class="field__hint"><strong>Start G-code</strong> (add at the end):</p>
+                  <pre class="gpio-help__code"><code>M262 P0 B0</code></pre>
+                  <div id="gpio-help-record-start" hidden>
+                    <p class="field__hint">With the recording pin, also add these lines. They force a clean start edge, so a print that was cancelled without its end G-code never leaves the pin stuck; the stale session is then closed and built and a fresh one opens:</p>
+                    <pre class="gpio-help__code"><code>M262 P1 B0
+M264 P1 B0
+G4 P300
+M264 P1 B1</code></pre>
+                    <p class="field__hint"><strong>End G-code</strong> (add at the end): ends the recording and starts the automatic build.</p>
+                    <pre class="gpio-help__code"><code>M264 P1 B0</code></pre>
+                  </div>
+                  <p class="field__hint"><strong>After layer change G-code</strong>:</p>
+                  <pre class="gpio-help__code"><code>G1 X160 Y160 F{travel_speed*60}
+G4 S0
+M264 P0 B1
+G4 P100
+M264 P0 B0
+G4 S<span data-gpio="dwell">8</span></code></pre>
+                  <p id="gpio-help-dwell" class="field__hint">The dwell must be longer than the time from the pulse to the stored frame. No measurement yet: 8&nbsp;s is a starting point. It is pre-filled from the measured latency plus a margin once a frame has been captured.</p>
+                  <p class="field__hint">The explicit 100&nbsp;ms pulse is deliberate: back-to-back toggle commands can produce a pulse too short to be detected reliably.</p>
+
+                  <h4 class="card__subtitle">3. Reference</h4>
+                  <p class="field__hint">The Prusa help article &ldquo;GPIO module&rdquo; describes the Hackerboard pins and the M262/M264 commands. The user guide of this project repeats the wiring and links to it.</p>
+                </details>
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save trigger</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </fieldset>
+          </form>
+
+          <form id="timelapse-interval-form" class="setting-form" data-setting="timelapse_interval" novalidate>
             <fieldset class="card">
               <legend class="card__title">Timelapse interval</legend>
               <div class="field">
@@ -320,6 +391,7 @@
         <section id="view-timelapses" class="view" data-view-panel="timelapses" aria-labelledby="view-timelapses-title" hidden>
           <h2 id="view-timelapses-title" class="view__title">Timelapses</h2>
           <div id="timelapses-state" class="overview-state" role="status" aria-live="polite" hidden></div>
+          <p id="timelapse-clock-warning" class="notice notice--warn" role="status" hidden>The clock is not synchronized yet. New frames and sessions can carry a wrong date until the camera reaches a time server.</p>
 
           <section class="card" aria-labelledby="timelapse-stats-title">
             <h3 id="timelapse-stats-title" class="card__title">Library</h3>
@@ -342,7 +414,7 @@
 
           <section class="card" aria-labelledby="timelapse-build-title">
             <h3 id="timelapse-build-title" class="card__title">Build video</h3>
-            <p class="field__hint">Assembles the stored JPEG frames into an MJPEG AVI. One build runs at a time; a duplicate request is refused.</p>
+            <p class="field__hint">Assembles the stored JPEG frames into an MJPEG AVI. With a print session selected under Frames, that session is built into <code>session_&hellip;.avi</code>. One build runs at a time; a duplicate request is refused.</p>
             <div class="form-actions">
               <button id="timelapse-build" class="btn btn--primary" type="button">Build video</button>
               <button id="timelapse-refresh" class="btn" type="button">Refresh</button>
@@ -387,6 +459,13 @@
           <section class="card" aria-labelledby="timelapse-frames-title">
             <h3 id="timelapse-frames-title" class="card__title">Frames</h3>
             <p class="field__hint">JPEG frames currently stored on the SD card and waiting to be assembled.</p>
+            <div class="field">
+              <label for="timelapse-session">Print session</label>
+              <select id="timelapse-session">
+                <option value="">Loose frames (interval or no session)</option>
+              </select>
+              <span id="timelapse-session-info" class="field__hint"></span>
+            </div>
             <p id="timelapse-frames-empty" class="placeholder__text" hidden>No frames stored yet.</p>
             <div id="timelapse-frames-grid" class="media-grid"></div>
             <nav id="timelapse-frames-pager" class="pager" aria-label="Frame pages" hidden>
@@ -554,6 +633,109 @@
               </div>
             </dl>
             <p id="system-freshness" class="field__hint" role="status">Waiting for system data…</p>
+          </section>
+
+          <section id="network-card" class="card" aria-labelledby="system-network-title">
+            <h3 id="system-network-title" class="card__title">Network</h3>
+            <dl class="metrics">
+              <div class="metric">
+                <dt>Wi-Fi network</dt>
+                <dd id="network-current-ssid" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>IP address</dt>
+                <dd id="network-current-address" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Gateway</dt>
+                <dd id="network-current-gateway" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>DNS</dt>
+                <dd id="network-current-dns" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Hostname</dt>
+                <dd id="network-current-hostname" class="metric__value">—</dd>
+              </div>
+              <div class="metric">
+                <dt>Clock</dt>
+                <dd id="network-current-time" class="metric__value">—</dd>
+              </div>
+            </dl>
+            <p id="network-status" class="field__hint" role="status" aria-live="polite"></p>
+            <p id="network-result" class="notice notice--warn" role="status" aria-live="polite" hidden></p>
+
+            <form id="network-form" class="setting-form network-form" novalidate>
+              <h4 class="card__subtitle">Wi-Fi &amp; IP address</h4>
+              <div class="field">
+                <label for="network-ssid">Network name (SSID)</label>
+                <input id="network-ssid" type="text" list="network-ssid-list" maxlength="32" autocomplete="off" spellcheck="false">
+                <datalist id="network-ssid-list"></datalist>
+                <div class="form-actions">
+                  <button id="network-scan" class="btn" type="button">Scan for networks</button>
+                </div>
+                <span id="network-scan-status" class="field__hint" role="status" aria-live="polite"></span>
+              </div>
+              <div class="field">
+                <label for="network-psk">Wi-Fi password</label>
+                <input id="network-psk" type="password" maxlength="63" autocomplete="new-password" placeholder="Leave blank to keep the current password">
+              </div>
+              <div class="segmented" role="radiogroup" aria-label="IPv4 configuration">
+                <label class="segmented__option"><input type="radio" name="network_ipv4" value="auto" checked> DHCP</label>
+                <label class="segmented__option"><input type="radio" name="network_ipv4" value="manual"> Static</label>
+              </div>
+              <div id="network-static" hidden>
+                <div class="field">
+                  <label for="network-address">IP address</label>
+                  <input id="network-address" type="text" inputmode="decimal" autocomplete="off" placeholder="192.168.1.50">
+                </div>
+                <div class="field">
+                  <label for="network-prefix">Prefix length (1&ndash;30)</label>
+                  <input id="network-prefix" type="number" min="1" max="30" step="1" inputmode="numeric" placeholder="24">
+                </div>
+                <div class="field">
+                  <label for="network-gateway">Gateway</label>
+                  <input id="network-gateway" type="text" inputmode="decimal" autocomplete="off" placeholder="192.168.1.1">
+                </div>
+                <div class="field">
+                  <label for="network-dns">DNS servers (up to three, separated by commas)</label>
+                  <input id="network-dns" type="text" autocomplete="off" placeholder="192.168.1.1, 9.9.9.9">
+                </div>
+              </div>
+              <label class="check"><input id="network-confirm" type="checkbox"> I understand the camera may change address while it switches</label>
+              <p class="field__hint">If the new network does not come up within about a minute, the camera returns to the previous settings on its own. If even that fails it starts the setup hotspot.</p>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Apply network settings</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </form>
+
+            <form id="network-hostname-form" class="setting-form network-form" novalidate>
+              <h4 class="card__subtitle">Hostname</h4>
+              <div class="field">
+                <label for="network-hostname">Hostname (letters, digits and hyphens)</label>
+                <input id="network-hostname" type="text" maxlength="63" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save hostname</button>
+              </div>
+              <p class="field__hint">The console&rsquo;s certificate is regenerated at the next boot to match a new name; reboot the camera to finish.</p>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </form>
+
+            <form id="network-ntp-form" class="setting-form network-form" novalidate>
+              <h4 class="card__subtitle">Time servers</h4>
+              <div class="field">
+                <label for="network-ntp">NTP servers (up to three, separated by commas)</label>
+                <input id="network-ntp" type="text" autocomplete="off" spellcheck="false" placeholder="Automatic">
+                <span class="field__hint">Blank means automatic: the server your router advertises, then the Debian pool. Set your own on networks that block outbound NTP.</span>
+              </div>
+              <div class="form-actions">
+                <button class="btn btn--primary" type="submit">Save time servers</button>
+              </div>
+              <p class="form-status" role="status" aria-live="polite" hidden></p>
+            </form>
           </section>
 
           <section class="card" aria-labelledby="system-update-title">
