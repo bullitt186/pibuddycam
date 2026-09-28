@@ -54,6 +54,9 @@ done
 # does not appear in the repository itself; override with
 # SCAN_PERSONAL_USER_PATTERN when scanning a different contributor's tree.
 PERSONAL_USER_PATTERN="${SCAN_PERSONAL_USER_PATTERN:-b[u]llitt}"
+# The maintainer's public GitHub handle (repository owner, LICENSE, badges) is
+# public identity, not a leak; only this exact whole word is allowed.
+PUBLIC_HANDLE_PATTERN="${SCAN_PUBLIC_HANDLE_PATTERN:-b[u]llitt186}"
 
 # --- collect files deterministically ----------------------------------------
 # Fail closed: an unreadable path is a match, and a failed directory walk is a
@@ -139,9 +142,9 @@ scan_home_paths() {
    fi
 }
 
-# Personal username. The one allowed position is the owner segment of a public
-# GitHub URL (``github.com/<owner>/``): release manifests must name the
-# repository their assets are downloaded from, and that owner is public. Like
+# Personal username. Allowed: the owner segment of a public GitHub URL
+# (``github.com/<owner>/``), which release manifests must contain, and the exact
+# public handle as a whole word. Like
 # the home-path scan this filters PER MATCH, so a line that also contains the
 # username anywhere else (a home path, an e-mail, a hostname) is still flagged.
 scan_personal_username() {
@@ -160,7 +163,8 @@ scan_personal_username() {
       word="${word#*:}"
       # Drop every allowed github.com/<owner>/ segment, then re-check.
       word="$(printf '%s' "$word" \
-         | sed -E "s#github\.com/(${PERSONAL_USER_PATTERN})[A-Za-z0-9-]*/##Ig")"
+         | sed -E "s#github\.com/(${PERSONAL_USER_PATTERN})[A-Za-z0-9-]*/##Ig" \
+         | sed -E "s#(^|[^A-Za-z0-9])(${PUBLIC_HANDLE_PATTERN})([^A-Za-z0-9]|$)#\1\3#Ig")"
       if printf '%s' "$word" | grep -qiE -e "$PERSONAL_USER_PATTERN"; then
          kept+="$entry"$'\n'
       fi

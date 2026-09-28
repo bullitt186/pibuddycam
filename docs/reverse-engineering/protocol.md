@@ -1,10 +1,10 @@
 # Prusa Buddy3D Camera Protocol Specification
 
 Firmware through 3.1.6; Protocol Schema 4.4. Reversed from `lp_app`
-ARM binaries via Ghidra. See [`firmware-3.1.6.md`](firmware-3.1.6.md) for the update delta.
+ARM binaries via Ghidra. See [firmware versions](firmware-versions.md) for the update delta.
 
 REST endpoints below (registration, `/c/snapshot`, `/c/info`) are cross-checked against Prusa's
-official Camera API OpenAPI spec (v0.22.0, saved at [`openapi.yaml`](openapi.yaml)) and the
+official Camera API OpenAPI spec (v0.22.0, see [sources](sources.md)) and the
 `camera_registration`/`camera_communication` doc pages — see [`sources.md`](sources.md). That
 spec does **not** cover Socket.IO or WebRTC (Sections 3–6, 10 below); those remain firmware-only
 knowledge, reversed from `lp_app`.
@@ -32,7 +32,7 @@ Cookie: SESSID=<user session>
   selectable value here.** `LINK` is minted by a separate, unrelated flow: PrusaLink's own
   "Link camera to Connect" toggle, for CSI/USB webcams wired directly into a Raspberry Pi running
   PrusaLink — a different product from the Buddy3D camera, with no WebRTC involved. See
-  `status.md` and `next-steps.md` Step 1 (deprioritized).
+  the [status history](../../_archive/docs/status-history.md) and [archived next steps](../../_archive/docs/next-steps.md) (deprioritized).
 - Response `201` returns a `camera_response` object containing the new `token` (exactly 20
   alphanumeric characters) and `origin`. Prusa's registration documentation explicitly defines
   this as a randomly generated combination of letters and numbers. The OpenAPI operation has no
@@ -99,7 +99,7 @@ a random 10-character seed. `FUN_00097a4c` MD5-hashes that seed and emits 16 byt
 
 The impersonator's wire-fingerprint precedence is:
 
-1. an explicit `[identity] fingerprint` in `config.ini` (returned verbatim) — this is the
+1. an explicit `fingerprint` in `device.toml` (returned verbatim) — this is the
    fingerprint the registration token is bound to, so it **wins**; using the MAC-derived value
    instead makes Connect reject the camera (`PUT /c/snapshot` → `400 {"detail":"Invalid
    fingerprint"}`; `PUT /c/info` → `403`). Verified live 2026-09-18: with the configured
@@ -352,7 +352,7 @@ must be measured separately; “404 means no viewer events can ever relay” is 
 genuine Buddy3D cameras register as `origin: OTHER` too (same as `WEB`/`OTHER` above), via
 Connect's "Add WiFi Camera" QR wizard; `LINK` belongs to an unrelated PrusaLink RPi-webcam
 product. What actually gates registry membership (a real-hardware allowlist vs. a staged feature
-rollout) is open — see `status.md`'s Bottom line and `next-steps.md` for the current leads.
+rollout) is open — see [status](../status.md#the-current-connect-limitation).
 
 ---
 
@@ -486,7 +486,7 @@ value, but it is a small-cardinality *model/variant* string shared by every unit
 hardware revision — not a unique per-device factory serial.** No distinct factory-serial / OTP
 getter or string (`"serial"`, `"Serial"`, `"SERIAL"`, `"otp"`, `"OTP"`, `"SN:"`, `"factory"`)
 was found anywhere in `.rodata` this session — an exhaustive substring search came back empty.
-See the "hardware-identity hypothesis" verdict in `status.md` and `next-steps.md` P.1 for the
+See the "hardware-identity hypothesis" verdict in the [status history](../../_archive/docs/status-history.md) and [archived next steps](../../_archive/docs/next-steps.md) for the
 full reasoning and implication (the value is guessable/reproducible without real hardware, so
 this alone doesn't explain the registration gate).
 

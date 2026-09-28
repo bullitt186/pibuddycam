@@ -11,9 +11,8 @@ tokens.json
 .playwright-cli/
 
 # ── Personal agent runbooks (real host/network details) ───────────────────
-# Keep the redacted *.example.md templates; ignore the filled-in local copies.
-.agent/*
-!.agent/*.example.md
+# The redacted template lives at docs/agents/pi-ops.example.md.
+.agent/
 *.local.md
 *token*.conf
 

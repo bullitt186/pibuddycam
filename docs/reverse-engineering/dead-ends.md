@@ -2,7 +2,7 @@
 
 The mistakes are as valuable as the findings — they stop the next person (or agent) from
 re-walking them. Each entry: what we believed → why it was wrong → what's true. Deeper detail
-lives in [`journal/findings.md`](journal/findings.md) and [`status.md`](status.md).
+lives in [`journal/findings.md`](../../_archive/docs/journal/findings.md) and [`status.md`](../status.md).
 
 ## Protocol / CameraInfo struct — the big misreads
 
@@ -40,7 +40,7 @@ lives in [`journal/findings.md`](journal/findings.md) and [`status.md`](status.m
 
 - **Believed:** `origin: LINK` (from the printer's QR pairing) is what a genuine Buddy3D camera
   registers as, and getting one would unblock WebRTC for our impersonator. This was the leading
-  hypothesis in `next-steps.md` Step 1 for a while.
+  hypothesis in the [archived next steps](../../_archive/docs/next-steps.md) for a while.
 - **Reality:** the official Buddy3D quick-start manual ("Buddy3D Camera for Prusa Core One",
   v1.00) documents the actual pairing flow — Connect web UI → pick printer → **Camera tab → "Add
   WiFi Camera"** → enter Wi-Fi credentials → **"Generate QR Code"** → camera scans that QR with
@@ -53,7 +53,7 @@ lives in [`journal/findings.md`](journal/findings.md) and [`status.md`](status.m
   running PrusaLink, switched on via a "Link camera to Connect" toggle in PrusaLink's own web UI —
   an unrelated product with no mention of WebRTC/Socket.IO anywhere in that guide.
 - **How it was caught:** reading the official pairing manual and the PrusaLink camera-setup PDF
-  after the user pointed both out; see `status.md`'s Bottom line and `next-steps.md` Step 1.
+  after the maintainer pointed both out; see the [status history](../../_archive/docs/status-history.md).
 
 ## `origin: WEB`'s rejection doesn't corroborate `origin: OTHER`'s (2026-07-09)
 
@@ -83,12 +83,3 @@ lives in [`journal/findings.md`](journal/findings.md) and [`status.md`](status.m
   `WEB` token, so origin is still not the WebRTC gate — just confirmed by direct experiment now
   instead of by this (partly incorrect) inference. See `status.md`'s "origin and network-reputation
   ruled out by live experiment" section for the full writeup.
-
-## Symptom still open
-
-- After all corrections, the Prusa app can still show **"Kamera-Kommunikation fehlgeschlagen"**
-  (camera communication failed) or hide live/settings controls even though camera auth, `/c/info`,
-  snapshots, and control-event relay succeed. On 2026-09-25 registry lookup was 404 and the device
-  appeared under “Other cameras”; a control viewer ACKed 0 and changed quality, so the remaining
-  issue must not be described as a blanket Socket.IO/configuration failure. See
-  [`status.md`](status.md) and [`next-steps.md`](next-steps.md).

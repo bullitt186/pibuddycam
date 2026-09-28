@@ -1,4 +1,4 @@
-# Prusa pairing-QR schema (WP-4, AC-21)
+# Prusa pairing-QR schema
 
 This document records the **exact** schema of the current Prusa Connect
 "Add WiFi Camera" pairing QR. It contains no real credentials: every value is a
@@ -10,7 +10,7 @@ The schema was captured from a QR generated through the current Prusa
 "Add WiFi Camera" flow and decoded **locally** on a workstation. The decoded raw
 payload and the source image are **not** committed to this repository and are
 never logged. Only the redacted field names/types below and a fully synthetic,
-non-working fixture ([`tests/fixtures/prusa_qr_synthetic.json`](../tests/fixtures/prusa_qr_synthetic.json))
+non-working fixture ([`_archive/legacy-dev-install/fixtures/prusa_qr_synthetic.json`](../../_archive/legacy-dev-install/fixtures/prusa_qr_synthetic.json))
 are kept. Fields must never be guessed or extended from this document alone.
 
 ## Encoding
@@ -65,12 +65,12 @@ image size (2 MiB), decode duration (5 s default), and retry frequency
 The SSID may be shown; the password and token are **never** exposed. No token or
 password may appear in a parse reason, a log line, or a `repr`.
 
-## Claim-time write rule
+## Use in PiBuddyCam
 
-A valid QR is **staged** in redacted form by the setup wizard. Its `pwd` and
-`token` are written to `secrets.toml` **only** when the wizard commits the
-claim. A rejected or expired token returns the user to setup **without**
-overwriting the last-known-good credentials.
+PiBuddyCam does **not** scan this QR. Onboarding asks for the Prusa registration token directly
+(see [install](../install.md)); the setup wizard only exposes an unused `qr_decoder` hook. A
+reference parser that implemented the validation rules above is kept in
+[`_archive/legacy-dev-install/qr_pairing.py`](../../_archive/legacy-dev-install/qr_pairing.py).
 
 ## Fingerprint-binding semantics
 

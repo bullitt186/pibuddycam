@@ -160,6 +160,17 @@ class ScanSecretsTests(unittest.TestCase):
         )
         self.assertEqual(self.scan(allowed, env=env).returncode, 0)
 
+    def test_public_handle_is_allowed_but_bare_username_is_not(self):
+        env = {"SCAN_PERSONAL_USER_PATTERN": "devperson",
+               "SCAN_PUBLIC_HANDLE_PATTERN": "devperson42"}
+        ok = self.dir / "badge.md"
+        ok.write_text("![x](https://img.shields.io/github/v/release/devperson42/repo)\n"
+                      "Copyright (c) 2026 devperson42\n")
+        self.assertEqual(self.scan(ok, env=env).returncode, 0)
+        bad = self.dir / "home.md"
+        bad.write_text("see /home/devperson/x and devperson42x\n")
+        self.assertNotEqual(self.scan(bad, env=env).returncode, 0)
+
     def test_personal_username_outside_github_owner_is_flagged(self):
         env = {"SCAN_PERSONAL_USER_PATTERN": "devperson"}
         for text in (

@@ -1,8 +1,9 @@
 # CI, releases and OTA publishing
 
-This is the canonical description of how this repository is tested and released. Private runner
-host details (hostname, service management, key location) live in the git-ignored
-`.agent/pi-ops.md`. Never copy them into tracked files.
+How releases are built and published, and how devices find them. How CI tests changes is in
+[development](development.md#continuous-integration). Private runner details (hostname, service
+management, key location) belong in the maintainer's git-ignored `.agent/pi-ops.md` (template:
+[docs/agents/pi-ops.example.md](agents/pi-ops.example.md)), never in tracked files.
 
 ## Workflows
 
@@ -16,20 +17,6 @@ The host gate installs PyYAML plus `minisign`, `mtools`, `dosfstools` and `zstd`
 config, signature and boot-partition tests run instead of being skipped. The application itself
 stays stdlib-only. Only 2 tests are expected to skip. They are mutually exclusive
 "minisign absent" cases.
-
-## Keeping CI green
-
-- Run `python3 -m unittest discover -s tests -t .` and `python3 -m compileall -q app tests`
-  before pushing (see `CLAUDE.md`).
-- **A local pass is not enough if a file is only on your disk.** `.gitignore` excludes `*.png`,
-  `*.img`, `*.env` and similar patterns. A file the build or tests need must be tracked, with a
-  negation rule if necessary. `test_image_subtree_required_files_exist` fails locally when a
-  required image file is git-ignored and untracked. Extend its list when you add a required file.
-- Tests that need an optional tool (PyYAML, minisign, openssl, sfdisk, …) must use
-  `unittest.skipUnless`. Then add the tool to the CI install step so the test actually runs there.
-- The secret scan in CI covers changed non-test, non-doc files. Names such as
-  `token=…`/`password=…` in shell or YAML trip it and the `image/` personal-data test. Pick neutral
-  variable names.
 
 ## Release runner
 

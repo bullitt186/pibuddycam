@@ -1,4 +1,8 @@
-# Firmware 3.1.6 delta analysis
+# Firmware versions
+
+How each analysed firmware release differs from the previous one. Only 3.1.5 → 3.1.6 so far.
+
+## 3.1.5 → 3.1.6
 
 Compared directly against the public 3.1.5 OTA package on 2026-09-17. Firmware artifacts,
 Ghidra databases, and decompilation remain outside this repository under
@@ -10,7 +14,7 @@ Package SHA-256: 3.1.5 `57a1bd8bbd869e1bfe652e680fdce9620156dc2f49fdfdc9bb5859a7
 Evidence markers follow the rest of this project: **[confirmed]** is directly observed in the
 packages/binaries; **[inferred]** is the narrowest explanation consistent with those facts.
 
-## Executive result
+### Executive result
 
 There is no observed cloud-protocol change to carry into the impersonator. **[confirmed]**
 Firmware 3.1.6 keeps protobuf schema `4.4`, the same Socket.IO events/features, the same HTTP
@@ -21,7 +25,7 @@ The impersonator should carry over only the advertised firmware identity (`3.1.6
 `NB.1.1.0` / `Buddy3D-C1` identity remains valid. Native kernel, rootfs, and Realtek driver
 updates belong to the original Rockchip camera and must not be copied to Raspberry Pi OS.
 
-## Package-level diff
+### Package-level diff
 
 | Artifact | 3.1.5 | 3.1.6 | Finding |
 |---|---:|---:|---|
@@ -36,7 +40,7 @@ Realtek version (`v5.11.5.2-2-g57aeb1afd.20220114_beta`), source version, kernel
 parameters, and ELF section layout. This is consistent with a rebuild for the bundled platform
 update, not a new interface for the impersonator.
 
-## `lp_app` changes
+### `lp_app` changes
 
 ELF dependencies, `.rodata` size, dynamic symbols, human-readable strings (apart from the
 firmware version), protocol schema version, feature list, event names, endpoints, and JSON keys
@@ -60,7 +64,7 @@ This changes how genuine devices classify additional SPI hardware-version values
 add unique device identity, authentication material, a new camera class on the wire, or a new
 backend enrollment mechanism.
 
-## Protocol regression checks
+### Protocol regression checks
 
 Complete headless exports covered every Ghidra-defined function: 10,548 functions in 3.1.5 and
 10,552 in 3.1.6, with zero decompiler failures. The exported corpora, Function-ID tables, and

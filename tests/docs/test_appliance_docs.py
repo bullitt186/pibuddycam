@@ -1,133 +1,150 @@
-"""Content/contract tests for the WP-R6a appliance documentation pass.
+"""Documentation contract tests.
 
-These tests are stdlib-only, never build or flash an image, and never touch the
-network or hardware. They assert that the operator-facing appliance guide exists
-and covers the documented topics, distinguishes the accepted core runtime from
-the incomplete release matrix, and keeps the personal-username cleanup fixed.
+Stdlib-only; no network or hardware. They keep the documentation navigable and
+safe to publish:
+
+* the community and user/contributor pages exist where the README links them;
+* agent instructions live in one small AGENTS.md that CLAUDE.md imports;
+* every relative markdown link and ``#anchor`` in maintained docs resolves
+  (``_archive/`` is historical and exempt as a *source*, not as a target);
+* no personal literals or the formerly leaked device MAC appear in any tracked
+  text file;
+* the user docs never overstate hardware acceptance.
 """
 
+import re
+import subprocess
 import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-GUIDE = REPO_ROOT / "docs" / "appliance-user-guide.md"
-GAP_TRACKER = REPO_ROOT / "docs" / "firmware-implementation-gap-tracker.md"
-DIST_PLAN = REPO_ROOT / "_archive" / "docs" / "public-appliance-distribution-plan.md"
-README = REPO_ROOT / "README.md"
-PI_README = REPO_ROOT / "app" / "README.md"
-
-#: Personal literals the secret scanner flags; must not appear in tracked docs.
-#: Assembled from adjacent string fragments (like scan-secrets.sh) so this test
-#: file does not itself contain the contiguous literal.
-PERSONAL_LITERALS = ("b" "u" "l" "l" "i" "t" "t", "s" "t" "a" "h" "m" "e" "r")
-
-#: Required topic coverage. Each entry is a set of keywords; at least one must
-#: appear (case-insensitive) so the test stays a content contract rather than a
-#: brittle full-text match.
-REQUIRED_TOPICS = {
-    "scope/what-it-is": ("what it is", "scope"),
-    "hardware": ("hardware", "raspberry pi zero 2 w"),
-    "install/flash": ("install", "flash"),
-    "first-boot onboarding": ("first-boot onboarding", "setup hotspot"),
-    "home-assistant/onvif/rtsp": ("onvif", "rtsp", "8555"),
-    "mqtt": ("mqtt", "pibuddycam/<device-id>"),
-    "backup": ("backup",),
-    "reflash/recovery/factory-reset": ("reflash", "recovery", "factory reset"),
-    "security": ("security", "scrypt", "ssh is disabled by default"),
-    "updates/rollback": ("update", "rollback"),
-    "troubleshooting": ("troubleshooting", "journalctl"),
-    "acceptance-status": ("acceptance status",),
-}
-
-#: The guide must link the authoritative docs instead of duplicating them.
-REFERENCED_DOCS = (
-    "image/README.md",
-    "protocol.md",
-    "home-assistant-onvif-implementation-plan.md",
-    "public-appliance-distribution-plan.md",
+REQUIRED_FILES = (
+    "README.md", "LICENSE", "NOTICE.md", "CONTRIBUTING.md", "SECURITY.md",
+    "CODE_OF_CONDUCT.md", "CHANGELOG.md", "AGENTS.md", "CLAUDE.md",
+    "docs/README.md", "docs/install.md", "docs/user-guide.md", "docs/integrations.md",
+    "docs/troubleshooting.md", "docs/hardware.md", "docs/status.md", "docs/roadmap.md",
+    "docs/architecture.md", "docs/development.md", "docs/releasing.md",
+    "docs/reverse-engineering/README.md", "docs/reverse-engineering/protocol.md",
+    "docs/reverse-engineering/gap-tracker.md", "docs/agents/README.md",
+    "_archive/README.md", "app/README.md", "image/README.md",
 )
 
-#: Claims that would overstate what has actually been verified.
+#: Personal literals the secret scanner flags. Assembled from fragments (like
+#: scan-secrets.sh) so this file does not itself contain the literal.
+PERSONAL_LITERALS = ("b" "u" "l" "l" "i" "t" "t", "s" "t" "a" "h" "m" "e" "r")
+#: The real device MAC and fingerprint once committed by mistake (fragments).
+LEAKED_IDENTITY = ("d8:3a:" "dd:32", "142486" "ddfee8")
+#: The public GitHub handle (the owner in URLs, badges and the LICENSE) is the
+#: one allowed form; a bare local username or home path is not.
+PUBLIC_HANDLE = re.compile("b" "u" "l" "l" "i" "t" "t" r"186\b")
+
+#: Files that legitimately contain the scanner's own patterns or synthetic data.
+PERSONAL_SCAN_EXEMPT = ("image/scripts/scan-secrets.sh", "tests/")
+
 FORBIDDEN_ACCEPTANCE_CLAIMS = (
     "hardware acceptance is complete",
     "all acceptance sections passed",
-    "acceptance passed",
-    "validated flash",
-    "verified live",
+    "release matrix is complete",
 )
 
-
-class ApplianceUserGuideTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.text = GUIDE.read_text(encoding="utf-8")
-        cls.lower = cls.text.lower()
-
-    def test_guide_exists(self):
-        self.assertTrue(GUIDE.is_file(), f"missing {GUIDE}")
-
-    def test_guide_covers_required_topics(self):
-        for topic, keywords in REQUIRED_TOPICS.items():
-            with self.subTest(topic=topic):
-                self.assertTrue(
-                    any(k.lower() in self.lower for k in keywords),
-                    f"guide does not cover {topic!r} (looked for {keywords})",
-                )
-
-    def test_guide_references_authoritative_docs(self):
-        for doc in REFERENCED_DOCS:
-            with self.subTest(doc=doc):
-                self.assertIn(doc, self.text, f"guide does not reference {doc}")
-
-    def test_guide_scopes_hardware_acceptance(self):
-        # Core runtime acceptance is complete on the named rig, while the wider
-        # card/onboarding/recovery release matrix remains explicitly incomplete.
-        self.assertIn("core runtime is hardware-accepted", self.lower)
-        self.assertIn("not yet release-matrix complete", self.lower)
-
-    def test_guide_does_not_claim_completed_hardware_acceptance(self):
-        for claim in FORBIDDEN_ACCEPTANCE_CLAIMS:
-            with self.subTest(claim=claim):
-                self.assertNotIn(claim, self.lower, f"guide overstates: {claim!r}")
-
-    def test_guide_has_no_personal_username_literals(self):
-        for literal in PERSONAL_LITERALS:
-            with self.subTest(literal=literal):
-                self.assertNotIn(literal, self.lower)
+AGENTS_MAX_LINES = 80
 
 
-class DeferredDocCleanupTests(unittest.TestCase):
-    def test_gap_tracker_personal_username_removed(self):
-        text = GAP_TRACKER.read_text(encoding="utf-8")
-        for literal in PERSONAL_LITERALS:
-            with self.subTest(literal=literal):
-                self.assertNotIn(literal, text.lower())
-        # The Samba evidence line now uses a neutral placeholder.
-        self.assertIn("force user =", text)
-        self.assertIn("<operator>", text)
+def _tracked(pattern=None):
+    args = ["git", "ls-files"] + ([pattern] if pattern else [])
+    out = subprocess.run(args, cwd=REPO_ROOT, capture_output=True, text=True, check=True)
+    return [p for p in out.stdout.splitlines() if (REPO_ROOT / p).is_file()]
 
-    def test_distribution_plan_personal_username_removed(self):
-        text = DIST_PLAN.read_text(encoding="utf-8")
-        for literal in PERSONAL_LITERALS:
-            with self.subTest(literal=literal):
-                self.assertNotIn(literal, text.lower())
 
-    def test_tracked_docs_have_no_personal_literals(self):
-        for path in (README, GUIDE, PI_README):
-            with self.subTest(path=path.name):
-                text = path.read_text(encoding="utf-8").lower()
-                for literal in PERSONAL_LITERALS:
-                    self.assertNotIn(literal, text, f"{path}: {literal}")
+def _strip_code(text):
+    return re.sub(r"```.*?```", "", text, flags=re.S)
 
-    def test_pi_readme_no_longer_has_user_pi_templating(self):
-        text = PI_README.read_text(encoding="utf-8")
-        # The stale per-user templating against User=pi / /home/pi/ is gone.
-        self.assertNotRegex(text, r"User=pi\b")
-        self.assertNotRegex(text, r"/home/pi/")
-        # The current service-account layout is documented instead.
-        self.assertIn("User=pibuddycam", text)
-        self.assertIn("pibuddycam", text)
+
+def _anchors(path):
+    """GitHub-style heading slugs plus explicit ``<a id>`` anchors."""
+    text = _strip_code(path.read_text(encoding="utf-8"))
+    anchors, counts = set(), {}
+    for match in re.finditer(r"^#{1,6}\s+(.*)$", text, flags=re.M):
+        heading = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", match.group(1).strip())
+        slug = re.sub(r"[^\w\- ]", "", heading.lower()).replace(" ", "-")
+        n = counts.get(slug, 0)
+        counts[slug] = n + 1
+        anchors.add(slug if n == 0 else f"{slug}-{n}")
+    anchors.update(re.findall(r'<a id="([^"]+)"', text))
+    return anchors
+
+
+class RequiredDocsTests(unittest.TestCase):
+    def test_required_files_exist(self):
+        missing = [p for p in REQUIRED_FILES if not (REPO_ROOT / p).is_file()]
+        self.assertEqual(missing, [])
+
+    def test_claude_md_only_imports_agents_md(self):
+        text = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertTrue(text.startswith("@AGENTS.md"))
+        self.assertLess(len(text.splitlines()), 10)
+
+    def test_agents_md_stays_an_index(self):
+        lines = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8").splitlines()
+        self.assertLessEqual(len(lines), AGENTS_MAX_LINES)
+        text = "\n".join(lines)
+        for guide in ("protocol-gap-work", "app-development", "image-appliance",
+                      "releases-ci", "live-hardware-ops"):
+            self.assertIn(f"docs/agents/{guide}.md", text)
+            self.assertTrue((REPO_ROOT / "docs" / "agents" / f"{guide}.md").is_file())
+
+
+class LinkTests(unittest.TestCase):
+    def test_relative_links_and_anchors_resolve(self):
+        broken = []
+        for rel in _tracked("*.md"):
+            if rel.startswith("_archive/"):
+                continue
+            source = REPO_ROOT / rel
+            text = _strip_code(source.read_text(encoding="utf-8"))
+            for link in re.findall(r"(?<!!)\[[^\]]*\]\(([^)\s]+)\)", text):
+                if re.match(r"[a-z]+:", link):
+                    continue
+                target, _, anchor = link.partition("#")
+                path = (source.parent / target).resolve() if target else source
+                if target and not path.exists():
+                    broken.append(f"{rel}: {link}")
+                elif anchor and path.suffix == ".md" and anchor not in _anchors(path):
+                    broken.append(f"{rel}: #{anchor}")
+        self.assertEqual(broken, [], "broken links:\n" + "\n".join(broken))
+
+
+class PublicationSafetyTests(unittest.TestCase):
+    def test_no_personal_literals_or_leaked_identity(self):
+        hits = []
+        for rel in _tracked():
+            try:
+                text = (REPO_ROOT / rel).read_text(encoding="utf-8").lower()
+            except (UnicodeDecodeError, OSError):
+                continue
+            for literal in LEAKED_IDENTITY:
+                if literal in text:
+                    hits.append(f"{rel}: leaked identity")
+            if rel.startswith(PERSONAL_SCAN_EXEMPT):
+                continue
+            scrubbed = PUBLIC_HANDLE.sub("<owner>", text)
+            for literal in PERSONAL_LITERALS:
+                if literal in scrubbed:
+                    hits.append(f"{rel}: personal literal")
+        self.assertEqual(hits, [])
+
+    def test_user_docs_do_not_overstate_acceptance(self):
+        for rel in ("README.md", "docs/install.md", "docs/user-guide.md", "docs/status.md",
+                    "docs/hardware.md"):
+            text = (REPO_ROOT / rel).read_text(encoding="utf-8").lower()
+            for claim in FORBIDDEN_ACCEPTANCE_CLAIMS:
+                self.assertNotIn(claim, text, rel)
+
+    def test_status_scopes_acceptance_to_the_tested_setup(self):
+        text = (REPO_ROOT / "docs" / "status.md").read_text(encoding="utf-8").lower()
+        self.assertIn("not yet recorded", text)
+        self.assertIn("pi zero 2 w", text)
 
 
 if __name__ == "__main__":

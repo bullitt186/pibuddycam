@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/bullitt186/pibuddycam/security/advisories/new
+    about: Report security problems privately.
+  - name: Troubleshooting guide
+    url: https://github.com/bullitt186/pibuddycam/blob/main/docs/troubleshooting.md
+    about: Common setup, Connect, video and update problems.

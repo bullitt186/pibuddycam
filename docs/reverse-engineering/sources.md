@@ -1,7 +1,7 @@
 # Sources
 
 Where the analysed material came from. **None of the copyrighted firmware/source below is
-redistributed in this repo** (see [`NOTICE.md`](../NOTICE.md)) — this file is the pointer so
+redistributed in this repo** (see [`NOTICE.md`](../../NOTICE.md)) — this file is the pointer so
 the work can be reproduced.
 
 ## Primary: the camera firmware (not in repo)
@@ -16,7 +16,7 @@ the work can be reproduced.
 | `RK_OTA_update.sh` (on the device) | Rockchip on-device OTA updater. For each `/dev/block/by-name/*` it writes a matching `<name>.img` with `flash_eraseall` + `nandwrite`, then erases `misc`. Not redistributed here (vendor code, unclear licence). |
 
 **How to obtain:** extract from the physical camera's flash / a Prusa firmware OTA package,
-then unpack with `ubireader_extract_files` (see [`reverse-engineering.md`](reverse-engineering.md)).
+then unpack with `ubireader_extract_files` (see [`reverse-engineering.md`](methods.md)).
 Prusa's OTA host also exposes versioned files using the URL pattern above. Do not commit the
 resulting archives, images, binaries, Ghidra projects, or decompilation.
 
@@ -26,7 +26,7 @@ resulting archives, images, binaries, Ghidra projects, or decompilation.
 |---|---|---|
 | [tlchandler/Improved-Buddy3D-Camera-for-Prusa-CORE-One](https://github.com/tlchandler/Improved-Buddy3D-Camera-for-Prusa-CORE-One) | MIT | Community SD-card overlay that runs custom scripts on the camera. **Confirmed** config file paths, token source, upload-interval units, RTSP mode values, and Rockchip MPI video capture. Not vendored here — clone it separately if needed. |
 | [Prusa-Firmware-Buddy](https://github.com/prusa3d/Prusa-Firmware-Buddy) (6.6.1) | GPL / see repo | Printer-side firmware. Reference for the printer↔camera relationship and UDP print-metrics used for timelapse triggering. |
-| Prusa public **Camera API** OpenAPI spec (v0.22.0), saved as [`docs/openapi.yaml`](openapi.yaml) 2026-07-09 from `https://connect.prusa3d.com/docs/cameras/openapi/` | Prusa docs | Pinned the camera **origin** enum (`WEB`, `OTHER`, `LINK`) and the `camera_request`/`camera_response`/`camera_config` schemas for `/app/printers/{uuid}/camera`, `/c/snapshot`, `/c/info`. Confirms the registration endpoint only accepts `origin: WEB\|OTHER` — `LINK` is not self-registerable via the public API. Does **not** cover WebRTC or Socket.IO (all of that remains firmware-only knowledge). |
+| Prusa public **Camera API** OpenAPI spec (v0.22.0), ([connect.prusa3d.com/docs/cameras/openapi](https://connect.prusa3d.com/docs/cameras/openapi/), consulted 2026-07-09; not redistributed here) | Prusa docs | Pinned the camera **origin** enum (`WEB`, `OTHER`, `LINK`) and the `camera_request`/`camera_response`/`camera_config` schemas for `/app/printers/{uuid}/camera`, `/c/snapshot`, `/c/info`. Confirms the registration endpoint only accepts `origin: WEB\|OTHER` — `LINK` is not self-registerable via the public API. Does **not** cover WebRTC or Socket.IO (all of that remains firmware-only knowledge). |
 | [Camera registration](https://connect.prusa3d.com/docs/cameras/camera_registration/) / [Camera communication](https://connect.prusa3d.com/docs/cameras/camera_communication/) (Prusa docs pages) | Prusa docs | Confirmed the token is a randomly generated 20-character alphanumeric string, fingerprint is generated separately by the camera, and registration (`POST /app/printers/{uuid}/camera`) is an **app-side** call (Cookie/`SESSID` auth) — the camera itself never calls it, it only receives the pre-minted token. The OpenAPI operation has no request body; only `printer_uuid` and optional `origin` are explicit parameters. Clarified that `origin: WEB` is Connect's separate browser-webcam feature (phone/laptop camera via browser `getUserMedia()`), unrelated to the Buddy3D firmware protocol. |
 | "Buddy3D Camera for Prusa Core One" official quick-start manual (v1.00 EN/CZ) — mirrored at [impresoras3d.com](https://www.impresoras3d.com/wp-content/uploads/2025/07/Manual-de-uso-Buddy3D-Prusa-Core-One.pdf), official copy linked from `prusa.io/core-one-camera` | Prusa docs | **Key source (2026-07-09).** Documents the actual genuine-camera pairing flow: Connect web UI → printer → Camera tab → "Add WiFi Camera" → enter Wi-Fi credentials → "Generate QR Code" → camera scans the QR with its own lens (RESET-button pairing mode). Established that this is `origin: OTHER` (per the OpenAPI's own wording), **not** `origin: LINK` as previously hypothesized — see `dead-ends.md`. Also documents audio/LED signal meanings, factory reset (RESET ≥4s), and auto OTA (checks every 4h once Wi-Fi connected). |
 | [Buddy3D Camera](https://help.prusa3d.com/article/buddy3d-camera_821264) (Prusa Knowledge Base) | Prusa docs | Confirms live view runs "directly within the Prusa App"; browser/web Connect explicitly does **not** support WebRTC yet ("expected in the future") — scoped to browser only, not the app. |
@@ -49,4 +49,4 @@ credentials):
 
 All account-specific values from real captures (tokens, fingerprints, IPs, MACs, SSIDs,
 the registration QR) were **redacted** to `<PLACEHOLDER>` form before anything entered this
-repo. If you find a real-looking secret, it's a bug — please scrub it.
+repo. If you find a real-looking secret, it's a bug: report it privately as described in [SECURITY.md](../../SECURITY.md).

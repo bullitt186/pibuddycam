@@ -1,305 +1,128 @@
-# `image/` — PiBuddyCam appliance image build
+# `image/`: the PiBuddyCam SD-card image
 
-Canonical, pinned source of truth for the public Raspberry Pi Zero 2 W SD-card
-image. This subtree contains **only host-side scaffolding**: the composition,
-the custom image layer, the first-boot growth logic, the runtime unit graph,
-and the deterministic build entry point. It contains no secrets and generates
-no device identity.
+Everything needed to build, validate and package the Raspberry Pi Zero 2 W image: the
+[rpi-image-gen](https://github.com/raspberrypi/rpi-image-gen) composition, a custom image layer,
+the factory installer, first-boot helpers, and the release scripts. It contains no secrets and
+generates no device identity. How to cut a release is in
+[docs/releasing.md](../docs/releasing.md); how the result behaves at runtime is in
+[docs/architecture.md](../docs/architecture.md).
 
-The image itself is built later on a controlled **native arm64 Debian/Raspberry
-Pi OS Trixie** runner. `rpi-image-gen` does not support foreign-architecture
-builds as a release path, and `scripts/build-image.sh` never attempts one.
+## Build
 
-## Pinned upstream
-
-`rpi-image-gen.lock` pins:
-
-| Field | Value |
-|---|---|
-| URL | `https://github.com/raspberrypi/rpi-image-gen` |
-| Tag | `v2.8.0` |
-| Commit | `262d4df5a9f9d4133370465399a7958a7c22cdc7` |
-
-`scripts/build-image.sh` refuses to build unless the checkout at
-`$RPI_IMAGE_GEN_DIR` has exactly that commit and advertises the `-S` source
-directory and custom-image-layer mechanisms.
+Images are built **natively on arm64 Debian trixie** (for example on a Raspberry Pi 5).
+`scripts/build-image.sh` refuses foreign-architecture builds and any rpi-image-gen checkout other
+than the one pinned in `rpi-image-gen.lock` (tag `v2.8.0`, commit `262d4df5…`).
 
 ```sh
-git clone --branch v2.8.0 --depth 1 \
-  https://github.com/raspberrypi/rpi-image-gen /path/to/rpi-image-gen
+git clone --branch v2.8.0 --depth 1 https://github.com/raspberrypi/rpi-image-gen /path/to/rpi-image-gen
 RPI_IMAGE_GEN_DIR=/path/to/rpi-image-gen image/scripts/build-image.sh
 ```
+
+The build fails if the populated `ROOT` exceeds 75% of its 4 GiB, or if the image doesn't fit an
+8 GB card. `SOURCE_DATE_EPOCH` comes from the source commit. ext4 UUIDs still vary between builds,
+so output is not byte-identical.
 
 ## Layout
 
 ```text
 image/
-  README.md                         this file
-  rpi-image-gen.lock                pinned upstream revision
-  config/pibuddycam-pi-zero2w.yaml     complete image composition
-  layer/
-    pibuddycam-suite.yaml              rpios suite with NetworkManager (source §3.2)
-    pibuddycam-image.yaml              custom MBR 3-partition image layer
-    genimage.cfg.in.ext4            genimage layout template
-    setup.sh                        per-partition cmdline/fstab/PERSIST seeding
-    pre-image.sh                    renders genimage.cfg
-    post-build.sh                   strips build-time identity
-    mke2fs.conf                     deterministic ext4 parameters
-    bdebstrap/customize95-pibuddycam-python  no-op (venv built by install-factory-app.sh)
-  assets/
-    pibuddycam-data-grow.sh              first-boot PERSIST growth (AC-11)
-    systemd/pibuddycam-data-grow.service image-only grow unit
-    systemd/pibuddycam.target     runtime target (AC-12)
-    systemd/data-ready.target.d/10-data-grow.conf
-    systemd/NetworkManager.service.d/10-data-ready.conf
-    install-factory-app.sh          factory app/unit/layout hook
-    build-info.py                   build-info.json generator (stdlib only)
-    icon/pibuddycam.png         placeholder icon
-  scripts/build-image.sh            deterministic build entry point
+  rpi-image-gen.lock            pinned upstream revision
+  requirements.in / .lock       Python runtime dependencies (hash-locked)
+  config/pibuddycam-pi-zero2w.yaml  image composition (packages, hostname, users)
+  layer/                        custom rpi-image-gen layers and hooks
+    pibuddycam-suite.yaml         trixie minbase + NetworkManager
+    pibuddycam-image.yaml         MBR 3-partition image layer
+    genimage.cfg.in.ext4, setup.sh, pre-image.sh, post-build.sh, mke2fs.conf
+  assets/                       installed into the image
+    install-factory-app.sh        installs app/ to /opt/pibuddycam, units, helper, venv, config
+    launcher.sh                   runs releases/current or the factory copy
+    pibuddycam-priv, sudoers/     fixed-verb root helper and its sudoers rule
+    pibuddycam-data-grow.sh       first-boot growth of PERSIST
+    systemd/                      image-only units and drop-ins
+    udev/, networkmanager/        camera device access, stable Wi-Fi MAC
+    build-info.py                 writes /usr/share/pibuddycam/build-info.json
+    icon/pibuddycam.png           Imager icon
+  imager/os-list.template.json  Raspberry Pi Imager manifest template
+  keys/                         release-signing public key (see keys/README.md)
+  scripts/                      build-image, validate-image, make-release, make-app-release, scan-secrets
 ```
 
-## Disk layout (AC-10)
+## Disk layout
 
-MBR, exactly three primary partitions, PERSIST last:
+MBR with exactly three primary partitions, `PERSIST` last so it can grow:
 
-| Partition | Size in image | Filesystem | Label | Mount |
+| # | Size in image | Filesystem | Label | Mount |
 |---|---:|---|---|---|
 | 1 | 512 MiB | FAT32 | `BOOT` | `/boot/firmware` |
-| 2 | 4 GiB | ext4 | `ROOT` | `/` (direct read-only root) |
-| 3 | 512 MiB | ext4 | `PERSIST` | `/data` (grown to end of device on first boot) |
+| 2 | 4 GiB | ext4 | `ROOT` | `/`, **read-only** |
+| 3 | 512 MiB | ext4 | `PERSIST` | `/data`, grown to the end of the card on first boot |
 
-The MBR disk signature is fixed (`image.disksig`), so the kernel-derived
-PARTUUIDs are deterministic: `<signature>-01/02/03`. `cmdline.txt` and
-`/etc/fstab` therefore reference PARTUUIDs and never `/dev/mmcblk0pN`. The
-signature is a build constant, not device identity.
+- **Stable references.** The fixed MBR disk signature makes PARTUUIDs deterministic
+  (`<signature>-01/02/03`), so `cmdline.txt` and `fstab` never reference `/dev/mmcblk0pN`. The
+  signature is a build constant, not a device identity.
+- **Writable state.** `/var` and `/etc/pibuddycam` are tmpfs; everything durable lives on `/data`.
+- **`overlayroot`.** The package is installed but not active. Don't rely on overlay semantics.
 
-`ROOT` is mounted directly read-only. Hardware bring-up proved that the configured `overlayroot`
-did not activate, so correctness must not depend on a tmpfs overlay upper. Writable operating state
-is explicit: `/var` and `/etc/pibuddycam` are tmpfs; durable configuration, network profiles, media,
-and signed application releases live on `PERSIST` at `/data`. The legacy overlayroot configuration
-still present in the composition should be treated as inert compatibility scaffolding until it is
-removed in a dedicated image change.
-
-## Service ordering (AC-12)
+## Boot order
 
 ```text
 local-fs.target
-  -> pibuddycam-data-grow.service
-  -> data-ready.target
-     -> NetworkManager.service
-     -> pibuddycam.target
-        -> pi-persist -> rpicam-source -> pibuddycam-rtsp -> pibuddycam-ha-rtsp -> pibuddycam
+  → pibuddycam-data-grow.service → data-ready.target
+     → NetworkManager.service
+     → pibuddycam-boot-mode.service → pibuddycam.target   (or the setup hotspot while unclaimed)
+        → pi-persist → rpicam-source → pibuddycam-rtsp → pibuddycam-ha-rtsp → pibuddycam
 ```
 
-The grow unit and target are image-only. The application units are **reused
-verbatim** from `app/systemd/` (never copied or diverged). The extra
-ordering is added with drop-ins under `assets/systemd/`. Auxiliary units such as admin, updater,
-and optional MQTT integration must be `Wants=` under `pibuddycam.target`, never `Requires=`, so
-their failures stay isolated.
+- **Shared unit files.** The application units in `app/systemd/` are installed verbatim; extra
+  ordering is added only through drop-ins in `assets/systemd/`.
+- **Isolated auxiliaries.** Admin, updater and MQTT units are `Wants=` under
+  `pibuddycam.target`, never `Requires=`, so their failures stay isolated.
 
-## Local verification (no image build, no root)
+## Validation
 
 ```sh
-python3 -m unittest tests.image.test_image_scaffolding -v
-bash -n image/scripts/build-image.sh
-python3 -m compileall -q image/assets
-
-# Validate the custom layer against the real pinned metadata parser:
-RPI_IMAGE_GEN_DIR=/tmp/opencode/rpi-image-gen \
-  /tmp/opencode/rpi-image-gen/rpi-image-gen \
-  metadata --lint image/layer/pibuddycam-image.yaml
-RPI_IMAGE_GEN_DIR=/tmp/opencode/rpi-image-gen \
-  /tmp/opencode/rpi-image-gen/rpi-image-gen \
-  metadata --lint image/layer/pibuddycam-suite.yaml
+python3 -m unittest discover -s tests/image -t .    # host tests for everything in image/
+image/scripts/validate-image.sh --image <built.img> --mount-root <mounted root.ext4>
 ```
 
-## Upstream basis (rpi-image-gen v2.8.0)
+`validate-image.sh` checks a built image offline: units, ownership and modes, the launcher wiring,
+the venv against the lock, the signing key, TLS provisioning and the absence of secrets. Run it as
+root with a full `PATH` (it needs `dumpe2fs` and `mtools`). It is necessary but not sufficient:
+see the [hardware field notes](../docs/hardware.md#field-notes-from-hardware-bring-up) for what
+only real hardware catches.
 
-The composition and layer follow the documented mechanism of the pinned
-revision, not invented syntax:
+## Release artifacts
 
-- `docs/config/index.adoc` — YAML composition, `IGconf_*` sections, includes,
-  `device.layer` / `image.layer` / `layer:` selection.
-- `docs/layer/index.adoc` — layer metadata (`X-Env-Layer-*`, `X-Env-Var-*`),
-  providers, `${DIRECTORY}` placeholder, `assetdir`.
-- `docs/execution/index.adoc` — hook phases and `IMAGE_ASSET` hook/overlay
-  resolution.
-- `layer/base/image-base.yaml`, `layer/base/fs-base.yaml` — image variables.
-- `image/mbr/simple_dual/image.yaml`, `genimage.cfg.in.ext4`, `setup.sh`,
-  `pre-image.sh`, `mke2fs.conf` — MBR image-layer template and per-partition
-  `exec-pre` hook pattern.
-- `image/gpt/ab_userdata/pre-image.sh` — machine-id/identity stripping pattern.
-- `layer/suite/debian/trixie-minbase.yaml` — base suite composition.
-- `layer/net-misc/network-manager.yaml`, `layer/net-misc/openssh-server.yaml` —
-  NetworkManager and first-boot SSH host-key handling.
-- `layer/rpi/device/boot-firmware.yaml` — `cmdline.txt`/`config.txt` install.
-- `bin/runner`, `bin/image2json` — hook resolution and IDP layout validation.
-
-## Documented limitations / unresolved concerns
-
-1. **Build host is separate.** Release images are built on the controlled native arm64 Trixie host,
-   not on arbitrary developer workstations. Run both the image build and `validate-image.sh`, then
-   record the artifact/version used for hardware acceptance.
-2. **`overlayroot` is not active.** The package/configuration is present, but live hardware boots a
-   direct read-only ext4 ROOT. The product's writable-path contract is therefore explicit tmpfs +
-   `/data`; do not document or test overlay semantics as the current appliance behavior.
-3. **Hash-locked Python deps (WP-R3).** `requirements.lock` pins the direct
-   deps (aiohttp, python-socketio, paho-mqtt) and their transitive closure with
-   `--hash=sha256` entries. `install-factory-app.sh` copies it to
-   `/opt/pibuddycam/requirements.lock` and builds `/opt/pibuddycam/venv` with
-   `python3 -m venv --system-site-packages` + `pip install --require-hashes
-   --no-cache-dir`; the lock digest is recorded in `build-info.json` as
-   `python_lock_sha256`. The bdebstrap `customize95-pibuddycam-python` hook is an
-   explicit no-op. The SBOM is still owned by WP-5.
-4. **Release automation** lives in `.github/workflows/release.yml` (see
-   `docs/releasing.md`): a `vX.Y.Z` tag builds this image on the self-hosted arm64 runner, then
-   runs `scripts/make-release.sh` and `scripts/make-app-release.sh` and publishes the result.
-   `scripts/validate-image.sh` asserts the venv/lock above.
-5. **Fixed disk signature trade-off.** A fixed MBR signature gives static,
-   deterministic PARTUUIDs and simple first-boot validation, at the cost of
-   identical PARTUUIDs on every unit. They are never present on one system
-   simultaneously; this is not device identity.
-6. **No byte-identical reproducibility claim.** `SOURCE_DATE_EPOCH` is set and
-   ownership/timestamps are normalized where the mechanism allows, but ext4
-   filesystem UUIDs are generated by `mke2fs` and byte-identical output is not
-   promised.
-
-## Release artifact assembly (WP-2b)
-
-`scripts/make-release.sh` turns one built `.img` into the publishable release
-set (AC-14, AC-34, AC-35). It never builds or flashes an image and needs no
-root or network. This section supersedes limitation 4 above for
-`make-release.sh`, `scan-secrets.sh`, and `imager/os-list.template.json`.
-
-```sh
-image/scripts/make-release.sh \
-  --image <built.img> --version <semver> --out-dir <dir> \
-  [--release-date YYYY-MM-DD] [--url-base URL] [--icon URL] [--website URL] \
-  [--packages <installed-packages.txt>] [--build-info <build-info.json>] \
-  [--key <minisign.key>]
-```
-
-It produces, in `--out-dir`:
+`scripts/make-release.sh` turns one built `.img` into the published OS-image set. It needs no root
+and no network:
 
 ```text
-pibuddycam-pi-zero2w-<version>.img.xz          deterministic xz -T1 -9e
-pibuddycam-pi-zero2w-<version>.img.xz.sha256   sha256 of the compressed image
-pibuddycam-pi-zero2w-<version>.img.xz.minisig  only when --key is supplied
-pibuddycam-pi-zero2w-<version>.spdx.json       SPDX 2.3 SBOM
-pibuddycam-pi-zero2w-<version>.packages.txt    normalized installed-package manifest
-pibuddycam-os-list.json                        rendered Raspberry Pi Imager manifest
+pibuddycam-pi-zero2w-<version>.img.xz(.sha256|.minisig)   compressed image (xz -T1 -9e)
+pibuddycam-pi-zero2w-<version>.spdx.json                  SPDX 2.3 SBOM (from --packages/--build-info)
+pibuddycam-pi-zero2w-<version>.packages.txt               installed-package manifest
+pibuddycam-os-list.json, pibuddycam.png                    Raspberry Pi Imager manifest and icon
 ```
 
-The `.sha256` file is `sha256sum`-compatible (`<hash>  <name>`). The extracted
-`.img` SHA-256 and size are computed from the input image; the compressed SHA-256
-and size are computed from the `.img.xz`. `SOURCE_DATE_EPOCH` is honored when
-present (otherwise it defaults to the input image mtime), and `--release-date`
-defaults to the UTC date of that epoch.
+`scripts/make-app-release.sh` builds the signed OTA bundle (`pibuddycam-app-<version>.tar.zst`
+plus `update-manifest.json`); see [releasing](../docs/releasing.md).
 
-### Imager manifest template
+- **Imager manifest.** `imager/os-list.template.json` is rendered with JSON-encoded tokens (URLs,
+  sizes, SHA-256s, version, device tags) and validated against the artifacts.
+  - The device tag is `pi3-64bit`. The official Imager list tags the Zero 2 W as the Pi 3 family,
+    with no Zero-2-W-only tag, so Imager may also offer the image for a Pi 3. It is validated for
+    the Zero 2 W only.
+  - `init_format` is `systemd`. Override it with `PIBUDDYCAM_IMAGER_INIT_FORMAT`.
+- **Signing.** With `--key` the scripts require `minisign` and sign every artifact. Only the public
+  key is in the repository (see [keys/](keys/README.md)).
+- **Secret scan.** `scripts/scan-secrets.sh` runs over every produced artifact and fails the
+  release on any match. It checks for:
+  - private keys, minisign secret keys and SSH host keys;
+  - machine-ids;
+  - Wi-Fi PSKs and `.nmconnection` profiles;
+  - Prusa tokens and MQTT passwords;
+  - personal usernames and home paths.
 
-`imager/os-list.template.json` is a template, not a flashable manifest. It is
-not valid JSON until `make-release.sh` substitutes every token, drops top-level
-keys beginning with `_` (the `_comment` note), and validates the result against
-the required Imager fields. Tokens are replaced with JSON-encoded values, so
-string tokens appear unquoted in the template (`"url": {{IMAGE_URL}}`) and
-numeric/array tokens are emitted as numbers/arrays:
-
-| Token | Rendered value |
-|---|---|
-| `{{IMAGE_URL}}` | `--url-base` + `/pibuddycam-pi-zero2w-<version>.img.xz` |
-| `{{ICON_URL}}` | `--icon` (defaults to `<url-base>/pibuddycam.png`) |
-| `{{WEBSITE}}` | `--website` |
-| `{{RELEASE_DATE}}` | `--release-date` (default: UTC date of `SOURCE_DATE_EPOCH`) |
-| `{{EXTRACT_SIZE}}` | uncompressed `.img` size in bytes |
-| `{{EXTRACT_SHA256}}` | uncompressed `.img` SHA-256 |
-| `{{DOWNLOAD_SIZE}}` | `.img.xz` size in bytes |
-| `{{DOWNLOAD_SHA256}}` | `.img.xz` SHA-256 |
-| `{{VERSION}}` | `--version` |
-| `{{DEVICES}}` | Imager device tags (see below) |
-| `{{INIT_FORMAT}}` | Imager initialisation format (`systemd`) |
-| `{{ARCH}}` | Imager architecture (`armv8`, i.e. arm64) |
-
-`make-release.sh` fails if the rendered manifest is unparseable, is missing a
-required field, or if any hash/size disagrees with the produced artifacts.
-
-### Raspberry Pi Zero 2 W device identifier
-
-The rendered `devices` value is `["pi3-64bit"]`. This is **verified, not
-guessed**: in the official Imager OS list
-(`https://downloads.raspberrypi.com/os_list_imagingutility_v4.json`, schema
-`doc/json-schema/os-list-schema.json` in `raspberrypi/rpi-imager`) the
-`Raspberry Pi Zero 2 W` device entry carries the tags `pi3-64bit` and
-`pi3-32bit`, because it shares the BCM2710 family with the Pi 3. There is no
-dedicated `zero2w` tag. This image is arm64, so only the 64-bit tag applies;
-official 64-bit entries that support the Zero 2 W (for example
-`Raspberry Pi OS (64-bit)`) list `pi3-64bit`.
-
-`architecture` is `armv8`, which is Imager's identifier for a 64-bit ARM image.
-`init_format` is `systemd` (see the unresolved concern below).
-
-**Trade-off:** because the official tag set has no Zero 2 W-only tag, the
-`pi3-64bit` entry also matches Raspberry Pi 3 (Pi 4 uses `pi4-64bit` and Pi 5
-uses `pi5-64bit`), so Imager may offer this image for a Pi 3 too. The image
-is validated for the Zero 2 W only; the manifest cannot express a stricter
-device restriction with the current official tags.
-
-### SBOM and package manifest
-
-`--packages` is copied to the `.packages.txt` artifact and parsed into SPDX
-package entries (one per manifest line, with its version). `--build-info`
-contributes a single package entry for the image carrying the real
-`source_commit`, `builder_revision`, `os_suite`, and `kernel_package` values.
-No package data is fabricated: with neither input the SBOM has an empty
-`packages` array. The `.spdx.json` is a minimal SPDX 2.3 document
-(`spdxVersion`, `dataLicense`, `SPDXID`, `name`, `documentNamespace`,
-`creationInfo`).
-
-### Signing
-
-Signing is optional. Without `--key`, `make-release.sh` prints a warning and
-leaves the artifact unsigned. With `--key`, it requires `minisign` and the key
-file and fails loudly if either is missing. The private key must never be
-committed, logged, or baked into the image; only the public key belongs in the
-repository. No signing key is present in this checkout, so no signature is
-produced here.
-
-### Secret scan
-
-`scripts/scan-secrets.sh <path>...` is run by `make-release.sh` over every
-produced artifact, and fails the release if anything matches. It flags private
-keys, minisign secret keys, SSH host private keys, a non-empty machine-id,
-Wi-Fi PSK values and `.nmconnection` profiles, Prusa tokens, MQTT passwords,
-`password_hash` values, and personal usernames/home paths (service-account
-homes such as `pibuddycam` are allowed). Matches are printed as `file:line`;
-binary files are skipped for content patterns but secret-bearing filenames are
-still flagged. Override the personal-username pattern with
-`SCAN_PERSONAL_USER_PATTERN` when scanning a different contributor's tree. The
-username is allowed in exactly one position: the owner segment of a public
-`github.com/<owner>/` URL, which release manifests must contain. The check runs
-per match, so any other occurrence on the same line still fails.
-
-**Self-match waiver (AC-35).** A repo-wide run will match the scanner's own
-pattern source (`password_hash`, `minisign encrypted secret key`) and the
-intentional synthetic-secret fixtures in `tests/`. Those are non-working
-placeholders, not real credentials. Scan release artifacts and the uncompressed
-image, not the scanner source; when a repo-wide sweep is required, exclude
-`image/scripts/scan-secrets.sh` and the secret-scan test fixtures explicitly and
-record the exclusion in the release-candidate report.
-
-### Unresolved concerns (WP-2b)
-
-1. **`init_format: systemd` and read-only ROOT.** Imager's `systemd` customisation writes a
-   first-boot script and expects writable ROOT. Bridging Imager-supplied Wi-Fi/hostname/SSH customization into the
-   durable DATA partition is a provisioning (WP-3) task. The exact
-   `init_format` must be reconfirmed against the released image before publish;
-   `PIBUDDYCAM_IMAGER_INIT_FORMAT` overrides the rendered value.
-2. **No release signing key in this checkout (intentional).** Signing is live-accepted end to end
-   with a private key held outside the repository; the committed public key verifies bundles on
-   the appliance. Never add the private key or its location to tracked documentation.
-3. **Native arm64 builds are remote/controlled.** Release images are produced on the controlled
-   self-hosted arm64 Trixie runner (`docs/releasing.md`); ordinary workstations may run host tests and release assembly but must not
-   claim a supported foreign-architecture image build.
-4. **No byte-identical reproducibility claim.** `xz -T1 -9e` with pinned check
-   types produces a stable stream for a given xz version, but reproducibility is
-   not proven across xz versions.
+  Three cases are allowed: `<PLACEHOLDER>` values, the repository owner inside
+  `github.com/<owner>/` URLs, and the maintainer's exact public GitHub handle. Override the
+  patterns with `SCAN_PERSONAL_USER_PATTERN` and `SCAN_PUBLIC_HANDLE_PATTERN`. The scanner source and the synthetic test fixtures naturally
+  match their own patterns, so scan artifacts, not the scanner.
