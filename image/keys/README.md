@@ -7,7 +7,8 @@
   release environment (see `docs/releasing.md`). Never commit it, log it,
   copy it into an image, or place it on a device.
 
-Public key ID: `48680BE111FEB8E3`
+Public key ID: `704A1F5710E6EA94` (since 1.4.0; the retired development key was
+`48680BE111FEB8E3`).
 
 ```sh
 # sign (release environment only)
@@ -16,6 +17,6 @@ minisign -S -s <release-signing.key> -m <file>
 minisign -V -p image/keys/pibuddycam-release.pub -m <file>
 ```
 
-This is still the development key. Before a stable public release it will be replaced
-with an owner-held key. Only the public half changes in the repository, but devices trust the key
-embedded in their image, so the change takes effect with the next image.
+Devices trust the key embedded in their image, so rotating it takes effect only with a new
+image, and older images can no longer verify new releases. Rotate only with a new image
+release, and record it in the changelog.

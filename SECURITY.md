@@ -34,7 +34,7 @@ an update; changes to image-owned parts need a reflash.
 
 Every release artifact and update manifest is signed with minisign. The public key is
 [`image/keys/pibuddycam-release.pub`](image/keys/pibuddycam-release.pub) (key ID
-`48680BE111FEB8E3`), and the same key is embedded in the image. The device's updater refuses
+`704A1F5710E6EA94`), and the same key is embedded in the image. The device's updater refuses
 anything that doesn't verify.
 
 ```sh
@@ -42,5 +42,6 @@ minisign -V -p image/keys/pibuddycam-release.pub -m pibuddycam-pi-zero2w-<versio
 sha256sum -c pibuddycam-pi-zero2w-<version>.img.xz.sha256
 ```
 
-The current key is a development key; it will be rotated before a stable public release, and a
-rotation arrives with a new image.
+The key was rotated for 1.4.0. Images before 1.4.0 trust the retired key `48680BE111FEB8E3`
+and have to be reflashed anyway (see the [changelog](CHANGELOG.md)). A future rotation would
+again reach devices only with a new image.

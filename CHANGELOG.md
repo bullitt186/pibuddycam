@@ -30,6 +30,10 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   new device; delete the old `buddy3d_*` one.
 - The Rust proxy crate, container and RTSP path are renamed `pibuddycam-proxy` and `/pibuddycam`.
 
+### Security
+- The release-signing key was rotated (new key ID `704A1F5710E6EA94`); images from 1.4.0 on trust
+  only the new key.
+
 ### Added
 - New images check this project's GitHub releases for updates by default.
 - The updater enforces a release's minimum image version, using the image's own build info.

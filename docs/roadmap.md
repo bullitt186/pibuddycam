@@ -15,8 +15,6 @@ Contributions are welcome: see [CONTRIBUTING.md](../CONTRIBUTING.md).
 3. **Close the partial protocol gaps from evidence.** GAP-QUALITY-02 (per-payload persist flag)
    comes first. Never infer event wiring or field types; recover them from descriptors or
    captures (see [methods](reverse-engineering/methods.md)).
-4. **Rotate the release-signing key** before announcing a stable public release. The key in
-   [`image/keys/`](../image/keys/README.md) is a development key.
 
 ## Later
 
