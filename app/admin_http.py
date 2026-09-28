@@ -163,6 +163,15 @@ SHELL_FILE = 'index.html'
 ASSET_ALLOWLIST = {
     'app.css': 'text/css; charset=utf-8',
     'app.js': 'text/javascript; charset=utf-8',
+    'camera.js': 'text/javascript; charset=utf-8',
+    'common.js': 'text/javascript; charset=utf-8',
+    'gpio.js': 'text/javascript; charset=utf-8',
+    'integrations.js': 'text/javascript; charset=utf-8',
+    'live.js': 'text/javascript; charset=utf-8',
+    'network.js': 'text/javascript; charset=utf-8',
+    'overview.js': 'text/javascript; charset=utf-8',
+    'system.js': 'text/javascript; charset=utf-8',
+    'timelapse.js': 'text/javascript; charset=utf-8',
     'favicon.svg': 'image/svg+xml',
 }
 
@@ -1212,6 +1221,11 @@ class _AdminAppCore:
                 data = handle.read()
         except OSError:
             return self._error(request, 404, 'not found')
+        if content_type.startswith('text/javascript'):
+            # Modules import each other with the same content-hash query the shell
+            # uses, so a cached module can never be older than its entry point.
+            data = data.replace(
+                b'__ASSET_VERSION__', self._asset_version().encode('ascii'))
 
         etag = _etag(data)
         headers = {

@@ -292,7 +292,9 @@ def make_rootfs(base):
     (web / "index.html").write_text(
         "<!doctype html><title>synthetic shell</title>\n", encoding="utf-8")
     (web / "app.css").write_text(":root{--bg:#fff}\n", encoding="utf-8")
-    (web / "app.js").write_text("export {};\n", encoding="utf-8")
+    # The console script is split into ES modules: ship every one of them.
+    for script in sorted((REPO_ROOT / "app" / "web").glob("*.js")):
+        (web / script.name).write_text("export {};\n", encoding="utf-8")
     (web / "favicon.svg").write_text(
         "<svg xmlns='http://www.w3.org/2000/svg'></svg>\n", encoding="utf-8")
     launcher = app / "launcher.sh"
@@ -679,6 +681,14 @@ class RootfsValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing dma_heap udev rule", result.stdout)
+
+    def test_missing_web_module_fails(self):
+        root = self._root()
+        (root / "opt" / "pibuddycam" / "web" / "network.js").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("web assets missing", result.stdout)
+        self.assertIn("network.js", result.stdout)
 
     def test_missing_gpio_udev_rule_fails(self):
         root = self._root()

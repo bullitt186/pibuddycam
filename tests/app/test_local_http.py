@@ -6,8 +6,11 @@ from pathlib import Path
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
-from aiohttp import web  # noqa: E402
-from aiohttp.test_utils import make_mocked_request  # noqa: E402
+try:
+    from aiohttp import web  # noqa: E402
+    from aiohttp.test_utils import make_mocked_request  # noqa: E402
+except ImportError:  # the host test environment does not always provide aiohttp
+    raise unittest.SkipTest('aiohttp is not installed')
 
 import local_http  # noqa: E402
 

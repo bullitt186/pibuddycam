@@ -97,6 +97,17 @@ def _contrast_ratio(first, second):
     return (lighter + 0.05) / (darker + 0.05)
 
 
+def _read_js():
+    """The console's script as one text: the entry point, then every module.
+
+    The console is split into ES modules; the source-level assertions below are
+    about the behaviour of the whole script, not about which file holds a function.
+    """
+    names = ['app.js'] + sorted(
+        path.name for path in WEB_DIR.glob('*.js') if path.name != 'app.js')
+    return '\n'.join((WEB_DIR / name).read_text(encoding='utf-8') for name in names)
+
+
 def _strip_js_comments(text):
     """Remove ``/* ... */`` and ``// ...`` comments so tests read code only."""
     without_block = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
@@ -181,6 +192,38 @@ class AdminShellTests(unittest.TestCase):
         self.assertTrue(referenced <= set(admin_http.ASSET_ALLOWLIST))
         for name in ('app.css', 'app.js', 'favicon.svg'):
             self.assertIn(name, referenced)
+
+    def test_every_shipped_script_is_allowlisted_and_every_import_resolves(self):
+        shipped = {path.name for path in WEB_DIR.glob('*.js')}
+        self.assertGreater(len(shipped), 1)
+        self.assertEqual(shipped, {n for n in admin_http.ASSET_ALLOWLIST if n.endswith('.js')})
+        for name in sorted(shipped):
+            text = (WEB_DIR / name).read_text(encoding='utf-8')
+            for target in re.findall(r"from '\./([A-Za-z0-9._-]+)\?v=__ASSET_VERSION__'", text):
+                self.assertIn(target, shipped, f'{name} imports {target}')
+            # only version-tagged relative imports: nothing external, nothing untagged
+            for spec in re.findall(r"from '([^']+)'", text):
+                self.assertRegex(spec, r'^\./[A-Za-z0-9._-]+\.js\?v=__ASSET_VERSION__$', name)
+
+    def test_served_modules_carry_the_content_version(self):
+        html = self.app.handle(_make_request('GET', '/admin')).body.decode('utf-8')
+        version = re.search(r'/assets/app\.js\?v=([0-9a-f]+)', html).group(1)
+        for name in sorted(n for n in admin_http.ASSET_ALLOWLIST if n.endswith('.js')):
+            response = self.app.handle(_make_request('GET', f'/assets/{name}'))
+            self.assertEqual(response.status, 200, name)
+            body = response.body.decode('utf-8')
+            self.assertNotIn('__ASSET_VERSION__', body, name)
+            for spec in re.findall(r"from '\./[A-Za-z0-9._-]+\.js\?v=([^']+)'", body):
+                self.assertEqual(spec, version, name)
+            self.assertEqual(response.headers['Content-Type'], 'text/javascript; charset=utf-8')
+
+    def test_asset_version_changes_when_a_module_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for path in WEB_DIR.iterdir():
+                (Path(tmp) / path.name).write_bytes(path.read_bytes())
+            first = admin_http.AdminApp(web_dir=tmp)._asset_version()
+            (Path(tmp) / 'network.js').write_text('export {};\n', encoding='utf-8')
+            self.assertNotEqual(first, admin_http.AdminApp(web_dir=tmp)._asset_version())
 
     def test_shell_is_public_in_both_modes(self):
         for mode in ('admin', 'setup'):
@@ -412,7 +455,7 @@ class AdminDesignSystemTests(unittest.TestCase):
     def setUp(self):
         self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
         self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
-        self.js = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.js = _read_js()
 
     def test_web_tree_has_no_unknown_files(self):
         files = {path.name for path in WEB_DIR.iterdir() if path.is_file()}
@@ -525,7 +568,7 @@ class AdminOverviewDashboardTests(unittest.TestCase):
 
     def setUp(self):
         self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
-        self.js = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.js = _read_js()
         self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
         self.app = _build_app()
 
@@ -619,7 +662,7 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
 
     def setUp(self):
         self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
-        self.js = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.js = _read_js()
         self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
 
     def test_camera_view_has_a_form_for_every_confirmed_setting(self):
@@ -771,7 +814,7 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
     def test_js_refresh_converges_with_dashboard_settings(self):
         code = _strip_js_comments(self.js)
         self.assertIn('applySettings(data.settings)', code)
-        self.assertIn('LAST_DASHBOARD', code)
+        self.assertIn('shared.dashboard', code)
         self.assertIn('syncCameraView', code)
 
     def test_integrations_view_has_prusa_and_mqtt_forms(self):
@@ -896,7 +939,8 @@ class AdminSettingsIntegrationsUiTests(unittest.TestCase):
         # A session expiry while a sensitive action awaits re-auth must settle
         # the promise (as cancelled), not drop the resolver and hang forever.
         code = _strip_js_comments(self.js)
-        body = _function_body(code, 'showLogin')
+        self.assertIn('cancelPendingReauth()', _function_body(code, 'showLogin'))
+        body = _function_body(code, 'cancelPendingReauth')
         self.assertIn('reauthResolver', body)
         self.assertIn('pending(false)', body)
         self.assertIn('reauthResolver = null', body)
@@ -912,7 +956,7 @@ class AdminLiveMonitorUiTests(unittest.TestCase):
 
     def setUp(self):
         self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
-        self.js = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.js = _read_js()
         self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
         self.code = _strip_js_comments(self.js)
 
@@ -978,7 +1022,7 @@ class AdminTimelapseUiTests(unittest.TestCase):
 
     def setUp(self):
         self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
-        self.js = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.js = _read_js()
         self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
         self.code = _strip_js_comments(self.js)
 
@@ -1117,7 +1161,7 @@ class AdminSystemUiTests(unittest.TestCase):
 
     def setUp(self):
         self.html = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
-        self.js = _strip_js_comments((WEB_DIR / 'app.js').read_text(encoding='utf-8'))
+        self.js = _strip_js_comments(_read_js())
         self.css = (WEB_DIR / 'app.css').read_text(encoding='utf-8')
 
     def test_system_placeholder_is_replaced_with_real_sections(self):

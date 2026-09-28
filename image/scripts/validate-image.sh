@@ -1250,13 +1250,22 @@ PY
    # WP-UI1/AC-2: the factory app tree ships the local admin shell and its
    # allowlisted assets; admin_http serves only those under /assets/<name>.
    # favicon.svg is allowlisted, so a shell missing it would 404 the icon.
-   if [ -f "$MOUNT_ROOT/opt/pibuddycam/web/index.html" ] \
-      && [ -f "$MOUNT_ROOT/opt/pibuddycam/web/app.css" ] \
-      && [ -f "$MOUNT_ROOT/opt/pibuddycam/web/app.js" ] \
-      && [ -f "$MOUNT_ROOT/opt/pibuddycam/web/favicon.svg" ]; then
+   # The console script is split into ES modules; each one the repository ships
+   # must be in the image or the page loads a broken import graph.
+   web_missing=()
+   for asset in index.html app.css app.js favicon.svg; do
+      [ -f "$MOUNT_ROOT/opt/pibuddycam/web/$asset" ] || web_missing+=("$asset")
+   done
+   if [ -d "$REPO_ROOT/app/web" ]; then
+      while IFS= read -r module; do
+         [ -f "$MOUNT_ROOT/opt/pibuddycam/web/$(basename "$module")" ] \
+            || web_missing+=("$(basename "$module")")
+      done < <(find "$REPO_ROOT/app/web" -maxdepth 1 -type f -name '*.js' | sort)
+   fi
+   if [ "${#web_missing[@]}" -eq 0 ]; then
       report ok "local admin web assets present under /opt/pibuddycam/web"
    else
-      report fail "local admin web assets missing under /opt/pibuddycam/web"
+      report fail "local admin web assets missing under /opt/pibuddycam/web: ${web_missing[*]}"
    fi
 
     # Admin TLS provisioning (appliance image/security defect): the boot-time

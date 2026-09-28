@@ -35,6 +35,12 @@ jobs:
           sudo apt-get install -y -qq minisign mtools dosfstools zstd
           python3 -m pip install PyYAML==6.0.2
 
+      # aiohttp is a runtime dependency, not stdlib: install it (pinned by the
+      # image lock, hash-checked) so the tests that drive the real HTTP routes run
+      # instead of being skipped. Best effort: without it those tests skip.
+      - name: Install the runtime lock (optional)
+        run: python3 -m pip install --require-hashes -r image/requirements.lock || echo "runtime lock not installable on this runner; aiohttp tests will skip"
+
       - name: Unit tests
         run: python3 -m unittest discover -s tests -t .
 
@@ -44,7 +50,9 @@ jobs:
       - name: Shell syntax (app + image scripts)
         run: |
           status=0
-          for f in image/scripts/*.sh app/*.sh; do
+          for f in image/scripts/*.sh app/*.sh image/assets/*.sh \
+                   image/assets/pibuddycam-priv \
+                   image/assets/networkmanager/dispatcher.d/*; do
             echo "bash -n $f"
             bash -n "$f" || status=1
           done
@@ -112,3 +120,42 @@ jobs:
 
       - name: Whitespace check
         run: git diff --check
+
+  # The console's offline browser suite (Playwright + Chromium against the fake
+  # runtime in tests/e2e/server.py). It needs no device and no network beyond the
+  # package install, and E2E_REQUIRED=1 turns a missing browser into a failure
+  # instead of a silent skip.
+  console-e2e:
+    name: console end-to-end (chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install the runtime lock
+        run: python3 -m pip install --require-hashes -r image/requirements.lock
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install -g playwright@1.49.1
+          npx playwright install --with-deps chromium
+
+      - name: Console end-to-end suite
+        env:
+          E2E_REQUIRED: "1"
+        run: NODE_PATH="$(npm root -g)" tests/e2e/run.sh
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: tests/e2e/.artifacts
+          if-no-files-found: ignore

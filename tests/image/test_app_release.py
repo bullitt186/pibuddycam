@@ -671,16 +671,17 @@ class MakeAppReleaseTests(unittest.TestCase):
         #   els.mqttPassword = document.getElementById('mqtt-password');
         # which the default artifact scan must not read as credentials, since
         # non-.py web assets are staged into the default-mode scan list.
-        result = run([BASH, str(SCAN_SECRETS), str(PI_DIR / "web" / "app.js")])
+        scripts = sorted((PI_DIR / "web").glob("*.js"))
+        self.assertGreater(len(scripts), 1)
+        result = run([BASH, str(SCAN_SECRETS), *map(str, scripts)])
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("clean", result.stdout)
 
     def test_shipped_web_app_js_is_bundled_and_released(self):
         # The real shipped selector-heavy script must survive a full release
         # build (staged tree + default-mode scan of non-Python assets).
-        (self.src / "web" / "app.js").write_bytes(
-            (PI_DIR / "web" / "app.js").read_bytes()
-        )
+        for script in (PI_DIR / "web").glob("*.js"):
+            (self.src / "web" / script.name).write_bytes(script.read_bytes())
         result = self.release()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("scan-secrets: clean", result.stdout)

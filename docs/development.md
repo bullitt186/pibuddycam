@@ -37,7 +37,8 @@ The unit tests need only the Python standard library. PyYAML, `minisign`, `mtool
 python3 -m unittest discover -s tests -t .      # all unit tests
 python3 -m unittest tests.app.test_rotation -v   # one module
 python3 -m compileall -q app tests               # byte-compile
-for f in image/scripts/*.sh app/*.sh; do bash -n "$f"; done   # shell syntax
+for f in image/scripts/*.sh app/*.sh image/assets/*.sh image/assets/pibuddycam-priv \
+         image/assets/networkmanager/dispatcher.d/*; do bash -n "$f"; done   # shell syntax
 ```
 
 The web console has an offline end-to-end suite that drives Chromium against a fake runtime:
@@ -47,14 +48,24 @@ npm install -g playwright && npx playwright install chromium   # once
 NODE_PATH="$(npm root -g)" tests/e2e/run.sh
 ```
 
-It isn't part of CI. Run it when you change `app/web/` or the admin HTTP API.
+CI runs it in the `console-e2e` job (with `E2E_REQUIRED=1`, so a missing browser fails instead of
+skipping). Run it locally when you change `app/web/` or the admin HTTP API.
+
+The console script is split into ES modules under `app/web/` (`app.js` is the entry point). They
+import each other with `?v=__ASSET_VERSION__`, which the server replaces with the content hash, so
+every new module must also be added to `ASSET_ALLOWLIST` in `admin_http.py`.
+
+The `tests/app` package redirects every path that points into `/data` to a throw-away directory
+(`tests/app/__init__.py`); a test that needs a real path must inject it.
 
 There is no formatter or type checker for the repository. Match the surrounding style.
 
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push and pull request, on Python 3.12 and 3.13:
-- the unit tests, with PyYAML, minisign, mtools and dosfstools installed;
+- the unit tests, with PyYAML, minisign, mtools and dosfstools installed, plus the hash-locked
+  runtime dependencies so the aiohttp-based tests run (they skip without it);
+- the console end-to-end suite (a separate `console-e2e` job);
 - byte-compilation;
 - `bash -n` on all scripts;
 - a secret scan of the changed files (`image/scripts/scan-secrets.sh`);
