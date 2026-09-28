@@ -140,6 +140,11 @@ and whether the clock is synchronized. You can change:
   static gateway must also answer) within about a minute. Otherwise the camera restores the old
   profile; if even that fails it starts the setup hotspot. The console reports which happened.
   After a change to a new address, reconnect at the address the console shows.
+- **Watchdog.** If a claimed camera has had no usable Wi-Fi for 10 minutes (router replaced,
+  password changed), it starts the setup hotspot `PiBuddyCam-Setup-<id>` so you can reach it from
+  a phone, and retries your network every 10 minutes; when the network is back the hotspot stops
+  by itself. The hotspot is open, so anyone in range can reach the console's login page while it
+  runs. The System view reports `hotspot` as the last network result.
 - **Hostname.** Applied immediately and remembered. Reboot once so the console's certificate
   matches the new name.
 - **Time servers.** The camera has no clock chip, so time comes from the network. Blank means

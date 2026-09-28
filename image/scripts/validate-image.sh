@@ -1223,6 +1223,31 @@ PY
       report ok "systemd-timesyncd has no ordering drop-in that would form a boot cycle"
    fi
 
+   # The network watchdog: a timer-driven root oneshot. The timer is enabled at
+   # multi-user.target; the service has no [Install] section, runs the watchdog and
+   # is only started by the timer. Neither may be pulled in by the camera target.
+   wd_unit="$SYSTEMD_DIR/pibuddycam-network-watchdog.service"
+   wd_timer="$SYSTEMD_DIR/pibuddycam-network-watchdog.timer"
+   if [ -f "$wd_unit" ] && [ -f "$wd_timer" ]; then
+      if grep -q '^\[Install\]' "$wd_unit" \
+         || [ -L "$wants_dir/pibuddycam-network-watchdog.service" ]; then
+         report fail "pibuddycam-network-watchdog.service must not be enabled (started by its timer)"
+      elif ! grep -q 'network_watchdog.py' "$wd_unit"; then
+         report fail "pibuddycam-network-watchdog.service must run network_watchdog.py"
+      elif ! unit_has "$wd_timer" Unit pibuddycam-network-watchdog.service; then
+         report fail "pibuddycam-network-watchdog.timer must trigger pibuddycam-network-watchdog.service"
+      elif [ ! -L "$wants_dir/pibuddycam-network-watchdog.timer" ]; then
+         report fail "pibuddycam-network-watchdog.timer must be enabled at multi-user.target"
+      elif [ -f "$target_file" ] && { unit_has "$target_file" Wants pibuddycam-network-watchdog.timer \
+              || unit_has "$target_file" Requires pibuddycam-network-watchdog.timer; }; then
+         report fail "pibuddycam.target must not pull the network watchdog"
+      else
+         report ok "network watchdog timer is enabled and runs network_watchdog.py"
+      fi
+   else
+      report fail "network watchdog units are missing (pibuddycam-network-watchdog.service/.timer)"
+   fi
+
    # The console's network change runs as a root oneshot that only the helper
    # starts: no [Install] section and no enable symlink.
    net_unit="$SYSTEMD_DIR/pibuddycam-network-apply.service"

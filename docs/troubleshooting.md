@@ -38,6 +38,11 @@ Logs live in RAM. For problems that happen **before a reboot or during boot**, l
 - The camera reverts to the old settings on its own if the new ones do not come up (about a
   minute). If that also fails it starts the setup hotspot `PiBuddyCam-Setup-<id>`; join it and
   re-run setup or use [recovery](user-guide.md#recovery-and-factory-reset).
+- If the camera lost its Wi-Fi some other way (new router, changed password), the network
+  watchdog starts the same setup hotspot after 10 minutes without a link; join it, open
+  `https://192.168.4.1/admin` and fix the network under System, Network. It retries the old network
+  every 10 minutes and stops the hotspot when that works. To turn the watchdog off, add a systemd
+  drop-in setting `PIBUDDYCAM_NETWORK_WATCHDOG_MINUTES=0` for `pibuddycam-network-watchdog.service`.
 - After a successful change to a new static address, reconnect at the address the console showed.
   A wrong prefix length or gateway is the usual cause of an automatic revert.
 - The Network card says *needs a newer camera image* on an image older than the release after

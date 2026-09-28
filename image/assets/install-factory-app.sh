@@ -79,7 +79,8 @@ for u in rpicam-source.service pibuddycam-rtsp.service pibuddycam-ha-rtsp.servic
          pibuddycam.service pibuddycam-admin.service pibuddycam-provisioning.service \
          pi-persist.service pibuddycam-data-ready.service data-ready.target \
          bootlog.service pibuddycam-updater.service pibuddycam-updater.timer \
-         pibuddycam-updater-install.service pibuddycam-network-apply.service; do
+         pibuddycam-updater-install.service pibuddycam-network-apply.service \
+         pibuddycam-network-watchdog.service pibuddycam-network-watchdog.timer; do
    install -D -m 0644 "$unit_src/$u" "$SYSTEMD_DST/$u"
 done
 
@@ -249,7 +250,7 @@ chown "$uid:$gid" "$root$APP_ROOT/.ssh"
 chroot "$root" systemctl enable \
    data-ready.target pibuddycam-data-ready.service pibuddycam-data-grow.service \
    pi-persist.service bootlog.service pibuddycam-boot-mode.service \
-   pibuddycam-updater.timer >/dev/null 2>&1 || true
+   pibuddycam-updater.timer pibuddycam-network-watchdog.timer >/dev/null 2>&1 || true
 # There is no RTC, so time comes from systemd-timesyncd. It is enabled by the
 # package, but this is the one place that guarantees it (separate call so an
 # unrelated unit failure cannot silently skip it).

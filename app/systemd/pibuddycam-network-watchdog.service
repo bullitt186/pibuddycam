@@ -1,0 +1,21 @@
+# One pass of the network watchdog (network_watchdog.py): starts the setup hotspot
+# when a claimed device has had no usable Wi-Fi for too long, so it can be reached
+# and fixed without opening the case. Started only by pibuddycam-network-watchdog.timer
+# (no [Install] section here). Root because it activates NetworkManager profiles.
+#
+# Only a claimed device is watched: the unit is skipped unless the station profile
+# exists. PIBUDDYCAM_NETWORK_WATCHDOG_MINUTES sets the threshold (default 10, 0 = off);
+# override it with a systemd drop-in, not by editing this file.
+[Unit]
+Description=PiBuddyCam network watchdog (hotspot fallback)
+After=NetworkManager.service data-ready.target
+Wants=NetworkManager.service
+ConditionPathExists=/etc/NetworkManager/system-connections/pibuddycam-station.nmconnection
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/pibuddycam
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+TimeoutStartSec=120
+ExecStart=/opt/pibuddycam/venv/bin/python /opt/pibuddycam/network_watchdog.py tick

@@ -36,6 +36,7 @@ reader never stalls the others.
 | `pibuddycam-provisioning` | `admin_app.py` (setup mode) | Setup hotspot and wizard; runs only while unclaimed |
 | `pi-persist` | `persist_restore.py` | Boot-time restore of `/data` state into tmpfs (`quality.env`, `rotation.env`, RTSP mode, admin TLS) and the Samba bind mount |
 | `pibuddycam-updater` / `-install` | `updater_install.py` | Daily report-only check, and the approved install with rollback |
+| `pibuddycam-network-watchdog` (+ `.timer`) | `network_watchdog.py` | Root oneshot run every minute: starts the setup hotspot when a claimed device has had no usable Wi-Fi for 10 minutes |
 | `pibuddycam-network-apply` | `network_apply.py` | Root oneshot started only by the helper: applies a console network change with automatic revert |
 | `pibuddycam-boot-mode`, `-data-grow`, `-data-ready` | image helpers | Choose setup vs. camera runtime; grow and verify `/data` |
 
@@ -116,6 +117,17 @@ admin restart or a dropped HTTP connection cannot interrupt the transaction. `ne
 The console answers 202 and polls `GET /api/network`; the PSK is saved to `secrets.toml` only
 after the result is `applied`. Reads (`nmcli`, `timedatectl`) are unprivileged **[assumption]:
 the service account can read the non-secret connection settings; verify on a device**.
+
+**Watchdog.** The revert above only covers a change made through the console. If the router is
+replaced or the Wi-Fi password changes later, `network_watchdog.py` (started every minute by
+`pibuddycam-network-watchdog.timer`) counts how long the station link has had no address and
+default route. Past 10 minutes (`PIBUDDYCAM_NETWORK_WATCHDOG_MINUTES`, `0` disables; set it with a
+systemd drop-in) it starts the setup hotspot, and writes `hotspot` to the result file the console
+reads. While the hotspot is up it retries the station profile every 10 minutes and stops the
+hotspot when the link is healthy again. It only runs on a claimed device (the station profile
+exists), never while a console change is `applying`, and its counters live in root-only `/run`, so
+a reboot always gets a fresh chance to join. The setup hotspot is open by design, so a device in
+this state exposes the console's login page on that network until the Wi-Fi returns.
 
 The hostname is stored in `device.toml [admin].hostname`; `persist_restore.py` re-applies it at
 boot before the admin certificate is provisioned, and `admin_tls.ensure` regenerates the

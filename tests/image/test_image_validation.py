@@ -165,6 +165,9 @@ def make_rootfs(base):
     # WP-R4b: the updater timer is enabled at multi-user.target; its oneshot
     # service is triggered by the timer and is not enabled directly.
     os.symlink("../pibuddycam-updater.timer", wants / "pibuddycam-updater.timer")
+    # The network watchdog timer is enabled the same way; its service is not.
+    os.symlink(
+        "../pibuddycam-network-watchdog.timer", wants / "pibuddycam-network-watchdog.timer")
     camera_wants = systemd / "pibuddycam.target.wants"
     camera_wants.mkdir(parents=True)
     os.symlink("../pibuddycam-admin.service", camera_wants / "pibuddycam-admin.service")
@@ -681,6 +684,42 @@ class RootfsValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing dma_heap udev rule", result.stdout)
+
+    def test_missing_network_watchdog_timer_link_fails(self):
+        root = self._root()
+        (root / "etc" / "systemd" / "system" / "multi-user.target.wants"
+         / "pibuddycam-network-watchdog.timer").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("network-watchdog.timer must be enabled", result.stdout)
+
+    def test_enabled_network_watchdog_service_fails(self):
+        root = self._root()
+        os.symlink(
+            "../pibuddycam-network-watchdog.service",
+            root / "etc" / "systemd" / "system" / "multi-user.target.wants"
+            / "pibuddycam-network-watchdog.service",
+        )
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("network-watchdog.service must not be enabled", result.stdout)
+
+    def test_missing_network_watchdog_timer_fails(self):
+        root = self._root()
+        (root / "etc" / "systemd" / "system" / "pibuddycam-network-watchdog.timer").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("network watchdog units are missing", result.stdout)
+
+    def test_camera_target_must_not_pull_the_network_watchdog(self):
+        root = self._root()
+        target = root / "etc" / "systemd" / "system" / "pibuddycam.target"
+        target.write_text(
+            target.read_text(encoding="utf-8")
+            + "\nWants=pibuddycam-network-watchdog.timer\n", encoding="utf-8")
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must not pull the network watchdog", result.stdout)
 
     def test_missing_web_module_fails(self):
         root = self._root()

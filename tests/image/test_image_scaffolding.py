@@ -70,6 +70,8 @@ REUSED_UNITS = [
     "pibuddycam-updater.timer",
     "pibuddycam-updater-install.service",
     "pibuddycam-network-apply.service",
+    "pibuddycam-network-watchdog.service",
+    "pibuddycam-network-watchdog.timer",
 ]
 
 IMAGE_ONLY_UNITS = [
@@ -678,6 +680,27 @@ class ImageScaffoldingTests(unittest.TestCase):
         self.assertNotIn("pibuddycam-network-apply.service", enable_block)
         target = read_text(ASSET_SYSTEMD / "pibuddycam.target")
         self.assertNotIn("pibuddycam-network-apply.service", target)
+
+    def test_network_watchdog_is_a_timer_driven_root_oneshot_for_claimed_devices(self):
+        service = parse_unit(REPO_SYSTEMD / "pibuddycam-network-watchdog.service")
+        self.assertEqual(service["Service"]["Type"], "oneshot")
+        self.assertEqual(service["Service"]["User"], "root")
+        self.assertIn("network_watchdog.py tick", service["Service"]["ExecStart"])
+        self.assertNotIn("Install", service)
+        # Unclaimed devices already run the setup hotspot: nothing to watch.
+        self.assertEqual(
+            service["Unit"]["ConditionPathExists"],
+            "/etc/NetworkManager/system-connections/pibuddycam-station.nmconnection")
+        timer = parse_unit(REPO_SYSTEMD / "pibuddycam-network-watchdog.timer")
+        self.assertEqual(timer["Timer"]["Unit"], "pibuddycam-network-watchdog.service")
+        self.assertEqual(timer["Timer"]["OnUnitActiveSec"], "60s")
+        self.assertEqual(timer["Install"]["WantedBy"], "multi-user.target")
+        installer = read_text(ASSETS / "install-factory-app.sh")
+        enable_block = installer.split("systemctl enable", 1)[1].split("|| true", 1)[0]
+        self.assertIn("pibuddycam-network-watchdog.timer", enable_block)
+        self.assertNotIn("pibuddycam-network-watchdog.service", enable_block)
+        target = read_text(ASSET_SYSTEMD / "pibuddycam.target")
+        self.assertNotIn("network-watchdog", target)
 
     def test_installer_disables_wifi_mac_randomization(self):
         # Scan-time MAC randomization flips the MAC-derived fingerprint and

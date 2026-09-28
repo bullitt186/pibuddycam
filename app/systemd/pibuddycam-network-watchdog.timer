@@ -1,0 +1,15 @@
+# Runs the network watchdog once a minute, starting a few minutes after boot so the
+# Wi-Fi has its normal chance to join first. Enabled at multi-user.target like the
+# updater timer, and isolated from the camera stack (never Requires= by it).
+[Unit]
+Description=PiBuddyCam network watchdog (every minute)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=60s
+AccuracySec=10s
+Persistent=false
+Unit=pibuddycam-network-watchdog.service
+
+[Install]
+WantedBy=multi-user.target

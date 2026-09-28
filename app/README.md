@@ -17,6 +17,7 @@ development are in [docs/development.md](../docs/development.md).
 | `updater_install.py` | `pibuddycam-updater.service`, `pibuddycam-updater-install.service` (always the factory copy) |
 | `boot_mode.py`, `data_ready.py`, `hotspot_ctl.py`, `wifi_station.py`, `bootlog.sh` | image units and the privileged helper |
 | `network_apply.py` | `pibuddycam-network-apply.service` (root, started only by the helper's `network-apply` verb) |
+| `network_watchdog.py` | `pibuddycam-network-watchdog.service`, started every minute by its timer (root) |
 | `ntp_apply.py` | the helper's `ntp-apply` verb, the NetworkManager dispatcher script and `persist_restore.py` (root) |
 
 Unit files are in `systemd/`. The web console's static files are in `web/`.
@@ -31,7 +32,7 @@ Unit files are in `systemd/`. The web console's static files are in `web/`.
 | State and settings | `state.py`, `settings_coordinator.py`, `settings_dispatch.py`, `settings_store.py`, `config_schema.py`, `expert_config.py`, `scheduling.py` |
 | Local integrations | `local_http.py`, `onvif_facade.py`, `onvif_discovery.py`, `mqtt_service.py`, `mqtt_state.py`, `mqtt_topics.py`, `mqtt_probe.py` |
 | Timelapse | `timelapse.py` (frames, AVI, per-print sessions), `media_library.py`, `media_build.py` (with a retry queue for session builds), `gpio_trigger.py` + `gpio_pins.py` (Prusa GPIO Hackerboard trigger), `gpio_selftest.py` (hand-run hardware check) |
-| Network and time | `network_settings.py` (validation, live status, apply control), `network_apply.py`, `wifi_station.py`, `ntp_apply.py` |
+| Network and time | `network_settings.py` (validation, live status, apply control), `network_apply.py`, `wifi_station.py`, `network_watchdog.py`, `ntp_apply.py` |
 | Console and setup | `admin_app.py`, `admin_http.py` (routes, security policy, shared helpers) with its handler mixins `admin_http_media.py`, `admin_http_system.py`, `admin_http_network.py`, `admin_http_settings.py`, `admin_auth.py`, `admin_tls.py`, `dashboard.py`, `live_monitor.py`, `diagnostics.py`, `runtime_ipc.py`, `setup_wizard.py`, `provisioning.py`, `camera_probe.py`, `hotspot.py`, `ssh_control.py`, `factory_reset.py`, `recovery.py` |
 | Appliance lifecycle | `boot_mode.py`, `data_ready.py`, `persist_restore.py`, `migrations.py`, `privileged.py`, `device_control.py`, `updater.py`, `updater_install.py`, `update_control.py`, `app_version.py`, `app_metrics.py`, `image_guard.py` |
 
