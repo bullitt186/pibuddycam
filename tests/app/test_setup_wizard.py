@@ -266,9 +266,11 @@ class PrusaTokenTests(WizardTestBase):
 class FingerprintTests(WizardTestBase):
     def test_fingerprint_is_optional(self):
         session = self.make_session()
-        self.assertTrue(session.submit('fingerprint', {}).ok)
-        # The host has no wlan0, so no stable fingerprint can be derived; on a
-        # device the empty submission persists the MAC-derived value.
+        # Simulate a host without wlan0 (a build host may have one), so no
+        # stable fingerprint can be derived; on a device the empty submission
+        # persists the MAC-derived value.
+        with patch.object(type(session), '_derived_fingerprint', return_value=''):
+            self.assertTrue(session.submit('fingerprint', {}).ok)
         self.assertEqual(session.fingerprint, '')
         self.assertTrue(session.submit('fingerprint', {'fingerprint': 'fp-123'}).ok)
         self.assertEqual(session.fingerprint, 'fp-123')
