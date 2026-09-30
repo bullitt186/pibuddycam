@@ -70,6 +70,18 @@ function assert(condition, message) {
   if (!condition) throw new AssertionError(message);
 }
 
+// Polls a locator count. `page.waitForFunction` evaluates a string in the page,
+// which the console's CSP (`script-src 'self'`) refuses on some Playwright builds.
+async function waitForCount(locator, predicate, timeout = 8000) {
+  const deadline = Date.now() + timeout;
+  let count = await locator.count();
+  while (!predicate(count)) {
+    if (Date.now() > deadline) throw new AssertionError(`count never matched, last ${count}`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    count = await locator.count();
+  }
+}
+
 function assertEqual(actual, expected, message) {
   if (actual !== expected) {
     throw new AssertionError(`${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
@@ -665,8 +677,7 @@ const TESTS = [
       assertEqual((await counters(request, base)).hostname, 1, 'hostname applied');
 
       // Time zone: the list comes from the device's tz database; saving needs no re-auth.
-      await page.waitForFunction(
-        () => document.querySelectorAll('#network-timezone option').length > 20);
+      await waitForCount(page.locator('#network-timezone option'), (n) => n > 20);
       assertEqual(await page.locator('#network-timezone').inputValue(), 'UTC', 'system zone preselected');
       await page.locator('#network-timezone').selectOption('Europe/Berlin');
       await page.locator('#network-timezone-form').getByRole('button', { name: 'Save time zone' }).click();
@@ -776,8 +787,7 @@ const TESTS = [
       assertIncludes(options[2], '3 frames', 'frame count in the picker');
 
       await page.locator('#timelapse-session').selectOption('session_20260101-000000');
-      await page.waitForFunction(
-        () => document.querySelectorAll('#timelapse-frames-grid figure').length === 3);
+      await waitForCount(page.locator('#timelapse-frames-grid figure'), (n) => n === 3);
       const src = await page.locator('#timelapse-frames-grid img').first().getAttribute('src');
       assertIncludes(src, 'session=session_20260101-000000', 'preview URL carries the session');
 
@@ -787,8 +797,7 @@ const TESTS = [
 
       // Loose frames offer no delete; a session does, behind an acknowledgement and re-auth.
       await page.locator('#timelapse-session').selectOption('');
-      await page.waitForFunction(
-        () => document.querySelectorAll('#timelapse-frames-grid figure').length === 12);
+      await waitForCount(page.locator('#timelapse-frames-grid figure'), (n) => n === 12);
       assertEqual(await page.locator('#timelapse-session-delete').isVisible(), false, 'no delete for loose frames');
 
       await page.locator('#timelapse-session').selectOption('session_20260101-000000');
@@ -801,18 +810,16 @@ const TESTS = [
       await page.locator('#timelapse-session-delete-button').click();
       await completeReauth(page);
       await waitForText(page.locator('#timelapse-session-delete-status'), 'Deleted session_20260101-000000: 3 frames');
-      await page.waitForFunction(
-        () => document.querySelectorAll('#timelapse-session option').length === 2);
+      await waitForCount(page.locator('#timelapse-session option'), (n) => n === 2);
       assertEqual(await page.locator('#timelapse-session').inputValue(), '', 'selection falls back to loose frames');
-      await page.waitForFunction(
-        () => document.querySelectorAll('#timelapse-frames-grid figure').length === 12);
+      await waitForCount(page.locator('#timelapse-frames-grid figure'), (n) => n === 12);
       assertEqual(await page.locator('#timelapse-session-delete').isVisible(), false, 'delete hidden again');
 
       // Synchronized clock: the warning disappears on the next visit.
       await setScenario(request, base, { clock: 'synced' });
       await openView(page, 'Overview');
       await openView(page, 'Timelapses');
-      await page.waitForFunction(() => document.getElementById('timelapse-clock-warning').hidden);
+      await page.locator('#timelapse-clock-warning').waitFor({ state: 'hidden' });
     },
   },
   {
