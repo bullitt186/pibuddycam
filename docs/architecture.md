@@ -68,8 +68,10 @@ just that a token exists. `boot_mode.py` starts the setup hotspot while unclaime
 `pibuddycam.target`.
 
 The setup hotspot is a captive portal. NetworkManager's dnsmasq for the shared AP answers every
-DNS name with `192.168.4.1` and announces the portal URI (DHCP option 114) through
-`/etc/NetworkManager/dnsmasq-shared.d/50-pibuddycam-captive.conf`. In setup mode `admin_http`
+DNS name with `192.168.4.1` through
+`/etc/NetworkManager/dnsmasq-shared.d/50-pibuddycam-captive.conf`. It announces no RFC 8910
+portal URI (DHCP option 114): that would have to be an HTTPS API with a certificate the client
+validates, which a self-signed certificate on `192.168.4.1` cannot provide. In setup mode `admin_http`
 redirects any request for a foreign `Host` (the operating systems' connectivity probes) and any
 unknown path to the portal, which is what makes phones and laptops open the wizard by themselves.
 When a claimed camera falls back to the same hotspot (network watchdog, failed network change),

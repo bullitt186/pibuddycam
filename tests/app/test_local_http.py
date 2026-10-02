@@ -106,8 +106,8 @@ class HotspotPortalTests(unittest.TestCase):
         self.assert_page(portal('/generate_204', 'connectivitycheck.gstatic.com', method='HEAD'),
                          'HEAD')
 
-    def test_announced_setup_uri_gets_the_info_page(self):
-        # DHCP option 114 announces http://192.168.4.1/setup.
+    def test_setup_address_gets_the_info_page(self):
+        # Someone may remember http://192.168.4.1/setup from the first setup.
         for path in ('/setup', '/setup/state'):
             self.assert_page(portal(path, PORTAL), path)
 

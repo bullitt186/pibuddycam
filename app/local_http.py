@@ -107,11 +107,11 @@ def _hotspot_portal_response(request):
 
     On a claimed device the network watchdog or a failed network change can
     start the setup hotspot while this server owns port 80. The hotspot's DNS
-    resolves every name to the portal address and announces
-    ``http://192.168.4.1/setup`` (DHCP option 114), so the operating systems'
-    connectivity probes and that URI land here. A 404 would show up as
-    "404: Not Found" in the phone's sign-in window; this static page tells the
-    user where the console is instead. It is not a redirect to HTTPS because
+    resolves every name to the portal address, so the operating systems'
+    connectivity probes land here. A 404 would show up as "404: Not Found" in
+    the phone's sign-in window; this static page tells the user where the
+    console is instead. ``/setup`` gets it too, for anyone who remembers the
+    setup address from the first setup. It is not a redirect to HTTPS because
     the captive sign-in windows cannot get past the self-signed certificate.
 
     Only ``GET``/``HEAD`` requests that arrived on the hotspot address count,
