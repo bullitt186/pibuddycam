@@ -172,6 +172,7 @@ class ImageScaffoldingTests(unittest.TestCase):
             ASSETS / "pibuddycam-data-grow.sh",
             ASSETS / "install-factory-app.sh",
             ASSETS / "build-info.py",
+            ASSETS / "networkmanager" / "dnsmasq-shared.d" / "50-pibuddycam-captive.conf",
             PIBUDDYCAM_PRIV,
             SUDOERS,
             ASSETS / "icon" / "pibuddycam.png",
@@ -710,6 +711,19 @@ class ImageScaffoldingTests(unittest.TestCase):
         installer = read_text(ASSETS / "install-factory-app.sh")
         self.assertIn("10-pibuddycam-mac.conf", installer)
         self.assertIn("etc/NetworkManager/conf.d/10-pibuddycam-mac.conf", installer)
+
+    def test_installer_ships_the_captive_portal_dns(self):
+        # The setup AP's dnsmasq must hijack DNS (and announce RFC 8910) so a
+        # phone opens the setup page without typing 192.168.4.1.
+        conf = read_text(
+            ASSETS / "networkmanager" / "dnsmasq-shared.d" / "50-pibuddycam-captive.conf")
+        lines = [line.strip() for line in conf.splitlines()
+                 if line.strip() and not line.startswith("#")]
+        self.assertIn("address=/#/192.168.4.1", lines)
+        self.assertIn('dhcp-option=114,"http://192.168.4.1/setup"', lines)
+        installer = read_text(ASSETS / "install-factory-app.sh")
+        self.assertIn(
+            "etc/NetworkManager/dnsmasq-shared.d/50-pibuddycam-captive.conf", installer)
 
     # --- AC-13/AC-14: build script + no secrets ----------------------------
 

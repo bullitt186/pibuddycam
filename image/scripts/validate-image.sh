@@ -1170,6 +1170,15 @@ PY
       report fail "missing NetworkManager scan-rand-mac-address=no (fingerprint flaps)"
    fi
 
+   # Captive portal: the setup AP's dnsmasq must resolve every name to the
+   # portal, or phones never open the setup page by themselves.
+   captive_conf="$MOUNT_ROOT/etc/NetworkManager/dnsmasq-shared.d/50-pibuddycam-captive.conf"
+   if [ -f "$captive_conf" ] && grep -qx 'address=/#/192.168.4.1' "$captive_conf"; then
+      report ok "setup hotspot DNS answers every name with the captive portal"
+   else
+      report fail "missing setup-hotspot captive DNS (address=/#/192.168.4.1); the setup page never opens by itself"
+   fi
+
    # GPIO timelapse trigger (Prusa GPIO Hackerboard): the runtime reads
    # /dev/gpiochip* as pibuddycam, so a udev rule must give the gpio group access,
    # the gpio group must exist (there is no raspberrypi-sys-mods to create it) and

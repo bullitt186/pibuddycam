@@ -163,6 +163,13 @@ TMPEOF
 install -D -o root -g root -m 0644 "$assets/networkmanager/10-pibuddycam-mac.conf" \
    "$root/etc/NetworkManager/conf.d/10-pibuddycam-mac.conf"
 
+# --- setup-hotspot captive portal ------------------------------------------
+# NetworkManager's dnsmasq for `ipv4.method shared` (the setup AP only) answers
+# every DNS name with 192.168.4.1, so phones open the setup page by themselves.
+install -D -o root -g root -m 0644 \
+   "$assets/networkmanager/dnsmasq-shared.d/50-pibuddycam-captive.conf" \
+   "$root/etc/NetworkManager/dnsmasq-shared.d/50-pibuddycam-captive.conf"
+
 # --- runtime launcher + factory fallback (AC-13; WP-R4c) --------------------
 # The runtime units exec this launcher, which prefers an installed release
 # under DATA and falls back to the immutable factory app when none is valid.
