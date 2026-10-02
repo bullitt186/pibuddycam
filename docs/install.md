@@ -29,8 +29,8 @@ first-boot format for this image:
 rpi-imager --repo https://github.com/bullitt186/pibuddycam/releases/latest/download/pibuddycam-os-list.json
 ```
 
-Choose *PiBuddyCam* as the OS. You can optionally set Wi-Fi, hostname and SSH in Imager's
-customisation; the Wi-Fi values are pre-filled in the setup wizard.
+Choose *PiBuddyCam* as the OS. Imager's customisation (Wi-Fi, hostname, SSH) is optional and not
+needed: the setup wizard asks for your Wi-Fi itself and does not yet take over Imager's values.
 
 **Alternative:** Imager's *Use custom* with the downloaded `.img.xz`. Imager can't infer the
 first-boot format from a raw image, so prefer the OS list.
@@ -43,7 +43,8 @@ to fill the card, which takes a minute.
 While unclaimed, the device opens a setup Wi-Fi network:
 
 - **SSID:** `PiBuddyCam-Setup-<last 6 characters of the device ID>`
-- **Setup page:** `http://192.168.4.1` (your phone or laptop usually opens it automatically)
+- **Setup page:** opens by itself after you join, like a hotel Wi-Fi login. If it doesn't, open
+  `http://192.168.4.1` in a browser.
 
 The setup network is open by design: a headless device has no way to give you a unique password
 before setup. **Do the setup somewhere you trust.** The wizard is only ever served on this setup
@@ -51,18 +52,26 @@ network, never on your normal LAN.
 
 The wizard walks through:
 
-1. **Status**: checks storage and the camera, with a retry if the camera isn't detected.
-2. **Imager settings**: imports any Wi-Fi, hostname or SSH values given in Raspberry Pi Imager.
-3. **Wi-Fi**: pick your network or enter a hidden SSID.
-4. **Prusa token**: paste the camera registration token from Prusa Connect.
-5. **Fingerprint** (optional): only needed to take over an existing registration. Otherwise
-   leave it empty and the MAC-derived fingerprint is used, the same way the genuine camera does
-   it.
-6. **Administrator password**: protects the web console. Required.
-7. **MQTT** (optional): broker details, tested live before saving.
-8. **Summary**: a review with secrets hidden.
-9. **Save and finish**: stores everything, turns the setup network off, joins your Wi-Fi and
+1. **Start**: checks storage and the camera, with *Check again* if the camera isn't detected.
+   You can still finish setup without a camera.
+2. **Wi-Fi**: pick your network from the scan list or type its name (for hidden networks), then
+   the password. If the scan finds nothing while the setup network is running, type the name.
+3. **Prusa Connect**: paste the camera registration token (Connect → printer → *Camera* → add a
+   camera → *Token*).
+4. **Password**: the administrator password for the web console. Required.
+5. **Options** (all optional):
+   - **MQTT**: broker URI and credentials, with *Test connection* before saving.
+   - **Fingerprint** (under *Advanced*): only needed to take over an existing registration.
+     Leave it empty and the MAC-derived fingerprint is used, the same way the genuine camera does
+     it.
+6. **Review**: everything at a glance with secrets hidden; *Change* jumps back to a step.
+   *Save and start camera* stores everything, turns the setup network off, joins your Wi-Fi and
    starts the camera.
+
+Your phone or laptop drops off the setup network at the end, so the last page shows where to go
+next before that happens. If the camera can't join your Wi-Fi, the setup network comes back; join
+it again and the wizard reopens with your earlier answers, so you only correct the Wi-Fi details.
+Reloading the page or closing the login window mid-way also keeps what you entered.
 
 A rejected token returns you to the wizard without overwriting working credentials.
 

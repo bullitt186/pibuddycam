@@ -100,6 +100,8 @@ ROUTES = (
     ('GET', '/admin'),
     ('GET', '/assets/{name}'),
     ('GET', '/setup'),
+    ('GET', '/setup/state'),
+    ('POST', '/setup/wifi/scan'),
     ('POST', '/setup/step/{n}'),
     ('POST', '/setup/finish'),
     ('GET', '/api/status'),

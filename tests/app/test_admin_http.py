@@ -954,6 +954,125 @@ class WizardTests(AdminHttpTestBase):
             app.handle(self.req('POST', '/setup/step/abc', body={})).status, 400
         )
 
+    def test_setup_post_must_be_json(self):
+        app = self._setup_app()
+        for path in ('/setup/step/1', '/setup/finish', '/setup/wifi/scan'):
+            response = app.handle(self.req(
+                'POST', path, body='storage_ready=1',
+                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            ))
+            self.assertEqual(response.status, 415, path)
+        # A JSON-looking body under a CORS-simple content type is refused too.
+        response = app.handle(self.req(
+            'POST', '/setup/step/1', body='{}',
+            headers={'Content-Type': 'text/plain; charset=application/json'},
+        ))
+        self.assertEqual(response.status, 415)
+        self.assertNotIn('status', self.wizard.completed)
+
+    def test_setup_page_serves_the_wizard_shell(self):
+        response = self._setup_app().handle(self.req('GET', '/setup'))
+        self.assertEqual(response.status, 200)
+        html = response.body.decode('utf-8')
+        self.assertIn('/assets/setup.js?v=', html)
+        self.assertNotIn('__ASSET_VERSION__', html)
+        self.assertNotIn('Submit this step through the setup API', html)
+        self.assertEqual(response.headers['Content-Security-Policy'], admin_http.HTML_CSP)
+
+    def test_setup_page_falls_back_when_the_shell_is_missing(self):
+        app = self._setup_app()
+        app._web_dir = str(self.root / 'no-web')
+        response = app.handle(self.req('GET', '/setup'))
+        self.assertEqual(response.status, 200)
+        self.assertIn(b'Storage and camera status', response.body)
+
+    def test_setup_state_is_redacted_and_reports_saved_flags(self):
+        app = self._setup_app()
+        token = 'prusa-token-route-secret'
+        psk = 'wifi-psk-route-secret'
+        for number, body in (
+            (1, {}), (2, {}), (3, {'ssid': 'Home', 'psk': psk}),
+            (4, {'source': 'manual', 'token': token}),
+            (6, {'password': ADMIN_PASSWORD, 'confirm': ADMIN_PASSWORD}),
+        ):
+            response = app.handle(self.req('POST', f'/setup/step/{number}', body=body))
+            self.assertEqual(response.status, 200, (number, response.body))
+        response = app.handle(self.req('GET', '/setup/state'))
+        self.assertEqual(response.status, 200)
+        raw = response.body.decode('utf-8')
+        for secret in (token, psk, ADMIN_PASSWORD, self.wizard.admin_hash):
+            self.assertNotIn(secret, raw)
+        payload = json.loads(raw)
+        # The pointer follows the last submitted step; the page resumes from
+        # ``completed`` instead, so a skipped optional step is never lost.
+        self.assertEqual(payload['step'], 'mqtt')
+        self.assertEqual(payload['step_number'], 7)
+        self.assertEqual(payload['done_steps'], [1, 2, 3, 4, 6])
+        self.assertEqual(len(payload['steps']), len(setup_wizard.STEP_ORDER))
+        self.assertEqual(payload['summary']['wifi']['ssid'], 'Home')
+        self.assertEqual(payload['saved'], {
+            'wifi_secured': True, 'prusa_ready': True,
+            'admin_ready': True, 'fingerprint_pinned': False,
+        })
+        self.assertEqual(payload['setup_ssid'], 'PiBuddyCam-Setup-ddeeff')
+        self.assertEqual(payload['admin_url'], 'https://pibuddycam-ddeeff.local')
+        self.assertEqual(response.headers['Cache-Control'], admin_http.NO_STORE_CACHE_CONTROL)
+
+    def test_setup_state_closed_after_claim(self):
+        path = self.root / 'provisioning.json'
+        path.write_text(json.dumps({'state': 'running'}), encoding='utf-8')
+        app = self._setup_app()
+        response = app.handle(self.req('GET', '/setup/state'))
+        self.assertEqual(response.status, 302)
+        self.assertEqual(
+            app.handle(self.req('POST', '/setup/wifi/scan', body={})).status, 409)
+
+    def test_setup_state_step_numbers_survive_secret_scrubbing(self):
+        # A short MQTT username that is a substring of a step name must not
+        # corrupt the resume information.
+        app = self._setup_app()
+        for number, body in (
+            (1, {}), (2, {}), (3, {'ssid': 'Home', 'psk': 'wifi-psk-route'}),
+            (4, {'source': 'manual', 'token': 'prusa-token-route'}),
+            (5, {}), (6, {'password': ADMIN_PASSWORD, 'confirm': ADMIN_PASSWORD}),
+            (7, {'enabled': True, 'uri': 'mqtt://broker.example:1883',
+                 'username': 'admin', 'password': 'pass'}),
+        ):
+            response = app.handle(self.req('POST', f'/setup/step/{number}', body=body))
+            self.assertEqual(response.status, 200, (number, response.body))
+        payload = json.loads(app.handle(self.req('GET', '/setup/state')).body)
+        self.assertEqual(payload['done_steps'], [1, 2, 3, 4, 5, 6, 7])
+
+    def test_setup_scan_returns_bounded_networks(self):
+        app = self._setup_app()
+        self.wizard.wifi_scan = lambda: [
+            {'ssid': 'Home', 'signal': 80, 'secured': True},
+            {'ssid': '', 'signal': 10, 'secured': False},
+            'garbage',
+        ]
+        response = app.handle(self.req('POST', '/setup/wifi/scan', body={}))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['networks'], [{'ssid': 'Home', 'signal': 80, 'secured': True}])
+        state = json.loads(app.handle(self.req('GET', '/setup/state')).body)
+        self.assertEqual(state['networks'], payload['networks'])
+
+    def test_setup_scan_failure_and_unavailable(self):
+        app = self._setup_app()
+        payload = json.loads(app.handle(self.req('POST', '/setup/wifi/scan', body={})).body)
+        self.assertFalse(payload['ok'])
+        self.assertEqual(payload['reason'], 'wifi scanning is not available')
+
+        def broken():
+            raise RuntimeError('wifi scan unavailable')
+
+        self.wizard.wifi_scan = broken
+        payload = json.loads(app.handle(self.req('POST', '/setup/wifi/scan', body={})).body)
+        self.assertFalse(payload['ok'])
+        self.assertEqual(payload['reason'], 'wifi scan failed')
+        self.assertEqual(payload['networks'], [])
+
     def test_activate_station_is_passed_to_the_wizard(self):
         def activate(ssid, psk):
             return True
@@ -2077,3 +2196,68 @@ class ValidateSessionTokenTests(AdminHttpTestBase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+# --------------------------------------------------------------------------- #
+# Captive portal
+# --------------------------------------------------------------------------- #
+
+class CaptivePortalTests(AdminHttpTestBase):
+    """Foreign-Host probes are redirected to the portal in setup mode only."""
+
+    PROBES = (
+        ('captive.apple.com', '/hotspot-detect.html'),
+        ('connectivitycheck.gstatic.com', '/generate_204'),
+        ('www.msftconnecttest.com', '/connecttest.txt'),
+        ('detectportal.firefox.com', '/canonical.html'),
+        ('example.org', '/'),
+        ('pibuddycam-ddeeff.local', '/admin'),
+    )
+
+    def _setup_app(self):
+        return self._build_app(
+            mode='setup',
+            provisioning_state=provisioning.ProvisioningState(state='unclaimed'),
+        )
+
+    def test_os_probes_redirect_to_the_portal(self):
+        app = self._setup_app()
+        for host, path in self.PROBES:
+            response = app.handle(self.req('GET', path, headers={'Host': host}))
+            self.assertEqual(response.status, 302, host)
+            self.assertEqual(response.headers['Location'], 'http://192.168.4.1/', host)
+            self.assertEqual(
+                response.headers['Cache-Control'], admin_http.NO_STORE_CACHE_CONTROL)
+            self.assertEqual(response.body, b'')
+
+    def test_portal_host_is_served_normally(self):
+        app = self._setup_app()
+        for host in ('192.168.4.1', '192.168.4.1:80', 'LOCALHOST:8080', '127.0.0.1'):
+            response = app.handle(self.req('GET', '/setup', headers={'Host': host}))
+            self.assertEqual(response.status, 200, host)
+
+    def test_unknown_portal_path_redirects_but_api_stays_404(self):
+        app = self._setup_app()
+        response = app.handle(self.req(
+            'GET', '/generate_204', headers={'Host': '192.168.4.1'}))
+        self.assertEqual(response.status, 302)
+        self.assertEqual(response.headers['Location'], '/')
+        self.assertEqual(app.handle(self.req('GET', '/api/nope')).status, 404)
+        self.assertEqual(app.handle(self.req('POST', '/nope', body={})).status, 404)
+
+    def test_foreign_host_cannot_drive_the_wizard_api(self):
+        app = self._setup_app()
+        response = app.handle(self.req(
+            'POST', '/setup/step/1', body={}, headers={'Host': 'evil.example'}))
+        self.assertEqual(response.status, 421)
+
+    def test_admin_mode_never_redirects(self):
+        for host, path in self.PROBES:
+            response = self.app.handle(self.req('GET', path, headers={'Host': host}))
+            self.assertNotEqual(
+                response.headers.get('Location'), 'http://192.168.4.1/', host)
+        self.assertEqual(
+            self.app.handle(self.req(
+                'GET', '/generate_204', headers={'Host': 'example.org'})).status,
+            404,
+        )

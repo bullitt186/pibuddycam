@@ -313,6 +313,18 @@ class AdminTransportSourceTests(unittest.TestCase):
         declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}
         self.assertIn(('POST', '/api/mqtt/test'), declared)
 
+    def test_route_table_declares_the_setup_wizard_routes(self):
+        routes_node = _module_assign(self.tree, 'ROUTES')
+        declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}
+        for entry in (
+            ('GET', '/setup'),
+            ('GET', '/setup/state'),
+            ('POST', '/setup/wifi/scan'),
+            ('POST', '/setup/step/{n}'),
+            ('POST', '/setup/finish'),
+        ):
+            self.assertIn(entry, declared)
+
     def test_route_table_declares_the_settings_and_integration_routes(self):
         routes_node = _module_assign(self.tree, 'ROUTES')
         declared = {tuple(entry) for entry in ast.literal_eval(routes_node)}

@@ -7,6 +7,13 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 ## [Unreleased]
 
 ### Added
+- A real setup wizard in the browser, in the look of the web console: start check, Wi-Fi scan
+  list or manual network, Prusa Connect token, admin password, optional MQTT (with connection
+  test) and fingerprint, a review with *Change* links, and a final page that says where to find
+  the camera once the setup network is gone. It resumes after a reload. It replaces the
+  placeholder page that only said "Submit this step through the setup API".
+- The setup page opens by itself after joining `PiBuddyCam-Setup-<id>` (captive portal), on
+  iPhone, Android, macOS and Windows. Needs a new image for the DNS part, see below.
 - Network settings in the console (System, Network). Changes need a new image, see below.
   - Change Wi-Fi network and password, DHCP or a static IPv4 address, DNS servers, and the
     hostname, and scan for networks.
@@ -33,11 +40,17 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 
 ### Changed
 - The setup wizard's Wi-Fi scan uses the root `wifi-scan` verb.
+- Setup requests (`/setup/step/<n>`, `/setup/finish`, `/setup/wifi/scan`) must be JSON and are
+  refused for a foreign `Host`; new read route `GET /setup/state`.
 - `pibuddycam-priv` gains the verbs `network-apply`, `hostname-apply`, `wifi-scan` and `ntp-apply`.
 
 ### Upgrade notes
 - **OTA-deliverable:** the HTTP redirect, the Network and timelapse UI, the API, the settings and
   the session storage and builds.
+- **OTA-deliverable:** the setup wizard page and the captive-portal redirects in the setup server.
+- **Needs a new image:** the captive-portal DNS of the setup network
+  (`/etc/NetworkManager/dnsmasq-shared.d/50-pibuddycam-captive.conf`). Without it the wizard
+  still works at `http://192.168.4.1`, it just doesn't open by itself.
 - **Needs a new image:** applying network changes, the hostname, Wi-Fi scanning (root helper verbs,
   the `pibuddycam-network-apply` unit), access to the GPIO chip (the `gpio` group and udev rule),
   and the persistent clock and DHCP time servers (the NetworkManager dispatcher script and the

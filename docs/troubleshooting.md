@@ -24,6 +24,13 @@ Logs live in RAM. For problems that happen **before a reboot or during boot**, l
 - The data partition might be missing or corrupt. The device then stays in setup, so check
   `bootlog.txt`.
 
+**The setup page doesn't open by itself.**
+- Open `http://192.168.4.1` in a browser while connected to `PiBuddyCam-Setup-<id>`. Use `http`,
+  not `https`: the setup network has no HTTPS.
+- Some phones keep mobile data on and skip the login window; switch mobile data off for setup.
+- Automatic opening needs an image that ships the setup network's DNS redirect (see the
+  changelog); older images still serve the wizard at the address above.
+
 **The camera check fails.**
 - Reseat the ribbon cable (contacts facing the right way) and make sure exactly one camera is
   connected, then use the wizard's retry.

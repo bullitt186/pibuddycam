@@ -237,6 +237,14 @@ def make_rootfs(base):
     (nm_conf / "10-pibuddycam-mac.conf").write_text(
         "[device]\nwifi.scan-rand-mac-address=no\n", encoding="utf-8"
     )
+    # Captive portal DNS for the setup hotspot.
+    shared = networkmanager / "dnsmasq-shared.d"
+    shared.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        REPO_ROOT / "image" / "assets" / "networkmanager" / "dnsmasq-shared.d"
+        / "50-pibuddycam-captive.conf",
+        shared / "50-pibuddycam-captive.conf",
+    )
 
     dispatcher = networkmanager / "dispatcher.d"
     dispatcher.mkdir(parents=True, exist_ok=True)
@@ -819,6 +827,14 @@ class RootfsValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("pibuddycam-network-apply.service is missing", result.stdout)
+
+    def test_missing_captive_portal_dns_fails(self):
+        root = self._root()
+        (root / "etc" / "NetworkManager" / "dnsmasq-shared.d"
+         / "50-pibuddycam-captive.conf").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("missing setup-hotspot captive DNS", result.stdout)
 
     def test_missing_stable_mac_conf_fails(self):
         root = self._root()

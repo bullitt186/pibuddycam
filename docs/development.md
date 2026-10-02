@@ -54,6 +54,10 @@ skipping). Run it locally when you change `app/web/` or the admin HTTP API.
 The console script is split into ES modules under `app/web/` (`app.js` is the entry point). They
 import each other with `?v=__ASSET_VERSION__`, which the server replaces with the content hash, so
 every new module must also be added to `ASSET_ALLOWLIST` in `admin_http.py`.
+The setup wizard is a separate page, `setup.html` with the self-contained `setup.js` (it imports
+no console module, so the captive-portal page stays small). The E2E harness serves it with
+`POST /__e2e/reset {"mode": "setup"}`; the harness has no `/data` mount, so the provisioning
+state does not advance past `unclaimed` there.
 
 The `tests/app` package redirects every path that points into `/data` to a throw-away directory
 (`tests/app/__init__.py`); a test that needs a real path must inject it.

@@ -927,6 +927,174 @@ p {
 }
 
 /* ------------------------------------------------------------------ */
+/* Setup wizard (captive portal, web/setup.html)                       */
+/* ------------------------------------------------------------------ */
+
+.setup {
+  align-items: center;
+  padding: 1.5rem 1rem;
+}
+
+.setup__card {
+  width: 100%;
+  max-width: 34rem;
+}
+
+/* Screen headings receive programmatic focus for screen readers only. */
+.setup__screen h2:focus {
+  outline: none;
+}
+
+.setup__lede {
+  margin-bottom: 1rem;
+  color: var(--ink-muted);
+}
+
+.setup__card > .brand {
+  margin-bottom: 1.25rem;
+}
+
+.stepper {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.stepper__item {
+  flex: 1 1 0;
+  min-width: 0;
+  padding-top: 0.4rem;
+  border-top: 4px solid var(--line);
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.stepper__item--done {
+  border-top-color: var(--accent);
+}
+
+.stepper__item[aria-current="step"] {
+  border-top-color: var(--accent-strong);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.setup__checks,
+.setup__review {
+  margin: 0 0 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.setup__check,
+.setup__review-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 11rem) 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--surface-2);
+}
+
+.setup__check dt,
+.setup__review-row dt {
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+}
+
+.setup__check dd,
+.setup__review-row dd {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  justify-items: start;
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+.setup__networks,
+.setup__group {
+  margin: 0 0 1rem;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.network-list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.network-list__item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: var(--target);
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.network-list__item:has(input:checked) {
+  border-color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1px var(--accent-strong);
+}
+
+.network-list__ssid {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.network-list__meta {
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.setup__howto {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.setup__advanced {
+  margin-bottom: 1rem;
+}
+
+.setup__advanced summary {
+  min-height: var(--target);
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.setup__actions {
+  justify-content: space-between;
+}
+
+.setup__url {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.setup__progress {
+  padding: 1.5rem 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* Responsive: 360px phone through desktop                             */
 /* ------------------------------------------------------------------ */
 
@@ -969,12 +1137,28 @@ p {
     flex-wrap: wrap;
     min-width: 0;
   }
+
+  /* Only the current step keeps its label on a phone; the bars still show progress. */
+  .stepper__item:not([aria-current="step"]) {
+    font-size: 0;
+  }
+
+  .stepper__item[aria-current="step"] {
+    flex-grow: 3;
+  }
+
+  .setup__check,
+  .setup__review-row {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
 }
 
 @media (max-width: 380px) {
   .content,
   .topbar,
-  .login {
+  .login,
+  .setup {
     padding-left: 0.75rem;
     padding-right: 0.75rem;
   }

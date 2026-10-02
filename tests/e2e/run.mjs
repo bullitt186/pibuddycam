@@ -204,6 +204,18 @@ async function completeReauth(page) {
   await page.locator('#reauth-confirm').click();
 }
 
+async function setupScreen(page, name) {
+  await waitForVisible(page.locator(`[data-screen="${name}"]`));
+}
+
+async function setupToWifi(page, base) {
+  await page.goto(`${base}/`);
+  await setupScreen(page, 'welcome');
+  await waitForText(page.locator('#status-camera'), 'Detected');
+  await page.locator('#welcome-next').click();
+  await setupScreen(page, 'wifi');
+}
+
 /* ------------------------------------------------------------------ */
 /* tests                                                               */
 /* ------------------------------------------------------------------ */
@@ -879,6 +891,119 @@ const TESTS = [
       ));
       assertEqual(spinnerAnimation, 'none', 'reduced-motion spinner');
       assert(viewport.width <= 400 || viewport.width >= 1000, 'known viewport');
+    },
+  },
+  {
+    name: 'setup wizard: complete onboarding from the captive portal',
+    async run({ page, base, request }) {
+      await reset(request, base, { mode: 'setup' });
+      // An unknown portal path (an OS connectivity probe) lands on the wizard.
+      await page.goto(`${base}/generate_204`);
+      await setupScreen(page, 'welcome');
+      assertIncludes(page.url(), '/setup', 'probe path redirected to the wizard');
+      assertEqual(await page.locator('#setup-ssid').textContent(), 'PiBuddyCam-Setup-2e0001', 'setup ssid');
+      await waitForText(page.locator('#status-camera'), 'Detected');
+      await page.locator('#welcome-next').click();
+      await setupScreen(page, 'wifi');
+
+      // The scan runs on entry; picking a network fills the SSID.
+      await waitForText(page.locator('#wifi-networks'), 'E2E-Home');
+      await page.locator('.network-list__item', { hasText: 'E2E-Home' }).click();
+      assertEqual(await page.locator('#wifi-ssid').inputValue(), 'E2E-Home', 'picked ssid');
+      await page.locator('#wifi-psk').fill('short');
+      await page.locator('#wifi-next').click();
+      await waitForText(page.locator('#wifi-error'), '8 to 63');
+      await page.locator('#wifi-psk').fill('synthetic-wifi-psk');
+      await page.locator('#wifi-next').click();
+
+      await setupScreen(page, 'prusa');
+      await page.locator('#prusa-next').click();
+      await waitForText(page.locator('#prusa-error'), 'Paste the camera token');
+      await page.locator('#prusa-token').fill('synthetic-registration-token');
+      await page.locator('#prusa-next').click();
+
+      await setupScreen(page, 'password');
+      await page.locator('#admin-password').fill('synthetic-admin-pass');
+      await page.locator('#admin-password-confirm').fill('something-else');
+      await page.locator('#password-next').click();
+      await waitForText(page.locator('#password-error'), 'do not match');
+      await page.locator('#admin-password-confirm').fill('synthetic-admin-pass');
+      await page.locator('#password-next').click();
+
+      await setupScreen(page, 'options');
+      await page.locator('#mqtt-enabled').check();
+      await page.locator('#mqtt-uri').fill('mqtt://broker.e2e.invalid:1883');
+      await page.locator('#mqtt-test').click();
+      await waitForText(page.locator('#mqtt-test-status'), 'Connected to the broker');
+      await page.locator('#options-next').click();
+
+      await setupScreen(page, 'review');
+      const review = await page.locator('#review-list').textContent();
+      assertIncludes(review, 'E2E-Home (password saved)', 'review wifi');
+      assertIncludes(review, 'mqtt://broker.e2e.invalid:1883', 'review mqtt');
+      assertIncludes(review, 'https://pibuddycam-2e0001.local', 'review console address');
+      for (const secret of ['synthetic-wifi-psk', 'synthetic-registration-token', 'synthetic-admin-pass']) {
+        assert(!(await page.content()).includes(secret), `secret ${secret} must not be rendered`);
+      }
+      const overflow = await page.evaluate(() => (
+        document.documentElement.scrollWidth - document.documentElement.clientWidth
+      ));
+      assert(overflow <= 1, `no horizontal overflow on review (overflow=${overflow})`);
+
+      await page.locator('#review-finish').click();
+      await setupScreen(page, 'done');
+      assertEqual(await page.locator('#done-url').textContent(), 'https://pibuddycam-2e0001.local', 'done url');
+      assertEqual(await page.locator('#done-ssid').textContent(), 'E2E-Home', 'done ssid');
+      const done = await counters(request, base);
+      assertEqual(done.setup_station, 1, 'station activated once');
+      assertEqual(done.setup_camera, 1, 'camera started once');
+
+    },
+  },
+  {
+    name: 'setup wizard: manual network, resume after reload, station failure',
+    async run({ page, base, request }) {
+      await reset(request, base, {
+        mode: 'setup', scenarios: { setup_scan: 'fail', setup_station: 'fail' },
+      });
+      await setupToWifi(page, base);
+      await waitForText(page.locator('#wifi-scan-status'), 'Type the network name');
+      await page.locator('#wifi-ssid').fill('E2E-Hidden');
+      await page.locator('#wifi-psk').fill('synthetic-wifi-psk');
+      await page.locator('#wifi-next').click();
+      await setupScreen(page, 'prusa');
+
+      // A reload resumes at the first incomplete screen; nothing is re-asked.
+      await page.reload();
+      await setupScreen(page, 'prusa');
+      await page.locator('#prusa-token').fill('synthetic-registration-token');
+      await page.locator('#prusa-next').click();
+      await setupScreen(page, 'password');
+      await page.locator('#admin-password').fill('synthetic-admin-pass');
+      await page.locator('#admin-password-confirm').fill('synthetic-admin-pass');
+      await page.locator('#password-next').click();
+      await setupScreen(page, 'options');
+      await page.locator('#options-next').click();
+      await setupScreen(page, 'review');
+
+      // Going back keeps the saved Wi-Fi password when the field stays empty.
+      await page.locator('#review-list button[aria-label="Change Wi-Fi network"]').click();
+      await setupScreen(page, 'wifi');
+      await waitForText(page.locator('#wifi-psk-hint'), 'A password is saved');
+      await page.locator('#wifi-next').click();
+      await setupScreen(page, 'prusa');
+      await page.locator('#prusa-next').click();
+      await setupScreen(page, 'password');
+      await page.locator('#password-next').click();
+      await setupScreen(page, 'options');
+      await page.locator('#options-next').click();
+      await setupScreen(page, 'review');
+      assertIncludes(await page.locator('#review-list').textContent(), 'E2E-Hidden (password saved)', 'psk kept');
+
+      await page.locator('#review-finish').click();
+      await setupScreen(page, 'review');
+      await waitForText(page.locator('#review-error'), 'network not found');
+      assertEqual((await counters(request, base)).setup_camera, 0, 'camera not started');
     },
   },
   {
