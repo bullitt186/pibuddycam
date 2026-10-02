@@ -380,19 +380,19 @@ function enterPrusa() {
 async function submitPrusa(event) {
   event.preventDefault();
   setError('prusa-error', '');
-  const token = $('prusa-token').value.trim();
-  if (!token && saved('prusa_ready')) {
+  const pasted = $('prusa-token').value.trim();
+  if (!pasted && saved('prusa_ready')) {
     next();
     return;
   }
-  if (!token) {
+  if (!pasted) {
     setError('prusa-error', 'Paste the camera token from Prusa Connect.');
     $('prusa-token').focus();
     return;
   }
   const button = $('prusa-next');
   setBusy(button, true, 'Saving…');
-  const result = await submitStep('prusa_token', { source: 'manual', token });
+  const result = await submitStep('prusa_token', { source: 'manual', token: pasted });
   setBusy(button, false);
   if (!result.ok) {
     setError('prusa-error', reasonOf(result, 'The token was rejected.'));
