@@ -47,7 +47,9 @@ Logs live in RAM. For problems that happen **before a reboot or during boot**, l
   re-run setup or use [recovery](user-guide.md#recovery-and-factory-reset).
 - If the camera lost its Wi-Fi some other way (new router, changed password), the network
   watchdog starts the same setup hotspot after 10 minutes without a link; join it, open
-  `https://192.168.4.1/admin` and fix the network under System, Network. It retries the old network
+  `https://192.168.4.1/admin` and fix the network under System, Network. The phone's sign-in
+  window shows a short page pointing there; it cannot get past the certificate warning, so open
+  the address in the normal browser. It retries the old network
   every 10 minutes and stops the hotspot when that works. To turn the watchdog off, add a systemd
   drop-in setting `PIBUDDYCAM_NETWORK_WATCHDOG_MINUTES=0` for `pibuddycam-network-watchdog.service`.
 - After a successful change to a new static address, reconnect at the address the console showed.

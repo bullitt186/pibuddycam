@@ -39,6 +39,8 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   Needs a new image. The hotspot is open, so its login page is reachable in range while it runs.
 
 ### Changed
+- When a claimed camera falls back to the setup hotspot, the phone's sign-in window shows how to
+  reach the console (`https://192.168.4.1/admin`) instead of "404: Not Found".
 - The setup wizard's Wi-Fi scan uses the root `wifi-scan` verb.
 - Setup requests (`/setup/step/<n>`, `/setup/finish`, `/setup/wifi/scan`) must be JSON and are
   refused for a foreign `Host`; new read route `GET /setup/state`.
@@ -48,6 +50,7 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 - **OTA-deliverable:** the HTTP redirect, the Network and timelapse UI, the API, the settings and
   the session storage and builds.
 - **OTA-deliverable:** the setup wizard page and the captive-portal redirects in the setup server.
+- **OTA-deliverable:** the hotspot info page of the camera's port-80 server.
 - **Needs a new image:** the captive-portal DNS of the setup network
   (`/etc/NetworkManager/dnsmasq-shared.d/50-pibuddycam-captive.conf`). Without it the wizard
   still works at `http://192.168.4.1`, it just doesn't open by itself.

@@ -72,6 +72,10 @@ DNS name with `192.168.4.1` and announces the portal URI (DHCP option 114) throu
 `/etc/NetworkManager/dnsmasq-shared.d/50-pibuddycam-captive.conf`. In setup mode `admin_http`
 redirects any request for a foreign `Host` (the operating systems' connectivity probes) and any
 unknown path to the portal, which is what makes phones and laptops open the wizard by themselves.
+When a claimed camera falls back to the same hotspot (network watchdog, failed network change),
+port 80 belongs to `local_http` instead: for `GET`/`HEAD` requests that arrive on `192.168.4.1`
+with a foreign `Host`, or for `/setup`, it serves a static page pointing to
+`https://192.168.4.1/admin` instead of a 404. Requests on the LAN are routed as before.
 The wizard page (`web/setup.html`, `setup.js`) keeps no state in the browser: the setup session
 holds it server-side and `GET /setup/state` returns it redacted, so a reload resumes. Setup POSTs
 must be JSON and are refused for a foreign `Host`, so a page on the open network cannot drive them
