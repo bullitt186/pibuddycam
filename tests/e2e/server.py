@@ -43,6 +43,7 @@ import admin_auth  # noqa: E402
 import admin_http  # noqa: E402
 import config_schema  # noqa: E402
 import provisioning  # noqa: E402
+import setup_wizard  # noqa: E402
 
 #: Fixed synthetic admin password. It is not a real credential and is never
 #: reused outside this local fixture.
@@ -107,6 +108,7 @@ class FakeRuntime:
             'update_check': 0, 'update_install': 0, 'build_busy': 0,
             'network_apply': 0, 'network_psk_seen': 0, 'hostname': 0, 'ntp': 0,
             'build_session': 0, 'timezone': 0,
+            'setup_scan': 0, 'setup_station': 0, 'setup_camera': 0,
         }
         self.scenarios = {
             'live': 'live',            # live | stale
@@ -117,6 +119,8 @@ class FakeRuntime:
             'network': 'ok',           # ok | revert | old_image
             'gpio': 'ok',              # ok | error
             'clock': 'synced',         # synced | unsynced
+            'setup_scan': 'ok',        # ok | empty | fail
+            'setup_station': 'ok',     # ok | fail
         }
 
     # -- settings ---------------------------------------------------------- #
@@ -577,10 +581,39 @@ class FakeNetwork:
         return 200, {'ok': True, 'ntp_servers': list(servers), 'applied': True}
 
 
-class Environment:
-    """One synthetic temp tree plus the app/fakes bound to it."""
+class _StationFailure:
+    """Falsy station-activation outcome carrying a non-secret reason."""
 
-    def __init__(self, media='default', scenarios=None):
+    def __init__(self, reason):
+        self.reason = reason
+
+    def __bool__(self):
+        return False
+
+
+class FakeSetupHotspot:
+    """Setup-AP controller fake: start/stop always succeed, nothing runs."""
+
+    def start(self, *args, **kwargs):
+        return SimpleNamespace(ok=True, active=True, reason='')
+
+    def stop(self, *args, **kwargs):
+        return SimpleNamespace(ok=True, active=False, reason='')
+
+    def status(self, *args, **kwargs):
+        return SimpleNamespace(
+            ok=True, active=True, ssid='PiBuddyCam-Setup-2e0001',
+            address='192.168.4.1', reason='')
+
+
+class Environment:
+    """One synthetic temp tree plus the app/fakes bound to it.
+
+    ``mode='setup'`` builds an unclaimed device serving the setup wizard
+    (no seeded configuration); the default is a claimed console.
+    """
+
+    def __init__(self, media='default', scenarios=None, mode='admin'):
         self.root = tempfile.TemporaryDirectory(prefix='pibuddycam-e2e-')
         base = Path(self.root.name)
         self.device_path = base / 'device.toml'
@@ -592,9 +625,15 @@ class Environment:
         self.runtime = FakeRuntime()
         if scenarios:
             self.runtime.scenarios.update(scenarios)
-        self._seed_config()
-        self._seed_media(media)
-        self.app = self._build_app()
+        self.mode = 'setup' if mode == 'setup' else 'admin'
+        if self.mode == 'setup':
+            self.provisioning_path.write_text(
+                json.dumps({'state': 'unclaimed'}), encoding='utf-8')
+            self.app = self._build_setup_app()
+        else:
+            self._seed_config()
+            self._seed_media(media)
+            self.app = self._build_app()
 
     def _seed_config(self):
         device = config_schema.default_device()
@@ -671,6 +710,56 @@ class Environment:
             network_controller=self.network,
         )
 
+    def _build_setup_app(self):
+        def wizard_factory():
+            return setup_wizard.WizardSession(
+                device_id='e2e0001',
+                device_path=str(self.device_path),
+                secrets_path=str(self.secrets_path),
+                provisioning_path=str(self.provisioning_path),
+                hotspot_controller=FakeSetupHotspot(),
+                probe_result=SimpleNamespace(ok=True, reason='', sensors=1),
+                storage_ready=True,
+                wifi_scan=self._setup_scan,
+                mqtt_tester=self._mqtt_probe,
+                start_camera=self._setup_camera,
+                activate_station=self._setup_station,
+            )
+
+        return admin_http.AdminApp(
+            mode='setup',
+            provisioning_state=provisioning.ProvisioningState(state='unclaimed'),
+            device_path=str(self.device_path),
+            secrets_path=str(self.secrets_path),
+            provisioning_path=str(self.provisioning_path),
+            recovery_path=str(self.recovery_path),
+            device_id='e2e0001',
+            wizard_factory=wizard_factory,
+            mqtt_probe=self._mqtt_probe,
+        )
+
+    def _setup_scan(self):
+        self.runtime.counters['setup_scan'] += 1
+        scenario = self.runtime.scenarios['setup_scan']
+        if scenario == 'fail':
+            raise RuntimeError('wifi scan unavailable')
+        if scenario == 'empty':
+            return []
+        return [
+            {'ssid': 'E2E-Home', 'signal': 82, 'secured': True},
+            {'ssid': 'E2E-Guest', 'signal': 41, 'secured': False},
+        ]
+
+    def _setup_station(self, ssid, psk):
+        self.runtime.counters['setup_station'] += 1
+        if self.runtime.scenarios['setup_station'] == 'fail':
+            return _StationFailure('network not found')
+        return True
+
+    def _setup_camera(self):
+        self.runtime.counters['setup_camera'] += 1
+        return True
+
     def _mqtt_probe(self, config):
         self.runtime.counters['mqtt_test'] += 1
         if getattr(config, 'password', ''):
@@ -694,10 +783,10 @@ class HarnessState:
         self.lock = threading.Lock()
         self.env = Environment()
 
-    def rebuild(self, media='default', scenarios=None):
+    def rebuild(self, media='default', scenarios=None, mode='admin'):
         with self.lock:
             self.env.close()
-            self.env = Environment(media=media, scenarios=scenarios)
+            self.env = Environment(media=media, scenarios=scenarios, mode=mode)
             return self.env
 
     def current(self):
@@ -787,6 +876,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             env = state.rebuild(
                 media=payload.get('media', 'default'),
                 scenarios=payload.get('scenarios'),
+                mode=payload.get('mode', 'admin'),
             )
             self._write_json(200, {'ok': True, 'hostname': 'pibuddycam-e2e'})
             return

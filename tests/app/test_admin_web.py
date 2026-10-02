@@ -185,6 +185,24 @@ class AdminShellTests(unittest.TestCase):
             'the shell must not use inline event handlers',
         )
 
+    def test_setup_shell_has_no_inline_code_and_only_allowlisted_assets(self):
+        html = (WEB_DIR / admin_http.SETUP_SHELL_FILE).read_text(encoding='utf-8')
+        self.assertNotIn('<style', html.lower())
+        self.assertIsNone(re.search(r'<script(?![^>]*\bsrc=)', html, re.IGNORECASE))
+        self.assertIsNone(re.search(r'\son[a-z]+\s*=', html, re.IGNORECASE))
+        self.assertNotIn('style=', html)
+        referenced = set(re.findall(r'/assets/([A-Za-z0-9._-]+)', html))
+        self.assertIn('setup.js', referenced)
+        self.assertLessEqual(referenced, set(admin_http.ASSET_ALLOWLIST))
+        self.assertIn('Not affiliated with or endorsed by Prusa Research', html)
+
+    def test_setup_script_uses_no_browser_storage(self):
+        # The wizard state lives server-side; a captive-portal browser may
+        # have no persistent storage at all.
+        code = (WEB_DIR / 'setup.js').read_text(encoding='utf-8')
+        for marker in ('localStorage', 'sessionStorage', 'indexedDB', 'document.cookie'):
+            self.assertNotIn(marker, code, marker)
+
     def test_shell_references_only_allowlisted_assets(self):
         html = self.app.handle(_make_request('GET', '/admin')).body.decode('utf-8')
         referenced = set(re.findall(r'/assets/([A-Za-z0-9._-]+)', html))
@@ -460,7 +478,8 @@ class AdminDesignSystemTests(unittest.TestCase):
     def test_web_tree_has_no_unknown_files(self):
         files = {path.name for path in WEB_DIR.iterdir() if path.is_file()}
         self.assertEqual(
-            files, set(admin_http.ASSET_ALLOWLIST) | {admin_http.SHELL_FILE})
+            files, set(admin_http.ASSET_ALLOWLIST)
+            | {admin_http.SHELL_FILE, admin_http.SETUP_SHELL_FILE})
 
     def test_css_is_local_only(self):
         self.assertNotIn('@import', self.css)

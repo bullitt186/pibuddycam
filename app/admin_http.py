@@ -96,6 +96,7 @@ import diagnostics
 import expert_config
 import gpio_pins
 import factory_reset as factory_reset_module
+import hotspot
 import live_monitor
 import media_build
 import media_library
@@ -157,6 +158,23 @@ WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web')
 #: trusted-LAN notice and asset version can be substituted.
 SHELL_FILE = 'index.html'
 
+#: The setup-wizard document served for ``GET /setup`` while the device is
+#: unclaimed. Rendered like :data:`SHELL_FILE` (asset-version substitution).
+SETUP_SHELL_FILE = 'setup.html'
+
+#: ``Host`` values (port stripped, lowercase) the setup portal answers as
+#: itself. Any other host in ``setup`` mode is a captive-portal probe or a
+#: hijacked lookup (the setup AP's DNS answers every name with the portal
+#: address) and is redirected to :data:`CAPTIVE_PORTAL_ROOT`. Loopback is kept
+#: so the portal stays usable from the device and the local test harness.
+CAPTIVE_PORTAL_HOSTS = frozenset({
+    hotspot.CAPTIVE_PORTAL_IP, 'localhost', '127.0.0.1', '[::1]',
+})
+
+#: Redirect target for captive-portal probes; ``/`` then picks the wizard or
+#: the console by provisioning state.
+CAPTIVE_PORTAL_ROOT = hotspot.CAPTIVE_PORTAL_URL + '/'
+
 #: The only files served under ``GET /assets/<name>``. Keys are exact URL
 #: basenames (never paths), so a separator, dot-segment, or unknown name can
 #: never resolve to a file. Values are the response ``Content-Type``.
@@ -170,6 +188,7 @@ ASSET_ALLOWLIST = {
     'live.js': 'text/javascript; charset=utf-8',
     'network.js': 'text/javascript; charset=utf-8',
     'overview.js': 'text/javascript; charset=utf-8',
+    'setup.js': 'text/javascript; charset=utf-8',
     'system.js': 'text/javascript; charset=utf-8',
     'timelapse.js': 'text/javascript; charset=utf-8',
     'favicon.svg': 'image/svg+xml',
@@ -624,6 +643,14 @@ class _AdminAppCore:
             ),
             Route('GET', re.compile(r'^/setup$'), _PUBLIC_SETUP, self._handle_setup_page),
             Route(
+                'GET', re.compile(r'^/setup/state$'),
+                _PUBLIC_SETUP, self._handle_setup_state,
+            ),
+            Route(
+                'POST', re.compile(r'^/setup/wifi/scan$'),
+                _PUBLIC_SETUP, self._handle_setup_scan,
+            ),
+            Route(
                 'POST', re.compile(r'^/setup/step/(?P<n>[^/]+)$'),
                 _PUBLIC_SETUP, self._handle_setup_step,
             ),
@@ -831,9 +858,20 @@ class _AdminAppCore:
         now = request.now if request.now is not None else self._clock()
         body_data = _parse_body(request)
 
+        captive = self._captive_redirect(request, method)
+        if captive is not None:
+            self._log_request(request, captive)
+            return captive
+
         match = self._match(method, path)
         if match is None:
-            response = self._error(request, 404, 'not found')
+            if self.mode == 'setup' and method == 'GET' and not path.startswith('/api/'):
+                # A captive-portal browser that lands on an unknown portal path
+                # (a probe URL typed against the IP, a stale bookmark) gets the
+                # wizard instead of a dead end. Same host, so stay relative.
+                response = self._captive_response('/')
+            else:
+                response = self._error(request, 404, 'not found')
             self._log_request(request, response)
             return response
         route, path_match = match
@@ -862,6 +900,37 @@ class _AdminAppCore:
 
         response = route.handler(request, path_match, body_data, now)
         self._log_request(request, response)
+        return response
+
+    def _captive_redirect(self, request, method):
+        """Redirect a foreign-``Host`` request to the setup portal (setup mode only).
+
+        The setup AP's DNS resolves every name to the portal address, so the
+        operating systems' connectivity probes (``captive.apple.com``,
+        ``connectivitycheck.gstatic.com``, ``www.msftconnecttest.com``,
+        ``detectportal.firefox.com``) reach this server with their own ``Host``.
+        Answering them with a redirect instead of the expected body is what
+        makes the phone or laptop open the setup page by itself. ``GET``/
+        ``HEAD`` redirect; any other method to a foreign host is refused, so a
+        page served under a hijacked name can never drive the wizard API.
+        A request without a ``Host`` header is left alone. ``admin`` mode is
+        never affected.
+        """
+        if self.mode != 'setup':
+            return None
+        host = _header(request.headers, 'Host')
+        if not isinstance(host, str) or not host.strip():
+            return None
+        if _host_name(host) in CAPTIVE_PORTAL_HOSTS:
+            return None
+        if method in ('GET', 'HEAD'):
+            return self._captive_response()
+        return self._error(request, 421, 'misdirected request')
+
+    def _captive_response(self, location=CAPTIVE_PORTAL_ROOT):
+        """Return the uncacheable captive-portal redirect."""
+        response = self._redirect(location)
+        response.headers['Cache-Control'] = NO_STORE_CACHE_CONTROL
         return response
 
     def _match(self, method, path):
@@ -1760,20 +1829,113 @@ class _AdminAppCore:
         return self._wizard
 
     def _handle_setup_page(self, request, match, body_data, now):
-        """Minimal setup page showing the current wizard step."""
+        """Serve the setup-wizard shell (``web/setup.html``).
+
+        The shell carries no device data: the wizard script reads the redacted
+        state from ``GET /setup/state``. When the packaged file is missing a
+        minimal page names the current step instead.
+        """
+        path = os.path.join(self._web_dir, SETUP_SHELL_FILE)
+        try:
+            with open(path, encoding='utf-8') as handle:
+                html = handle.read()
+        except OSError:
+            log.warning('admin_http: setup shell missing at %s', path)
+            wizard = self._get_wizard()
+            step = getattr(wizard, 'step', setup_wizard.STEP_ORDER[0])
+            title = setup_wizard.STEP_TITLES.get(step, step)
+            html = (
+                '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+                '<meta name="viewport" content="width=device-width, initial-scale=1">'
+                '<title>PiBuddyCam Setup</title></head><body>'
+                f'<h1>PiBuddyCam setup</h1><p>Current step: {title}</p>'
+                '<p>The setup page assets are missing from this image.</p>'
+                '</body></html>'
+            )
+        html = html.replace('__ASSET_VERSION__', self._asset_version())
+        response = self._html(request, 200, html)
+        response.headers['Cache-Control'] = NO_STORE_CACHE_CONTROL
+        return response
+
+    def _handle_setup_state(self, request, match, body_data, now):
+        """Return the redacted wizard state the setup page renders from."""
         wizard = self._get_wizard()
         step = getattr(wizard, 'step', setup_wizard.STEP_ORDER[0])
-        index = setup_wizard.STEP_ORDER.index(step) + 1 if step in setup_wizard.STEP_ORDER else 1
-        title = setup_wizard.STEP_TITLES.get(step, step)
-        total = len(setup_wizard.STEP_ORDER)
-        html = (
-            '<!doctype html><html><head><meta charset="utf-8">'
-            '<title>PiBuddyCam Setup</title></head><body>'
-            f'<h1>PiBuddyCam setup</h1><p>Step {index} of {total}: {title}</p>'
-            '<p>Submit this step through the setup API.</p>'
-            '</body></html>'
-        )
-        return self._html(request, 200, html)
+        order = setup_wizard.STEP_ORDER
+        device_id = self._device_id or getattr(wizard, 'device_id', '') or ''
+        hostname = provisioning.admin_hostname(device_id)
+        summary = wizard.summary() if hasattr(wizard, 'summary') else {}
+        payload = {
+            'ok': True,
+            'step': step,
+            'step_number': order.index(step) + 1 if step in order else 1,
+            'steps': [
+                {'id': name, 'title': setup_wizard.STEP_TITLES.get(name, name)}
+                for name in order
+            ],
+            # Step *numbers*, not names: every string in this body is scrubbed
+            # against the literal secrets, so a short MQTT username such as
+            # ``admin`` would otherwise mangle ``admin_password``.
+            'done_steps': sorted(
+                order.index(name) + 1
+                for name in (getattr(wizard, 'completed', ()) or ())
+                if name in order
+            ),
+            'persisted': bool(getattr(wizard, 'persisted', False)),
+            'summary': summary,
+            # The summary redacts every secret key, set or not; these booleans
+            # say only whether one is staged (never its value or length).
+            'saved': {
+                'wifi_secured': bool((getattr(wizard, 'wifi', None) or {}).get('psk')),
+                'prusa_ready': bool(getattr(wizard, 'token', '')),
+                'admin_ready': bool(getattr(wizard, 'admin_hash', '')),
+                'fingerprint_pinned': bool(getattr(wizard, 'fingerprint', '')),
+            },
+            'networks': _scan_entries(getattr(wizard, 'wifi_scan_results', ())),
+            'scan_available': getattr(wizard, 'wifi_scan', None) is not None,
+            'mqtt_test_available': self._mqtt_probe is not None,
+            'setup_ssid': provisioning.setup_ssid(device_id),
+            'hostname': hostname,
+            'admin_url': f'https://{hostname}.local' if hostname else '',
+        }
+        response = self._json(request, 200, payload)
+        response.headers['Cache-Control'] = NO_STORE_CACHE_CONTROL
+        return response
+
+    def _handle_setup_scan(self, request, match, body_data, now):
+        """Run the wizard's Wi-Fi scan and return the bounded network list."""
+        refused = self._require_json(request)
+        if refused is not None:
+            return refused
+        wizard = self._get_wizard()
+        scan = getattr(wizard, 'scan_networks', None)
+        if scan is None:
+            return self._json(request, 200, {
+                'ok': False, 'reason': 'wifi scanning is not available', 'networks': [],
+            })
+        try:
+            ok, reason = scan()
+        except Exception as e:  # noqa: BLE001 - never leak internals
+            log.warning(f'admin_http: setup scan failed: {type(e).__name__}')
+            ok, reason = False, 'wifi scan failed'
+        networks = _scan_entries(getattr(wizard, 'wifi_scan_results', ()))
+        return self._json(request, 200, {
+            'ok': bool(ok), 'reason': '' if ok else reason, 'networks': networks,
+        })
+
+    def _require_json(self, request):
+        """Refuse a setup POST whose body is not declared as JSON.
+
+        The setup routes carry no session/CSRF (nothing to bind one to before
+        the first password exists). Requiring ``application/json`` forces a
+        CORS preflight for any cross-origin caller, so a plain cross-site form
+        post can never drive the wizard on the open setup network.
+        """
+        content_type = _header(request.headers, 'Content-Type') or ''
+        media_type = content_type.split(';', 1)[0].strip().lower()
+        if media_type != 'application/json':
+            return self._error(request, 415, 'setup requests must be JSON')
+        return None
 
     def _handle_setup_step(self, request, match, body_data, now):
         """Map ``/setup/step/<n>`` onto :meth:`WizardSession.submit`."""
@@ -1784,6 +1946,9 @@ class _AdminAppCore:
         if not 1 <= number <= len(setup_wizard.STEP_ORDER):
             return self._error(request, 400, 'unknown wizard step')
         step = setup_wizard.STEP_ORDER[number - 1]
+        refused = self._require_json(request)
+        if refused is not None:
+            return refused
 
         wizard = self._get_wizard()
         try:
@@ -1805,6 +1970,9 @@ class _AdminAppCore:
 
     def _handle_setup_finish(self, request, match, body_data, now):
         """Stop the hotspot and start the camera target (step 10)."""
+        refused = self._require_json(request)
+        if refused is not None:
+            return refused
         wizard = self._get_wizard()
         try:
             result = wizard.finish(camera_running=body_data.get('camera_running'))
@@ -1949,6 +2117,33 @@ class _AdminAppCore:
 # --------------------------------------------------------------------------- #
 # Request parsing helpers
 # --------------------------------------------------------------------------- #
+
+def _host_name(host):
+    """Return the lowercase host of a ``Host`` header value, port stripped."""
+    value = host.strip().lower()
+    if value.startswith('['):
+        end = value.find(']')
+        return value[:end + 1] if end >= 0 else value
+    return value.rsplit(':', 1)[0] if value.count(':') == 1 else value
+
+
+def _scan_entries(results):
+    """Return a bounded, typed copy of wizard scan results for the setup page."""
+    entries = []
+    for item in list(results or ())[:64]:
+        if not isinstance(item, dict):
+            continue
+        ssid = item.get('ssid')
+        if not isinstance(ssid, str) or not ssid:
+            continue
+        signal = item.get('signal')
+        entries.append({
+            'ssid': ssid,
+            'signal': signal if isinstance(signal, int) else 0,
+            'secured': bool(item.get('secured', True)),
+        })
+    return entries
+
 
 def _header(headers, name):
     """Case-insensitive header lookup returning the first match or ``None``."""
@@ -2387,6 +2582,7 @@ __all__ = [
     'ASSET_CACHE_CONTROL',
     'HTML_CSP',
     'SECURITY_HEADERS',
+    'SETUP_SHELL_FILE',
     'SHELL_FILE',
     'SVG_CSP',
     'TRUSTED_LAN_INTERFACES',

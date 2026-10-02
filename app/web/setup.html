@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="robots" content="noindex, nofollow">
+  <title>PiBuddyCam — Setup</title>
+  <link rel="icon" href="/assets/favicon.svg?v=__ASSET_VERSION__" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/app.css?v=__ASSET_VERSION__">
+</head>
+<body>
+  <a class="skip-link" href="#setup-main">Skip to content</a>
+
+  <div id="setup-boot" class="boot" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    <span>Loading setup…</span>
+  </div>
+
+  <main id="setup-main" class="app setup" hidden>
+    <div class="card setup__card">
+      <div class="brand">
+        <svg class="brand__mark" viewBox="0 0 32 32" width="36" height="36" role="img" aria-label="PiBuddyCam">
+          <rect x="3" y="8" width="26" height="18" rx="3" fill="none" stroke="currentColor" stroke-width="2.5"></rect>
+          <circle cx="16" cy="17" r="5" fill="none" stroke="currentColor" stroke-width="2.5"></circle>
+          <path d="M11 8l2-3h6l2 3" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"></path>
+        </svg>
+        <div>
+          <h1 class="brand__name">PiBuddyCam</h1>
+          <p class="brand__sub">Camera setup</p>
+        </div>
+      </div>
+
+      <ol id="setup-stepper" class="stepper" aria-label="Setup progress">
+        <li class="stepper__item" data-step-for="welcome">Start</li>
+        <li class="stepper__item" data-step-for="wifi">Wi-Fi</li>
+        <li class="stepper__item" data-step-for="prusa">Prusa Connect</li>
+        <li class="stepper__item" data-step-for="password">Password</li>
+        <li class="stepper__item" data-step-for="options">Options</li>
+        <li class="stepper__item" data-step-for="review">Review</li>
+      </ol>
+
+      <!-- 1. Welcome and device status -->
+      <section class="setup__screen" data-screen="welcome" aria-labelledby="welcome-title" hidden>
+        <h2 id="welcome-title" class="view__title">Welcome</h2>
+        <p class="setup__lede">This wizard connects the camera to your Wi-Fi and to Prusa Connect. It takes about five minutes.</p>
+        <dl class="setup__checks">
+          <div class="setup__check">
+            <dt>Storage</dt>
+            <dd><span id="status-storage" class="chip chip--muted">Checking…</span></dd>
+          </div>
+          <div class="setup__check">
+            <dt>Camera module</dt>
+            <dd><span id="status-camera" class="chip chip--muted">Checking…</span></dd>
+          </div>
+        </dl>
+        <p id="status-detail" class="field__hint" role="status" aria-live="polite"></p>
+        <div class="form-actions">
+          <button id="status-recheck" class="btn btn--ghost btn--small" type="button" hidden>Check again</button>
+        </div>
+        <p class="notice notice--warn">You are connected to the open setup network <strong id="setup-ssid">PiBuddyCam-Setup</strong>. Anyone nearby can join it, so finish setup somewhere you trust. It switches off once setup is done.</p>
+        <p id="welcome-error" class="form-error" role="alert" hidden></p>
+        <div class="form-actions setup__actions">
+          <button id="welcome-next" class="btn btn--primary" type="button">Get started</button>
+        </div>
+      </section>
+
+      <!-- 2. Wi-Fi -->
+      <section class="setup__screen" data-screen="wifi" aria-labelledby="wifi-title" hidden>
+        <h2 id="wifi-title" class="view__title">Wi-Fi network</h2>
+        <p class="setup__lede">Pick the network the camera should join. It needs to reach the internet for Prusa Connect.</p>
+        <form id="wifi-form" novalidate>
+          <fieldset class="setup__networks">
+            <legend class="card__subtitle">Networks in range</legend>
+            <div id="wifi-networks" class="network-list" role="radiogroup" aria-label="Networks in range"></div>
+            <p id="wifi-scan-status" class="field__hint" role="status" aria-live="polite"></p>
+            <div class="form-actions">
+              <button id="wifi-scan" class="btn btn--ghost" type="button">Scan for networks</button>
+            </div>
+          </fieldset>
+          <div class="field">
+            <label for="wifi-ssid">Network name (SSID)</label>
+            <input id="wifi-ssid" name="ssid" type="text" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+            <p class="field__hint">Hidden network? Type its name here.</p>
+          </div>
+          <div class="field">
+            <label for="wifi-psk">Wi-Fi password</label>
+            <input id="wifi-psk" name="psk" type="password" maxlength="63" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <label class="check"><input id="wifi-psk-show" type="checkbox"> Show password</label>
+            <p id="wifi-psk-hint" class="field__hint">8 to 63 characters. Leave empty only for an open network.</p>
+          </div>
+          <p id="wifi-error" class="form-error" role="alert" hidden></p>
+          <div class="form-actions setup__actions">
+            <button class="btn btn--ghost" type="button" data-back>Back</button>
+            <button id="wifi-next" class="btn btn--primary" type="submit">Continue</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 3. Prusa Connect token -->
+      <section class="setup__screen" data-screen="prusa" aria-labelledby="prusa-title" hidden>
+        <h2 id="prusa-title" class="view__title">Prusa Connect</h2>
+        <p class="setup__lede">Register the camera with your printer in Prusa Connect.</p>
+        <ol class="setup__howto">
+          <li>Open Prusa Connect and select your printer.</li>
+          <li>Open <strong>Camera</strong> and add a camera.</li>
+          <li>Copy the <strong>token</strong> it shows and paste it below.</li>
+        </ol>
+        <form id="prusa-form" novalidate>
+          <div class="field">
+            <label for="prusa-token">Camera registration token</label>
+            <input id="prusa-token" name="token" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+            <p id="prusa-hint" class="field__hint">The token stays on the camera and is never shown again.</p>
+          </div>
+          <p id="prusa-error" class="form-error" role="alert" hidden></p>
+          <div class="form-actions setup__actions">
+            <button class="btn btn--ghost" type="button" data-back>Back</button>
+            <button id="prusa-next" class="btn btn--primary" type="submit">Continue</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 4. Admin password -->
+      <section class="setup__screen" data-screen="password" aria-labelledby="password-title" hidden>
+        <h2 id="password-title" class="view__title">Administrator password</h2>
+        <p class="setup__lede">You sign in to the camera's local console with this password.</p>
+        <form id="password-form" novalidate>
+          <div class="field">
+            <label for="admin-password">Password</label>
+            <input id="admin-password" name="password" type="password" autocomplete="new-password" minlength="8" required aria-describedby="admin-password-hint">
+            <p id="admin-password-hint" class="field__hint">At least 8 characters.</p>
+          </div>
+          <div class="field">
+            <label for="admin-password-confirm">Confirm password</label>
+            <input id="admin-password-confirm" name="confirm" type="password" autocomplete="new-password" required>
+          </div>
+          <label class="check"><input id="admin-password-show" type="checkbox"> Show passwords</label>
+          <p id="password-error" class="form-error" role="alert" hidden></p>
+          <div class="form-actions setup__actions">
+            <button class="btn btn--ghost" type="button" data-back>Back</button>
+            <button id="password-next" class="btn btn--primary" type="submit">Continue</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 5. Optional settings -->
+      <section class="setup__screen" data-screen="options" aria-labelledby="options-title" hidden>
+        <h2 id="options-title" class="view__title">Optional settings</h2>
+        <p class="setup__lede">Most setups can skip this page. Everything here can also be changed later in the console.</p>
+        <form id="options-form" novalidate>
+          <fieldset class="setup__group">
+            <legend class="card__subtitle">MQTT (Home Assistant)</legend>
+            <label class="check"><input id="mqtt-enabled" type="checkbox"> Publish camera state over MQTT</label>
+            <div id="mqtt-fields" hidden>
+              <div class="field">
+                <label for="mqtt-uri">Broker URI</label>
+                <input id="mqtt-uri" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="mqtts://broker.lan:8883">
+              </div>
+              <div class="field">
+                <label for="mqtt-username">Username</label>
+                <input id="mqtt-username" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+              </div>
+              <div class="field">
+                <label for="mqtt-password">Password</label>
+                <input id="mqtt-password" type="password" autocomplete="off">
+              </div>
+              <div class="form-actions">
+                <button id="mqtt-test" class="btn btn--ghost" type="button">Test connection</button>
+              </div>
+              <p id="mqtt-test-status" class="form-status" role="status" aria-live="polite" hidden></p>
+            </div>
+          </fieldset>
+          <details class="setup__advanced">
+            <summary>Advanced: camera fingerprint</summary>
+            <div class="field">
+              <label for="fingerprint">Fingerprint</label>
+              <input id="fingerprint" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+              <p class="field__hint">Leave empty to derive it from the camera's Wi-Fi hardware address, the same way the original camera does. Only set it to move an existing Prusa Connect registration.</p>
+            </div>
+          </details>
+          <p id="options-error" class="form-error" role="alert" hidden></p>
+          <div class="form-actions setup__actions">
+            <button class="btn btn--ghost" type="button" data-back>Back</button>
+            <button id="options-next" class="btn btn--primary" type="submit">Continue</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 6. Review -->
+      <section class="setup__screen" data-screen="review" aria-labelledby="review-title" hidden>
+        <h2 id="review-title" class="view__title">Review</h2>
+        <p class="setup__lede">Check the settings. Secrets are stored on the camera and are not shown here.</p>
+        <dl id="review-list" class="setup__review"></dl>
+        <p class="notice">When you continue, the camera saves everything, switches off this setup network and joins your Wi-Fi. Your phone or laptop will drop off this network.</p>
+        <p id="review-error" class="form-error" role="alert" hidden></p>
+        <div class="form-actions setup__actions">
+          <button class="btn btn--ghost" type="button" data-back>Back</button>
+          <button id="review-finish" class="btn btn--primary" type="button">Save and start camera</button>
+        </div>
+      </section>
+
+      <!-- 7. Finishing -->
+      <section class="setup__screen" data-screen="finishing" aria-labelledby="finishing-title" hidden>
+        <h2 id="finishing-title" class="view__title">Starting the camera…</h2>
+        <div class="boot setup__progress" role="status" aria-live="polite">
+          <span class="spinner" aria-hidden="true"></span>
+          <span id="finishing-text">Saving the configuration…</span>
+        </div>
+      </section>
+
+      <!-- 8. Done -->
+      <section class="setup__screen" data-screen="done" aria-labelledby="done-title" hidden>
+        <h2 id="done-title" class="view__title">Setup complete</h2>
+        <p id="done-lede" class="setup__lede">The camera is joining your Wi-Fi and will appear in Prusa Connect within a minute or two.</p>
+        <ol class="setup__howto">
+          <li>Reconnect this phone or laptop to <strong id="done-ssid">your Wi-Fi</strong>.</li>
+          <li>Open the local console at <code id="done-url" class="setup__url">the camera's address</code>. Your browser warns about the self-signed certificate once; that is expected.</li>
+          <li>Sign in with the administrator password you just set.</li>
+        </ol>
+        <p class="notice">If the camera cannot join your Wi-Fi, the setup network <strong id="done-setup-ssid">PiBuddyCam-Setup</strong> comes back after a short while. Join it again and this page reopens so you can correct the details.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <p class="notice notice--affiliation">
+      Independent, community-developed project. Not affiliated with or endorsed by Prusa Research.
+      Prusa®, Prusa Connect, and Buddy3D are trademarks of Prusa Research a.s.
+    </p>
+  </footer>
+
+  <noscript>
+    <p class="notice notice--error">Setup requires JavaScript. Enable it and reload the page.</p>
+  </noscript>
+
+  <script type="module" src="/assets/setup.js?v=__ASSET_VERSION__"></script>
+</body>
+</html>
