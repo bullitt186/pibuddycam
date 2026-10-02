@@ -135,8 +135,10 @@ export function syncGpioForm(settings, force) {
     updateGpioVisibility();
     return;
   }
+  // The forced sync after the pin list loads must not undo a trigger the
+  // user already switched while the pins were still loading.
   const trigger = gpioEl('timelapse-trigger');
-  if (trigger && (settings.timelapse_trigger === 'gpio'
+  if (trigger && !gpioUi.dirty && (settings.timelapse_trigger === 'gpio'
       || settings.timelapse_trigger === 'interval')) {
     trigger.value = settings.timelapse_trigger;
   }

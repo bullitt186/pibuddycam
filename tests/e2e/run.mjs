@@ -740,6 +740,10 @@ const TESTS = [
       await page.locator('#timelapse-trigger').selectOption('gpio');
       await waitForVisible(page.locator('#timelapse-gpio-fields'));
       assertEqual(await page.locator('#timelapse-interval-form').isVisible(), false, 'interval field hidden for GPIO');
+      // The pin list loads asynchronously; once it is in, the choice of trigger must survive.
+      await page.locator('#timelapse-gpio-pin option').first().waitFor({ state: 'attached', timeout: 8000 });
+      assertEqual(await page.locator('#timelapse-trigger').inputValue(), 'gpio', 'trigger kept after the pins load');
+      assertEqual(await page.locator('#timelapse-interval-form').isVisible(), false, 'interval field still hidden');
       // The dropdown offers the safe pins with header numbers and a ground pin.
       const labels = await page.locator('#timelapse-gpio-pin option').allTextContents();
       assert(labels.includes('GPIO17 — header pin 11 (GND: pin 9)'), 'GPIO17 label');
