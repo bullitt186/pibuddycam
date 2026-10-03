@@ -1019,7 +1019,9 @@ PY
       "$MOUNT_ROOT/usr/share/pibuddycam/build-info.json" 2>/dev/null || echo release)"
    dev_sshd_conf="$MOUNT_ROOT/etc/ssh/sshd_config.d/10-pibuddycam-dev.conf"
    dev_sudoers="$MOUNT_ROOT/etc/sudoers.d/pibuddycam-dev"
-   authkeys="$(find "$MOUNT_ROOT/root/.ssh" "$MOUNT_ROOT/home" "$MOUNT_ROOT/opt/pibuddycam/.ssh" -name 'authorized_keys' 2>/dev/null || true)"
+   # The openssh-server layer creates an EMPTY authorized_keys for the service
+   # account in every image; an empty file grants nothing, so only non-empty ones count.
+   authkeys="$(find "$MOUNT_ROOT/root/.ssh" "$MOUNT_ROOT/home" "$MOUNT_ROOT/opt/pibuddycam/.ssh" -name 'authorized_keys' -size +0c 2>/dev/null || true)"
    if [ "$image_channel" = dev ]; then
       report ok "developer channel image (SSH allowed, key-only)"
       dev_user=pibuddydev
