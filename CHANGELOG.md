@@ -48,6 +48,14 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   and retries its network every 10 minutes (disable with `PIBUDDYCAM_NETWORK_WATCHDOG_MINUTES=0`).
   Needs a new image. The hotspot is open, so its login page is reachable in range while it runs.
 
+### Fixed
+- The setup wizard no longer tears down the Wi-Fi it just joined. Starting `pibuddycam.target`
+  makes systemd stop the wizard's own service and cut off the running `sudo` helper, so the start
+  was reported as failed ("camera target failed to start; device stayed in setup") although the
+  camera was starting. The wizard then restarted the setup hotspot, which dropped the new Wi-Fi
+  connection. A failed helper call now only counts as a failure when the target is not coming
+  up either.
+
 ### Changed
 - When a claimed camera falls back to the setup hotspot, the phone's sign-in window shows how to
   reach the console (`https://192.168.4.1/admin`) instead of "404: Not Found".

@@ -245,9 +245,52 @@ class WrapperTests(unittest.TestCase):
         runner = make_runner(default=FakeResult(2, ''))
         self.assertFalse(privileged.camera_restart(runner=runner))
 
+    def test_start_camera_survives_the_helper_being_cut_off(self):
+        # Starting the target stops the provisioning unit this code runs in, which
+        # kills the sudo child (a signal exit). The start job was already queued,
+        # so a target that is coming up is a success, not a failed hand-off.
+        for state in ('activating\n', 'active\n'):
+            runner = make_runner(handlers=[
+                ('start-camera', FakeResult(-15, '')),
+                ('is-active', FakeResult(3, state)),
+            ])
+            self.assertTrue(
+                privileged.start_camera(runner=runner, sleep=lambda _s: None), state)
+
+    def test_start_camera_still_fails_when_the_target_is_not_coming_up(self):
+        for state in ('inactive\n', 'failed\n', ''):
+            slept = []
+            runner = make_runner(handlers=[
+                ('start-camera', FakeResult(-15, '')),
+                ('is-active', FakeResult(3, state)),
+            ])
+            self.assertFalse(privileged.start_camera(
+                runner=runner, grace_polls=3, sleep=slept.append), state)
+            # It re-checked for the grace period before giving up.
+            probes = [c for c in runner.calls if 'is-active' in ' '.join(c[0])]
+            self.assertEqual(len(probes), 3, state)
+            self.assertEqual(slept, [1, 1], state)
+
+    def test_start_camera_helper_failure_with_no_target_is_not_retried_forever(self):
+        runner = make_runner(default=FakeResult(1, ''))
+        self.assertFalse(privileged.start_camera(
+            runner=runner, grace_polls=2, sleep=lambda _s: None))
+
+    def test_start_camera_waits_for_active_after_a_clean_start(self):
+        slept = []
+        answers = iter([FakeResult(3, 'activating\n'), FakeResult(0, 'active\n')])
+
+        def runner(args, timeout, input=None):
+            if 'is-active' in args:
+                return next(answers)
+            return FakeResult(0, '')
+
+        self.assertTrue(privileged.start_camera(runner=runner, sleep=slept.append))
+        self.assertEqual(slept, [2])
+
     def test_start_camera_failure_returns_false(self):
         runner = make_runner(default=FakeResult(1, ''))
-        self.assertFalse(privileged.start_camera(runner=runner))
+        self.assertFalse(privileged.start_camera(runner=runner, sleep=lambda _s: None))
 
     def test_activate_station_psk_is_stdin_only(self):
         runner = make_runner()
@@ -277,8 +320,12 @@ class WrapperTests(unittest.TestCase):
         self.assertEqual(runner.calls, [])
 
     def test_timeout_is_reported(self):
-        runner = make_runner(timeout_match='start-camera')
-        result = privileged.start_camera(runner=runner)
+        # The helper timed out and the target is not coming up either.
+        runner = make_runner(
+            timeout_match='start-camera',
+            handlers=[('is-active', FakeResult(3, 'inactive\n'))],
+        )
+        result = privileged.start_camera(runner=runner, sleep=lambda _s: None)
         self.assertFalse(result)
 
     def test_missing_tool_is_reported(self):
