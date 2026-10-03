@@ -885,6 +885,10 @@ class RootfsValidationTests(unittest.TestCase):
             encoding="utf-8",
         )
         system = root / "etc" / "systemd" / "system"
+        (system / "pibuddycam-provisioning.service.d").mkdir(parents=True)
+        (system / "pibuddycam-provisioning.service.d" / "10-pibuddycam-dev.conf").write_text(
+            "[Service]\nEnvironment=ADMIN_HOST=0.0.0.0\n", encoding="utf-8"
+        )
         (system / "ssh.service.d").mkdir(parents=True)
         (system / "ssh.service.d" / "10-pibuddycam-dev.conf").write_text(
             "[Unit]\nWants=pibuddycam-dev-hostkey.service\n", encoding="utf-8"
@@ -913,6 +917,26 @@ class RootfsValidationTests(unittest.TestCase):
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("HostKey on /data", result.stdout)
+
+    def test_dev_channel_without_wizard_dropin_fails(self):
+        root = self._root()
+        self._make_dev(root)
+        (root / "etc" / "systemd" / "system" / "pibuddycam-provisioning.service.d"
+         / "10-pibuddycam-dev.conf").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ADMIN_HOST=0.0.0.0", result.stdout)
+
+    def test_release_with_wizard_dev_dropin_fails(self):
+        root = self._root()
+        dropin = root / "etc" / "systemd" / "system" / "pibuddycam-provisioning.service.d"
+        dropin.mkdir(parents=True)
+        (dropin / "10-pibuddycam-dev.conf").write_text(
+            "[Service]\nEnvironment=ADMIN_HOST=0.0.0.0\n", encoding="utf-8"
+        )
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("developer SSH material", result.stdout)
 
     def test_dev_channel_without_key_only_dropin_fails(self):
         root = self._root()

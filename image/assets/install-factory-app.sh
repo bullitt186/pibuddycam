@@ -334,6 +334,16 @@ Wants=pibuddycam-dev-hostkey.service
 After=pibuddycam-dev-hostkey.service data-ready.target
 UNIT
    chroot "$root" systemctl enable pibuddycam-dev-hostkey.service >/dev/null
+   # Release images bind the unclaimed setup wizard to the hotspot address only.
+   # A dev image also serves it on every interface (e.g. Ethernet), so setup can
+   # run on the bench without joining the hotspot. Anyone on the LAN can then
+   # claim an unclaimed dev camera, which is why this is dev-only.
+   install -d -m 0755 "$root/etc/systemd/system/pibuddycam-provisioning.service.d"
+   cat > "$root/etc/systemd/system/pibuddycam-provisioning.service.d/10-pibuddycam-dev.conf" <<'UNIT'
+# PiBuddyCam DEVELOPER image only: serve the setup wizard on all interfaces.
+[Service]
+Environment=ADMIN_HOST=0.0.0.0
+UNIT
    log "dev channel: key-only SSH login $dev_user with sudo (do not publish this image)"
 fi
 

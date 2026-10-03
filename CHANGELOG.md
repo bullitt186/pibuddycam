@@ -9,7 +9,8 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 ### Added
 - Developer images: `image/scripts/build-image.sh --dev` builds an image with key-only SSH
   (`pibuddydev`, passwordless `sudo`) for debugging. Release images are unchanged and still ship
-  with SSH off; the channel is recorded in `build-info.json`. Needs a new image.
+  with SSH off; the channel is recorded in `build-info.json`. Dev images also serve the setup
+  wizard on every interface, Ethernet included. Needs a new image.
 - A real setup wizard in the browser, in the look of the web console: start check, Wi-Fi scan
   list or manual network, Prusa Connect token, admin password, optional MQTT (with connection
   test) and fingerprint, a review with *Change* links, and a final page that says where to find

@@ -1045,6 +1045,12 @@ PY
       else
          report fail "dev image: sshd needs HostKey on /data and pibuddycam-dev-hostkey.service"
       fi
+      if grep -qx 'Environment=ADMIN_HOST=0.0.0.0' \
+         "$MOUNT_ROOT/etc/systemd/system/pibuddycam-provisioning.service.d/10-pibuddycam-dev.conf" 2>/dev/null; then
+         report ok "dev image: setup wizard is served on all interfaces"
+      else
+         report fail "dev image: pibuddycam-provisioning.service needs the ADMIN_HOST=0.0.0.0 drop-in"
+      fi
       if [ -f "$MOUNT_ROOT/etc/systemd/system/multi-user.target.wants/ssh.service" ]; then
          report ok "dev image: ssh.service enabled"
       else
@@ -1057,6 +1063,7 @@ PY
          report ok "no authorized_keys installed"
       fi
       if [ -e "$dev_sshd_conf" ] || [ -e "$dev_sudoers" ] \
+         || [ -e "$MOUNT_ROOT/etc/systemd/system/pibuddycam-provisioning.service.d/10-pibuddycam-dev.conf" ] \
          || grep -q '^pibuddydev:' "$MOUNT_ROOT/etc/passwd" 2>/dev/null; then
          report fail "developer SSH material (pibuddydev, sudoers or sshd drop-in) in a release image"
       else
