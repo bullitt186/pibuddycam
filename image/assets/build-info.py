@@ -4,7 +4,7 @@
 Standard library only, as required for image assets. Records the application
 version (``--version``, defaulting to ``PIBUDDYCAM_IMAGE_VERSION`` or
 ``0.0.0+local``), the source commit, the pinned image-builder revision, the OS
-suite, the kernel package, the installed-package manifest, and the sha256 of the
+suite, the kernel package, the build channel (``release`` or ``dev``), the installed-package manifest, and the sha256 of the
 hash-locked Python dependency set. Output is deterministic: keys are sorted and
 no wall-clock time is embedded; SOURCE_DATE_EPOCH is copied through when present.
 
@@ -41,6 +41,13 @@ def main(argv=None):
         help="application/image version recorded as 'version' "
              "(default: $PIBUDDYCAM_IMAGE_VERSION or 0.0.0+local)",
     )
+    parser.add_argument(
+        "--channel",
+        default="release",
+        choices=("release", "dev"),
+        help="build channel recorded as 'channel'; 'dev' images ship key-only SSH "
+             "and must never be published (default: release)",
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
 
@@ -51,6 +58,7 @@ def main(argv=None):
         "builder_revision": args.builder_revision,
         "os_suite": args.os_suite,
         "kernel_package": args.kernel_package,
+        "channel": args.channel,
         # WP-2b fills this; null until then.
         "package_manifest": args.package_manifest or None,
         # WP-R3/AC-14: sha256 of the installed hash-locked requirements.lock.

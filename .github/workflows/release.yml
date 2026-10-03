@@ -156,6 +156,9 @@ jobs:
           echo "release_tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Build the appliance image
+        env:
+          # Published images are always the release channel (SSH off).
+          PIBUDDYCAM_BUILD_CHANNEL: release
         run: |
           set -euo pipefail
           image/scripts/build-image.sh | tee build.log

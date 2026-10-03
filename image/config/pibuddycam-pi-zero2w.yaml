@@ -105,3 +105,6 @@ env:
   RPI_IMAGE_GEN_REVISION: 262d4df5a9f9d4133370465399a7958a7c22cdc7
   PIBUDDYCAM_OS_SUITE: trixie
   PIBUDDYCAM_KERNEL_PACKAGE: linux-image-rpi-v8
+  # `release` (SSH off) or `dev` (key-only SSH + pibuddydev). Overridden by
+  # build-image.sh; the public key is passed as PIBUDDYCAM_DEV_SSH_PUBKEY_B64.
+  PIBUDDYCAM_BUILD_CHANNEL: release

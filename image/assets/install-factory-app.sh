@@ -271,6 +271,40 @@ chroot "$root" systemctl mask console-setup.service >/dev/null 2>&1 || true
 # openssh-server layer re-enables ssh.service after this customize hook, so
 # disabling here would be undone. Raspberry Pi Imager may enable SSH later.
 
+# --- developer channel: key-only SSH login with root ------------------------
+# Only for `build-image.sh --dev`. Release images skip this block entirely, and
+# post-build.sh keeps SSH disabled unless build-info.json says channel=dev. The
+# image carries only the operator's PUBLIC key; host keys are still generated on
+# first boot. ROOT is read-only, so a developer remounts it rw via sudo.
+if [ "${PIBUDDYCAM_BUILD_CHANNEL:-release}" = dev ]; then
+   dev_user=pibuddydev
+   [ -n "${PIBUDDYCAM_DEV_SSH_PUBKEY_B64:-}" ] || {
+      log "ERROR: dev channel without PIBUDDYCAM_DEV_SSH_PUBKEY_B64"; exit 1; }
+   dev_key="$(printf '%s' "$PIBUDDYCAM_DEV_SSH_PUBKEY_B64" | base64 -d)"
+   case "$dev_key" in
+      *"PRIVATE KEY"*) log "ERROR: dev key is private key material"; exit 1 ;;
+   esac
+   chroot "$root" useradd --create-home --shell /bin/bash \
+      --groups "$(echo "$SERVICE_GROUPS" | tr ' ' ',')" "$dev_user"
+   chroot "$root" passwd --lock "$dev_user" >/dev/null
+   install -d -m 0700 "$root/home/$dev_user/.ssh"
+   printf '%s\n' "$dev_key" > "$root/home/$dev_user/.ssh/authorized_keys"
+   chmod 0600 "$root/home/$dev_user/.ssh/authorized_keys"
+   chroot "$root" chown -R "$dev_user:$dev_user" "/home/$dev_user"
+   printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$dev_user" > "$root/etc/sudoers.d/pibuddycam-dev"
+   chmod 0440 "$root/etc/sudoers.d/pibuddycam-dev"
+   chroot "$root" visudo -cf /etc/sudoers.d/pibuddycam-dev >/dev/null
+   install -d -m 0755 "$root/etc/ssh/sshd_config.d"
+   cat > "$root/etc/ssh/sshd_config.d/10-pibuddycam-dev.conf" <<'SSHD'
+# PiBuddyCam DEVELOPER image only (never in release images).
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+AllowUsers pibuddydev
+SSHD
+   log "dev channel: key-only SSH login $dev_user with sudo (do not publish this image)"
+fi
+
 # --- build-info.json (AC-14) ------------------------------------------------
 install -d -m 0755 "$root/usr/share/pibuddycam"
 
@@ -298,6 +332,7 @@ python3 "$assets/build-info.py" \
    --kernel-package "${PIBUDDYCAM_KERNEL_PACKAGE:-linux-image-rpi-v8}" \
    --package-manifest "$manifest_arg" \
    --python-lock-sha256 "$lock_sha256" \
+   --channel "${PIBUDDYCAM_BUILD_CHANNEL:-release}" \
    --output "$root/usr/share/pibuddycam/build-info.json"
 
 # --- embedded release-signing public key (WP-R4b / AC-29) -------------------
