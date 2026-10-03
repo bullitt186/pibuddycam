@@ -49,6 +49,11 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   Needs a new image. The hotspot is open, so its login page is reachable in range while it runs.
 
 ### Fixed
+- The live stream in Prusa Connect works again. The camera's offer named its media section
+  `video0`, but Connect hands every camera ICE candidate to the browser with `sdpMid` `"0"`.
+  Chrome rejected each of them ("Error processing ICE candidate"), so the browser knew no
+  candidate of the camera and the connection never came up. The offer now leaves with media
+  id `0`, and the viewer's answer is mapped back for the camera's own pipeline.
 - The setup wizard no longer tears down the Wi-Fi it just joined. Starting `pibuddycam.target`
   makes systemd stop the wizard's own service and cut off the running `sudo` helper, so the start
   was reported as failed ("camera target failed to start; device stayed in setup") although the

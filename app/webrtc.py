@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import quality
+import sdp_mids
 import webrtc_lifecycle
 import gi
 gi.require_version('Gst', '1.0')
@@ -149,6 +150,8 @@ class PrusaWebRTC:
         self._connection_info_sent = False
         self._disconnect_timeout_id = None
         self._connect_watchdog_id = None
+        # internal media-section id -> id on the wire (see sdp_mids.py)
+        self._mid_to_wire = {}
 
     @property
     def is_running(self):
@@ -288,6 +291,7 @@ class PrusaWebRTC:
         if self._webrtc is None:
             log.warning('WebRTC answer received with no peer connection')
             return
+        sdp_text = sdp_mids.from_wire(sdp_text, self._mid_to_wire)
         res, sdp_msg = GstSdp.SDPMessage.new_from_text(sdp_text)
         if res != GstSdp.SDPResult.OK:
             log.error(f'Failed to parse SDP answer: {res}')
@@ -528,6 +532,12 @@ class PrusaWebRTC:
 
         # Match libdatachannel's H264 fmtp (no sprop-parameter-sets).
         sdp_text = _strip_sprop(sdp_text)
+
+        # Connect passes every camera candidate to the browser with sdpMid "0";
+        # webrtcbin's "video0" would make Chrome reject all of them.
+        sdp_text, self._mid_to_wire = sdp_mids.to_wire(sdp_text)
+        if self._mid_to_wire:
+            log.info(f'Offer media ids on the wire: {self._mid_to_wire}')
 
         if self._loop and self._on_offer:
             self._loop.call_soon_threadsafe(
