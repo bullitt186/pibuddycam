@@ -81,6 +81,22 @@ address directly.
 behaviour, not a local fault. Snapshots and control still work. See
 [status](status.md#the-current-connect-limitation).
 
+<a id="prusa-connect-shows-no-snapshot-or-no-stream"></a>
+**Connect says "The snapshot is not available".** Check the log (`journalctl -u pibuddycam`):
+- `Snapshot: 301 (redirect …)` or `/c/info upload: 301`: the Prusa server in the configuration is
+  an old host. The camera API is `connect.prusa3d.com`. Set it under Integrations (the console
+  restarts the camera application), or leave the field at its default. Builds from this release
+  on map the old hosts `webcam.connect.prusa3d.com` and `camera-service-webcam.prusa3d.com` to it.
+- `404 (client_error)`: the host answers, but it is not the camera API.
+
+**The live stream does not start.** In the camera log the ICE state goes from `1` to `4`
+(`ice-failed`) after about eight seconds, and every connectivity check times out. Open the
+browser's developer console while starting the stream: `Error processing ICE candidate` for each
+camera candidate means the browser rejected them because their `sdpMid` matched no media
+section. Connect passes `"0"`, so the camera's offer must carry `a=mid:0`; builds from this
+release on do. **[confirmed]** on 2026-10-03 with Chrome on the same LAN (the stream connected
+within milliseconds). It is not a router or mDNS problem.
+
 <a id="prusa-connect-rejects-the-camera"></a>
 **Connect rejects the camera.** Symptoms: `/c/info` returns 403, snapshots return
 "Invalid fingerprint", or signaling ACK is `1`/`3`.

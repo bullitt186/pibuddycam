@@ -92,7 +92,7 @@ class IntegrationApiTests(unittest.TestCase):
         device = config_schema.default_device()
         device['camera_name'] = 'Bench'
         device['fingerprint'] = FINGERPRINT
-        device['prusa']['server'] = 'webcam.connect.prusa3d.com'
+        device['prusa']['server'] = 'connect.prusa3d.com'
         device['mqtt'].update({
             'enabled': True,
             'uri': 'mqtts://broker.example:8883',
@@ -516,7 +516,7 @@ class IntegrationApiTests(unittest.TestCase):
         token, csrf = self._login(app)
         response = app.handle(_make_request(
             'PUT', '/api/integrations/prusa',
-            body={'server': 'webcam.connect.prusa3d.com', 'token': 'new'},
+            body={'server': 'connect.prusa3d.com', 'token': 'new'},
             headers=self._headers(token, csrf)))
         self.assertEqual(response.status, 403)
 
@@ -527,7 +527,7 @@ class IntegrationApiTests(unittest.TestCase):
         self._reauth(app, token, csrf)
         response = app.handle(_make_request(
             'PUT', '/api/integrations/prusa',
-            body={'server': 'webcam.connect.prusa3d.com', 'token': '', 'fingerprint': ''},
+            body={'server': 'connect.prusa3d.com', 'token': '', 'fingerprint': ''},
             headers=self._headers(token, csrf)))
         self.assertEqual(response.status, 200)
         secrets = config_schema.load_secrets(str(self.secrets_path))
@@ -542,7 +542,7 @@ class IntegrationApiTests(unittest.TestCase):
         self._reauth(app, token, csrf)
         response = app.handle(_make_request(
             'PUT', '/api/integrations/prusa',
-            body={'server': 'webcam.connect.prusa3d.com',
+            body={'server': 'connect.prusa3d.com',
                   'token': 'new-token-value', 'fingerprint': 'new-fingerprint'},
             headers=self._headers(token, csrf)))
         self.assertEqual(response.status, 200)
@@ -557,7 +557,7 @@ class IntegrationApiTests(unittest.TestCase):
     def _put_new_token(self, app, **extra):
         token, csrf = self._login(app)
         self._reauth(app, token, csrf)
-        body = {'server': 'webcam.connect.prusa3d.com', 'token': 'new-token-value'}
+        body = {'server': 'connect.prusa3d.com', 'token': 'new-token-value'}
         body.update(extra)
         return app.handle(_make_request(
             'PUT', '/api/integrations/prusa', body=body,
@@ -607,11 +607,60 @@ class IntegrationApiTests(unittest.TestCase):
         self._reauth(app, token, csrf)
         response = app.handle(_make_request(
             'PUT', '/api/integrations/prusa',
-            body={'server': 'webcam.connect.prusa3d.com', 'token': ''},
+            body={'server': 'connect.prusa3d.com', 'token': ''},
             headers=self._headers(token, csrf)))
         self.assertEqual(response.status, 200)
         self.assertEqual(calls, [])
         self.assertTrue(json.loads(response.body)['restart_required'])
+
+    def test_prusa_server_change_restarts_the_camera(self):
+        self._seed()
+        calls = []
+        app = self._build_app(camera_restart_fn=lambda: calls.append('restart') or True)
+        token, csrf = self._login(app)
+        self._reauth(app, token, csrf)
+        response = app.handle(_make_request(
+            'PUT', '/api/integrations/prusa',
+            body={'server': 'camera.example.org', 'token': ''},
+            headers=self._headers(token, csrf)))
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertEqual(calls, ['restart'])
+        self.assertTrue(payload['active'])
+        self.assertFalse(payload['restart_required'])
+        self.assertEqual(
+            config_schema.load_device(str(self.device_path))['prusa']['server'],
+            'camera.example.org')
+
+    def test_prusa_legacy_server_is_stored_as_the_working_host(self):
+        self._seed()
+        calls = []
+        app = self._build_app(camera_restart_fn=lambda: calls.append('restart') or True)
+        token, csrf = self._login(app)
+        self._reauth(app, token, csrf)
+        response = app.handle(_make_request(
+            'PUT', '/api/integrations/prusa',
+            body={'server': 'webcam.connect.prusa3d.com', 'token': ''},
+            headers=self._headers(token, csrf)))
+        self.assertEqual(response.status, 200)
+        # The seeded server already is the working host: nothing changed.
+        self.assertEqual(calls, [])
+        self.assertEqual(
+            config_schema.load_device(str(self.device_path))['prusa']['server'],
+            'connect.prusa3d.com')
+
+    def test_prusa_clearing_the_token_restarts_the_camera(self):
+        self._seed()
+        calls = []
+        app = self._build_app(camera_restart_fn=lambda: calls.append('restart') or True)
+        token, csrf = self._login(app)
+        self._reauth(app, token, csrf)
+        response = app.handle(_make_request(
+            'PUT', '/api/integrations/prusa',
+            body={'clear_token': True},
+            headers=self._headers(token, csrf)))
+        self.assertEqual(response.status, 200)
+        self.assertEqual(calls, ['restart'])
 
     def test_prusa_explicit_clear_removes_token_and_fingerprint(self):
         self._seed()
@@ -620,7 +669,7 @@ class IntegrationApiTests(unittest.TestCase):
         self._reauth(app, token, csrf)
         response = app.handle(_make_request(
             'PUT', '/api/integrations/prusa',
-            body={'server': 'webcam.connect.prusa3d.com',
+            body={'server': 'connect.prusa3d.com',
                   'clear_token': True, 'clear_fingerprint': True},
             headers=self._headers(token, csrf)))
         self.assertEqual(response.status, 200)
@@ -636,7 +685,7 @@ class IntegrationApiTests(unittest.TestCase):
         self._reauth(app, token, csrf)
         response = app.handle(_make_request(
             'PUT', '/api/integrations/prusa',
-            body={'server': 'webcam.connect.prusa3d.com', 'token': 'new-token-value'},
+            body={'server': 'connect.prusa3d.com', 'token': 'new-token-value'},
             headers=self._headers(token, csrf)))
         body = response.body.decode('utf-8')
         self.assertNotIn('new-token-value', body)
@@ -663,7 +712,7 @@ class IntegrationApiTests(unittest.TestCase):
         self._reauth(app, token, csrf)
         response = app.handle(_make_request(
             'PUT', '/api/integrations/prusa',
-            body={'server': 'webcam.connect.prusa3d.com', 'token': 'x', 'token_file': '/etc/passwd'},
+            body={'server': 'connect.prusa3d.com', 'token': 'x', 'token_file': '/etc/passwd'},
             headers=self._headers(token, csrf)))
         self.assertEqual(response.status, 400)
         self.assertEqual(self.secrets_path.read_bytes(), before)

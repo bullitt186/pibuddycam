@@ -33,7 +33,7 @@ class DefaultDeviceTests(unittest.TestCase):
         self.assertEqual(cfg['schema_version'], 1)
         self.assertEqual(cfg['camera_name'], 'Printer Camera')
         self.assertEqual(cfg['fingerprint'], '')
-        self.assertEqual(cfg['prusa']['server'], 'webcam.connect.prusa3d.com')
+        self.assertEqual(cfg['prusa']['server'], 'connect.prusa3d.com')
         self.assertIs(cfg['mqtt']['enabled'], False)
         self.assertEqual(cfg['mqtt']['uri'], 'mqtts://broker.example:8883')
         self.assertEqual(cfg['mqtt']['client_id'], '')
@@ -53,7 +53,7 @@ class ParseDeviceTests(unittest.TestCase):
         cfg = config_schema.parse_device('camera_name = "Shop"\n')
         self.assertEqual(cfg['schema_version'], 1)
         self.assertEqual(cfg['camera_name'], 'Shop')
-        self.assertEqual(cfg['prusa']['server'], 'webcam.connect.prusa3d.com')
+        self.assertEqual(cfg['prusa']['server'], 'connect.prusa3d.com')
 
     def test_full_round_trip(self):
         text = config_schema.dumps_device(config_schema.default_device())
@@ -599,6 +599,38 @@ class SavePairTests(unittest.TestCase):
         self.assertEqual(device_stat.st_gid, os.getgid())
         self.assertEqual(secrets_stat.st_uid, os.getuid())
         self.assertEqual(secrets_stat.st_gid, os.getgid())
+
+
+class PrusaServerTests(unittest.TestCase):
+    """Legacy Prusa hosts are mapped to the working camera API host."""
+
+    def test_the_default_is_the_connect_host(self):
+        self.assertEqual(config_schema.DEFAULT_PRUSA_SERVER, 'connect.prusa3d.com')
+        self.assertEqual(
+            config_schema.default_device()['prusa']['server'], 'connect.prusa3d.com')
+
+    def test_legacy_hosts_are_normalized_when_read(self):
+        for legacy in ('webcam.connect.prusa3d.com', 'camera-service-webcam.prusa3d.com',
+                       ' Webcam.Connect.Prusa3d.com '):
+            cfg = config_schema.parse_device(f'[prusa]\nserver = "{legacy}"\n')
+            self.assertEqual(cfg['prusa']['server'], 'connect.prusa3d.com', legacy)
+
+    def test_a_custom_server_is_kept(self):
+        cfg = config_schema.parse_device('[prusa]\nserver = "camera.example.org"\n')
+        self.assertEqual(cfg['prusa']['server'], 'camera.example.org')
+
+    def test_saving_writes_the_normalized_host(self):
+        cfg = config_schema.default_device()
+        cfg['prusa']['server'] = 'webcam.connect.prusa3d.com'
+        text = config_schema.dumps_device(config_schema.parse_device(
+            config_schema.dumps_device(cfg)))
+        self.assertIn('server = "connect.prusa3d.com"', text)
+        self.assertNotIn('webcam.connect', text)
+
+    def test_normalize_leaves_other_values_alone(self):
+        self.assertEqual(config_schema.normalize_prusa_server('x.example'), 'x.example')
+        self.assertEqual(config_schema.normalize_prusa_server(''), '')
+        self.assertIsNone(config_schema.normalize_prusa_server(None))
 
 
 if __name__ == '__main__':

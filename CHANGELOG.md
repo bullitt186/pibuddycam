@@ -49,6 +49,12 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   Needs a new image. The hotspot is open, so its login page is reachable in range while it runs.
 
 ### Fixed
+- Connect shows the camera's snapshot again ("The snapshot is not available" is gone). Prusa
+  moved the camera API: `webcam.connect.prusa3d.com` now answers every upload with a `301`, which
+  the camera does not follow, and the redirect target has no camera API. The default server is
+  now `connect.prusa3d.com`, and the old values in a stored configuration are mapped to it. The
+  console restarts the camera application after a server, fingerprint or token change. Needs a
+  new image for the default; the stored value is migrated when the configuration is read.
 - The live stream in Prusa Connect works again. The camera's offer named its media section
   `video0`, but Connect hands every camera ICE candidate to the browser with `sdpMid` `"0"`.
   Chrome rejected each of them ("Error processing ICE candidate"), so the browser knew no
