@@ -555,6 +555,119 @@ class PersistTests(WizardTestBase):
         )
 
 
+class SkipLaterTests(WizardTestBase):
+    """"Later": the token, fingerprint and MQTT steps can be skipped."""
+
+    def walk_without_token(self, session, **skips):
+        """Wi-Fi and password only; every optional step answered with skip."""
+        results = [
+            session.submit('status', {}),
+            session.submit('imager_prefill', {}),
+            session.submit('wifi', {'ssid': SSID, 'psk': PSK}),
+            session.submit('prusa_token', {'skip': True}),
+            session.submit('fingerprint', {'skip': True}),
+            session.submit('admin_password', {'password': PASSWORD, 'confirm': PASSWORD}),
+            session.submit('mqtt', {'skip': True}),
+            session.submit('summary', {}),
+        ]
+        return results
+
+    def test_only_wifi_and_password_are_required_to_persist(self):
+        self.assertEqual(
+            setup_wizard.PERSIST_PREREQUISITES, frozenset({'wifi', 'admin_password'})
+        )
+
+    def test_skippable_steps_are_the_optional_ones(self):
+        self.assertEqual(
+            setup_wizard.SKIPPABLE_STEPS, frozenset({'prusa_token', 'fingerprint', 'mqtt'})
+        )
+
+    def test_skipping_the_token_persists_without_a_token(self):
+        session = self.make_session()
+        for result in self.walk_without_token(session):
+            self.assertTrue(result.ok, result.reason)
+        self.assertEqual(session.skipped, {'prusa_token', 'fingerprint', 'mqtt'})
+        self.assertIn('prusa_token', session.completed)
+        self.assertTrue(self.persist(session).ok)
+        self.assertNotIn(TOKEN, self.read_text(self.secrets_path))
+        secrets = config_schema.parse_secrets(self.read_text(self.secrets_path))
+        self.assertFalse(secrets.get('prusa', {}).get('token'))
+
+    def test_finish_without_token_ends_claimed_not_running(self):
+        session = self.make_session()
+        for result in self.walk_without_token(session):
+            self.assertTrue(result.ok, result.reason)
+        self.assertTrue(self.persist(session).ok)
+        result = session.finish()
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(session.provisioning_state, 'claimed')
+        self.assertEqual(
+            provisioning.ProvisioningState.load(self.provisioning_path).state,
+            'claimed',
+        )
+        self.assertIn(session.provisioning_state, boot_mode.CAMERA_STATES)
+
+    def test_skipping_fingerprint_stages_the_derived_value(self):
+        session = self.make_session()
+        with patch.object(
+            setup_wizard.WizardSession, '_derived_fingerprint',
+            return_value='derived-fp',
+        ):
+            result = session.submit('fingerprint', {'skip': True})
+        self.assertTrue(result.ok, result.reason)
+        self.assertEqual(session.fingerprint, 'derived-fp')
+
+    def test_skipping_mqtt_leaves_it_off(self):
+        session = self.make_session()
+        self.assertTrue(session.submit('mqtt', {'skip': True}).ok)
+        self.assertFalse(session.mqtt['enabled'])
+        self.assertEqual(session.mqtt['username'], '')
+
+    def test_wifi_and_password_cannot_be_skipped(self):
+        session = self.make_session()
+        for step in ('wifi', 'admin_password', 'status', 'persist', 'finish'):
+            result = session.submit(step, {'skip': True})
+            self.assertFalse(result.ok, step)
+            self.assertIn('cannot be skipped', result.reason)
+            self.assertNotIn(step, session.skipped)
+            self.assertNotIn(step, session.completed)
+
+    def test_skip_must_be_a_boolean(self):
+        session = self.make_session()
+        result = session.submit('prusa_token', {'skip': 'yes'})
+        self.assertFalse(result.ok)
+        self.assertNotIn('prusa_token', session.completed)
+
+    def test_entering_the_token_after_skipping_clears_the_skip(self):
+        session = self.make_session()
+        self.assertTrue(session.submit('prusa_token', {'skip': True}).ok)
+        self.assertIn('prusa_token', session.skipped)
+        self.assertTrue(session.submit('prusa_token', {'token': TOKEN}).ok)
+        self.assertNotIn('prusa_token', session.skipped)
+        self.assertEqual(session.token, TOKEN)
+
+    def test_skipping_after_entering_a_token_forgets_it(self):
+        session = self.make_session()
+        self.assertTrue(session.submit('prusa_token', {'token': TOKEN}).ok)
+        self.assertTrue(session.submit('prusa_token', {'skip': True}).ok)
+        self.assertEqual(session.token, '')
+
+    def test_a_missing_token_without_skip_is_still_rejected(self):
+        session = self.make_session()
+        result = session.submit('prusa_token', {'token': ''})
+        self.assertFalse(result.ok)
+        self.assertNotIn('prusa_token', session.completed)
+
+    def test_persist_still_needs_the_admin_password(self):
+        session = self.make_session()
+        self.assertTrue(session.submit('wifi', {'ssid': SSID, 'psk': PSK}).ok)
+        self.assertTrue(session.submit('prusa_token', {'skip': True}).ok)
+        result = session.submit('persist', {})
+        self.assertFalse(result.ok)
+        self.assertIn('admin password', result.reason)
+        self.assertFalse(os.path.exists(self.secrets_path))
+
+
 class FinishTests(WizardTestBase):
     def finish_ready(self, **kwargs):
         session = self.make_session(**kwargs)

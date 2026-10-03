@@ -71,6 +71,10 @@ address directly.
 **The token is rejected.**
 - Get a fresh token from Prusa Connect. The wizard keeps your last working credentials.
 
+**The camera never appears in Prusa Connect, and the console shows "Prusa Connect is not set up".**
+- You chose *Later* on the token step. Paste the token under Integrations in the console. The
+  camera makes no Prusa Connect requests until a token is saved.
+
 ## Prusa Connect
 
 **The camera is under "Other cameras" and has no live view.** This is the current, known Connect

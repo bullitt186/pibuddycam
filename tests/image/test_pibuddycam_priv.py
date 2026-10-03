@@ -57,6 +57,7 @@ class PrusaPrivAssetTests(unittest.TestCase):
             'rtsp-start',
             'rtsp-stop',
             'quality-restart',
+            'camera-restart',
             'network-apply',
             'hostname-apply',
             'wifi-scan',
@@ -66,6 +67,14 @@ class PrusaPrivAssetTests(unittest.TestCase):
             self.assertIn(f'{verb})', text)
         # Nothing else is dispatched.
         self.assertIn('*)\n      exit 2', text)
+
+    def test_camera_restart_only_try_restarts_the_camera_service(self):
+        text = PIBUDDYCAM_PRIV.read_text(encoding='utf-8')
+        start = text.index('camera-restart)\n')
+        branch = text[start:text.index('quality-restart)', start)]
+        self.assertIn('exec "$SYSTEMCTL" try-restart pibuddycam.service', branch)
+        self.assertNotIn('$2', branch)
+        self.assertNotIn('$@', branch)
 
     def test_hostname_apply_rejects_bad_labels_before_running_anything(self):
         for bad in ('', 'Has_Underscore', '-lead', 'trail-', 'a b', 'x' * 64,

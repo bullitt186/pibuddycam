@@ -7,6 +7,12 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 ## [Unreleased]
 
 ### Added
+- Setup wizard: **Later** for the Prusa Connect token, the fingerprint and MQTT. Only Wi-Fi and the
+  administrator password are required, so you can set up Wi-Fi first, switch your phone back to
+  your normal network and add the token afterwards in the console. A banner reminds you until a
+  token is saved, and saving it restarts the camera application. Without a token the camera makes
+  no Prusa Connect requests. The restart verb is image-owned: needs a new image (an older image
+  keeps saying a restart is required).
 - Developer images: `image/scripts/build-image.sh --dev` builds an image with key-only SSH
   (`pibuddydev`, passwordless `sudo`) for debugging. Release images are unchanged and still ship
   with SSH off; the channel is recorded in `build-info.json`. Dev images also serve the setup

@@ -51,6 +51,7 @@ VERBS = frozenset({
     'rtsp-start',
     'rtsp-stop',
     'quality-restart',
+    'camera-restart',
     'network-apply',
     'hostname-apply',
     'wifi-scan',
@@ -258,6 +259,17 @@ def quality_restart(runner=None):
     whose configured mode is disabled. Returns a :class:`PrivilegedResult`.
     """
     return _invoke('quality-restart', runner=runner)
+
+
+def camera_restart(runner=None):
+    """Restart the camera application (``pibuddycam.service``) as root.
+
+    Used after a Prusa token is saved in the console, so it takes effect without
+    a reboot. The helper uses ``try-restart``: a stopped service stays stopped.
+    An older image whose helper lacks this verb answers with a failure, which the
+    caller reports as "restart required". Returns a :class:`PrivilegedResult`.
+    """
+    return _invoke('camera-restart', runner=runner)
 
 
 def hotspot_start(runner=None):

@@ -965,6 +965,44 @@ const TESTS = [
     },
   },
   {
+    name: 'setup wizard: Wi-Fi and password only, the rest Later',
+    async run({ page, base, request }) {
+      await reset(request, base, { mode: 'setup' });
+      await setupToWifi(page, base);
+      await waitForText(page.locator('#wifi-networks'), 'E2E-Home');
+      await page.locator('.network-list__item', { hasText: 'E2E-Home' }).click();
+      await page.locator('#wifi-psk').fill('synthetic-wifi-psk');
+      await page.locator('#wifi-next').click();
+
+      // No internet on the setup network: the token waits until later.
+      await setupScreen(page, 'prusa');
+      await page.locator('#prusa-later').click();
+      await setupScreen(page, 'password');
+      await page.locator('#admin-password').fill('synthetic-admin-pass');
+      await page.locator('#admin-password-confirm').fill('synthetic-admin-pass');
+      await page.locator('#password-next').click();
+      await setupScreen(page, 'options');
+      await page.locator('#options-later').click();
+
+      await setupScreen(page, 'review');
+      const review = await page.locator('#review-list').textContent();
+      assertIncludes(review, 'Later (add it in the console)', 'review says the token comes later');
+      assertEqual(await page.locator('#review-finish').isDisabled(), false, 'finish is enabled without a token');
+
+      // A reload keeps the answers: nothing is asked again.
+      await page.reload();
+      await setupScreen(page, 'review');
+
+      await page.locator('#review-finish').click();
+      await setupScreen(page, 'done');
+      await waitForVisible(page.locator('#done-later'));
+      assertIncludes(await page.locator('#done-later').textContent(), 'Integrations', 'done page says where to add the token');
+      const done = await counters(request, base);
+      assertEqual(done.setup_station, 1, 'station activated once');
+      assertEqual(done.setup_camera, 1, 'camera started once');
+    },
+  },
+  {
     name: 'setup wizard: manual network, resume after reload, station failure',
     async run({ page, base, request }) {
       await reset(request, base, {

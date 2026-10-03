@@ -121,6 +121,11 @@ function completed(step) {
     && state.data.done_steps.includes(STEP[step]));
 }
 
+function skipped(step) {
+  return Boolean(state.data && Array.isArray(state.data.skipped_steps)
+    && state.data.skipped_steps.includes(STEP[step]));
+}
+
 function summary() {
   return (state.data && state.data.summary) || {};
 }
@@ -403,6 +408,21 @@ async function submitPrusa(event) {
   next();
 }
 
+/* "Later": the token is added in the console once the camera is on your Wi-Fi. */
+async function skipPrusa() {
+  setError('prusa-error', '');
+  const button = $('prusa-later');
+  setBusy(button, true, 'Saving…');
+  const result = await submitStep('prusa_token', { skip: true });
+  setBusy(button, false);
+  if (!result.ok) {
+    setError('prusa-error', reasonOf(result, 'The step could not be skipped.'));
+    return;
+  }
+  await loadState();
+  next();
+}
+
 /* ------------------------------------------------------------------ */
 /* screen: password                                                    */
 /* ------------------------------------------------------------------ */
@@ -518,6 +538,22 @@ async function submitOptions(event) {
   next();
 }
 
+/* "Later": derive the fingerprint and leave MQTT off; both can be set in the console. */
+async function skipOptions() {
+  setError('options-error', '');
+  const button = $('options-later');
+  setBusy(button, true, 'Saving…');
+  let result = await submitStep('fingerprint', { skip: true });
+  if (result.ok) result = await submitStep('mqtt', { skip: true });
+  setBusy(button, false);
+  if (!result.ok) {
+    setError('options-error', reasonOf(result, 'The step could not be skipped.'));
+    return;
+  }
+  await loadState();
+  next();
+}
+
 /* ------------------------------------------------------------------ */
 /* screen: review + finish                                             */
 /* ------------------------------------------------------------------ */
@@ -553,7 +589,9 @@ function enterReview() {
   list.textContent = '';
   reviewRow(list, 'Camera module', status.camera_ok ? 'Detected' : 'Not detected', null);
   reviewRow(list, 'Wi-Fi network', `${wifi.ssid || '—'}${saved('wifi_secured') ? ' (password saved)' : ' (open network)'}`, 'wifi');
-  reviewRow(list, 'Prusa Connect token', saved('prusa_ready') ? 'Saved' : 'Missing', 'prusa');
+  const prusaText = saved('prusa_ready') ? 'Saved'
+    : (skipped('prusa_token') ? 'Later (add it in the console)' : 'Missing');
+  reviewRow(list, 'Prusa Connect token', prusaText, 'prusa');
   reviewRow(list, 'Admin password', saved('admin_ready') ? 'Set' : 'Missing', 'password');
   reviewRow(list, 'MQTT', mqtt.enabled ? (mqtt.uri || 'Enabled') : 'Off', 'options');
   reviewRow(list, 'Fingerprint', saved('fingerprint_pinned') ? 'Stored' : 'Derived at runtime', 'options');
@@ -569,7 +607,11 @@ function renderDone(failedQuietly) {
   $('done-ssid').textContent = wifi.ssid || 'your Wi-Fi';
   $('done-url').textContent = data.admin_url || "the camera's address";
   $('done-setup-ssid').textContent = data.setup_ssid || 'PiBuddyCam-Setup';
-  if (failedQuietly) {
+  const prusaPending = !saved('prusa_ready');
+  $('done-later').hidden = !prusaPending;
+  if (prusaPending) {
+    $('done-lede').textContent = 'The camera is joining your Wi-Fi. Prusa Connect is added afterwards in the console.';
+  } else if (failedQuietly) {
     $('done-lede').textContent = 'The setup network was switched off as planned. The camera is joining your Wi-Fi and will appear in Prusa Connect within a minute or two.';
   }
   show('done');
@@ -626,6 +668,7 @@ function wire() {
     $('wifi-psk').type = event.target.checked ? 'text' : 'password';
   });
   $('prusa-form').addEventListener('submit', submitPrusa);
+  $('prusa-later').addEventListener('click', skipPrusa);
   $('password-form').addEventListener('submit', submitPassword);
   $('admin-password-show').addEventListener('change', (event) => {
     const type = event.target.checked ? 'text' : 'password';
@@ -633,6 +676,7 @@ function wire() {
     $('admin-password-confirm').type = type;
   });
   $('options-form').addEventListener('submit', submitOptions);
+  $('options-later').addEventListener('click', skipOptions);
   $('mqtt-enabled').addEventListener('change', syncMqttFields);
   $('mqtt-test').addEventListener('click', testMqtt);
   $('review-finish').addEventListener('click', finish);

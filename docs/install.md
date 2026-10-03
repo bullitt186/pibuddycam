@@ -57,9 +57,11 @@ The wizard walks through:
 2. **Wi-Fi**: pick your network from the scan list or type its name (for hidden networks), then
    the password. If the scan finds nothing while the setup network is running, type the name.
 3. **Prusa Connect**: paste the camera registration token (Connect → printer → *Camera* → add a
-   camera → *Token*).
+   camera → *Token*). Choose **Later** if you don't have it at hand, for example because it is in
+   the Prusa app on your phone and the setup network has no internet. See
+   [adding the token later](#adding-the-prusa-token-later).
 4. **Password**: the administrator password for the web console. Required.
-5. **Options** (all optional):
+5. **Options** (all optional, or choose **Later** to skip the page):
    - **MQTT**: broker URI and credentials, with *Test connection* before saving.
    - **Fingerprint** (under *Advanced*): only needed to take over an existing registration.
      Leave it empty and the MAC-derived fingerprint is used, the same way the genuine camera does
@@ -74,6 +76,19 @@ it again and the wizard reopens with your earlier answers, so you only correct t
 Reloading the page or closing the login window mid-way also keeps what you entered.
 
 A rejected token returns you to the wizard without overwriting working credentials.
+
+### Adding the Prusa token later
+
+Only Wi-Fi and the administrator password are required. If you chose **Later** on the Prusa
+Connect step:
+
+1. Finish the wizard. The camera joins your Wi-Fi and starts, but is not registered with Prusa
+   Connect yet. It makes no Prusa Connect requests until it has a token. Local RTSP, ONVIF, MQTT
+   and the console work as usual.
+2. Reconnect your phone or laptop to your normal Wi-Fi, so it has internet again.
+3. Open the console, sign in, and paste the token under **Integrations**. A banner on every page
+   reminds you until a token is saved. Saving restarts the camera application, so the token
+   applies right away. If the camera runs an older image, the console says a restart is needed.
 
 ## 3. Use it
 
