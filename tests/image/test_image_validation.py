@@ -924,6 +924,16 @@ class RootfsValidationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("authorized_keys present", result.stdout)
 
+    def test_release_with_empty_service_account_authorized_keys_passes(self):
+        # The openssh-server layer creates this empty file in every image.
+        root = self._root()
+        ssh = root / "opt" / "pibuddycam" / ".ssh"
+        ssh.mkdir(parents=True)
+        (ssh / "authorized_keys").write_text("", encoding="utf-8")
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotIn("authorized_keys present", result.stdout)
+        self.assertIn("no authorized_keys installed", result.stdout)
+
     def test_ssh_host_key_present_fails(self):
         root = self._root()
         (root / "etc" / "ssh" / "ssh_host_ed25519_key").write_text(
