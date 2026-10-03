@@ -198,7 +198,7 @@ def load_config():
     cfg.set(
         'upload', 'server',
         str((device.get('prusa') or {}).get('server')
-            or 'webcam.connect.prusa3d.com'),
+            or config_schema.DEFAULT_PRUSA_SERVER),
     )
     cfg.set('upload', 'interval', '10')
     return cfg

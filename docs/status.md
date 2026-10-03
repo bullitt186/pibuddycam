@@ -14,7 +14,7 @@ firmware. Anything else is stated as open or as an assumption.
 | Registration with a Prusa Connect token, `/c/info`, snapshots every 10 s | ✅ Working **[confirmed]** |
 | Socket.IO camera authentication (ACK `0`), control/configuration from Connect | ✅ Working **[confirmed]** |
 | Video quality SD/HD/FHD switched from Connect | ✅ Working on the device **[confirmed]**. The exact per-payload "persist" flag is still open (GAP-QUALITY-02) |
-| WebRTC live view in the Prusa app and browser | ⚠️ The implementation worked live (2026-09-19/20). The live view is currently blocked by Connect, see below |
+| WebRTC live view in the Prusa app and browser | ⚠️ The implementation worked live (2026-09-19/20). It then stopped connecting because the browser rejected every camera ICE candidate (media id `video0` against Connect's `sdpMid` `"0"`). With the media id sent as `0` the stream connected from Chrome on the LAN (2026-10-03, one run, 1920×1080) **[confirmed]**. The *Other cameras* state described below is unchanged |
 | Local RTSP (`:8554` Prusa-controlled, `:8555` always on), ONVIF, JPEG snapshot | ✅ Working **[confirmed]** |
 | Home Assistant via ONVIF / MQTT discovery | ✅ Camera-side working **[confirmed]**. A long Home Assistant + Prusa soak has not been recorded |
 | Timelapse capture and AVI build, Samba share | ✅ Working **[confirmed]**. Connect's `file_list` path isn't exercised by the app |

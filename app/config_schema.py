@@ -39,6 +39,25 @@ log = logging.getLogger('pibuddycam.config')
 
 SCHEMA_VERSION = 1
 
+#: The Prusa Connect camera API (``PUT /c/snapshot``, ``/c/info``). Earlier builds
+#: used ``webcam.connect.prusa3d.com``, which now answers every upload with a
+#: ``301`` that the camera deliberately does not follow, and the redirect target
+#: ``camera-service-webcam.prusa3d.com`` has no camera API (``404``). A stored
+#: legacy value would keep the camera from ever registering, so it is mapped to
+#: the working host whenever the document is read or written.
+DEFAULT_PRUSA_SERVER = 'connect.prusa3d.com'
+LEGACY_PRUSA_SERVERS = frozenset({
+    'webcam.connect.prusa3d.com',
+    'camera-service-webcam.prusa3d.com',
+})
+
+
+def normalize_prusa_server(value):
+    """Map a legacy Prusa server host to :data:`DEFAULT_PRUSA_SERVER`."""
+    if isinstance(value, str) and value.strip().lower() in LEGACY_PRUSA_SERVERS:
+        return DEFAULT_PRUSA_SERVER
+    return value
+
 CONFIG_DIR = '/data/pibuddycam/config'
 DEVICE_TOML_PATH = CONFIG_DIR + '/device.toml'
 SECRETS_TOML_PATH = CONFIG_DIR + '/secrets.toml'
@@ -99,7 +118,7 @@ def default_device():
         'schema_version': SCHEMA_VERSION,
         'camera_name': 'Printer Camera',
         'fingerprint': '',
-        'prusa': {'server': 'webcam.connect.prusa3d.com'},
+        'prusa': {'server': DEFAULT_PRUSA_SERVER},
         'mqtt': {
             'enabled': False,
             'uri': 'mqtts://broker.example:8883',
@@ -267,7 +286,8 @@ def _check_device_keys(data):
 def _apply_device_table(cfg, table, section):
     if table == 'prusa':
         if 'server' in section:
-            cfg['prusa']['server'] = _expect_str(section['server'], 'prusa.server')
+            cfg['prusa']['server'] = normalize_prusa_server(
+                _expect_str(section['server'], 'prusa.server'))
     elif table == 'mqtt':
         mqtt = cfg['mqtt']
         if 'enabled' in section:

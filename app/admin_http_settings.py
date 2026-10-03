@@ -256,10 +256,14 @@ class SettingsHandlers:
             return self._error(
                 request, 409, 'existing configuration is invalid; use the expert editor')
 
+        server_changed = False
         if 'server' in body_data:
             server = strings['server'].strip()
             if not server:
                 return self._error(request, 400, 'prusa server must not be empty')
+            server = config_schema.normalize_prusa_server(server)
+            old_server = (device_cfg.get('prusa') or {}).get('server')
+            server_changed = server != old_server
             device_cfg.setdefault('prusa', {})['server'] = server
 
         fingerprint_changed = False
@@ -292,11 +296,14 @@ class SettingsHandlers:
         warnings = [INTEGRATION_RESTART_WARNING]
         if fingerprint_changed:
             warnings.insert(0, FINGERPRINT_BINDING_WARNING)
-        # A newly pasted token is applied right away by restarting the camera
-        # application, so a camera set up with "Later" registers without a
-        # reboot. If the restart cannot be done (no helper, an older image),
-        # the response keeps saying a restart is required.
-        applied = bool(strings['token']) and self._restart_camera()
+        # A new token, server or fingerprint (or a cleared token) is applied right
+        # away by restarting the camera application, so a camera set up with
+        # "Later" registers without a reboot. If the restart cannot be done (no
+        # helper, an older image), the response keeps saying a restart is required.
+        needs_restart = bool(
+            strings['token'] or server_changed or fingerprint_changed
+            or body_data.get('clear_token'))
+        applied = needs_restart and self._restart_camera()
         if applied:
             warnings = [w for w in warnings if w != INTEGRATION_RESTART_WARNING]
         return self._json(request, 200, {

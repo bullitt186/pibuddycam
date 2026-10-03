@@ -18,7 +18,7 @@ def make_session():
 
 
 async def upload_snapshot(session, jpeg_bytes, token, fingerprint,
-                          server='webcam.connect.prusa3d.com'):
+                          server='connect.prusa3d.com'):
     """PUT a JPEG snapshot; returns ``(status_or_None, result_class)``.
 
     GAP-HTTP-02: the status is classified into the firmware result classes.
@@ -50,7 +50,7 @@ async def upload_snapshot(session, jpeg_bytes, token, fingerprint,
 
 
 async def upload_info(session, state, token, fingerprint, mac, ip, ssid,
-                      server='webcam.connect.prusa3d.com'):
+                      server='connect.prusa3d.com'):
     """PUT the shared-state ``/c/info`` body; returns ``(status, class, body)``.
 
     GAP-INFO-02: the body is built from ``CameraState`` (name, quality-derived
