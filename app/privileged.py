@@ -26,6 +26,7 @@ the tests replace it with a fake.
 import dataclasses
 import logging
 import subprocess
+import time
 
 import hotspot
 
@@ -167,7 +168,21 @@ def _invoke(verb, *extra, input=None, runner=None, timeout=None, capture=False):
 # Wrappers
 # --------------------------------------------------------------------------- #
 
-def start_camera(runner=None, poll_timeout=30):
+def _target_coming_up(run):
+    """True when ``pibuddycam.target`` is ``active`` or ``activating``."""
+    try:
+        probe = run(['systemctl', 'is-active', 'pibuddycam.target'], timeout=5)
+    except Exception:  # noqa: BLE001 - a probe must never raise
+        return False
+    if _returncode(probe) == 0:
+        return True
+    out = getattr(probe, 'stdout', '') or ''
+    if isinstance(out, bytes):
+        out = out.decode('utf-8', 'replace')
+    return out.strip() in ('active', 'activating')
+
+
+def start_camera(runner=None, poll_timeout=30, grace_polls=4, sleep=None):
     """Start ``pibuddycam.target`` as root; returns a plain ``bool``.
 
     The helper issues ``systemctl --no-block start`` (the target conflicts with
@@ -176,13 +191,30 @@ def start_camera(runner=None, poll_timeout=30):
     polls ``systemctl is-active`` up to *poll_timeout* seconds for the target to
     reach active. The wizard's finish callback treats a falsy result as a failed
     hand-off.
+
+    Starting the target makes systemd stop the provisioning service this code
+    runs in, and that kills the still-running ``sudo`` child, so ``_invoke`` can
+    report a failure (a signal exit) although the start job was already queued.
+    Treating that as a failed hand-off made the wizard restart the setup hotspot
+    and tear down the Wi-Fi it had just joined. A failed ``_invoke`` therefore
+    only counts as failure when the target is not coming up either: it is
+    re-checked for *grace_polls* seconds before giving up.
     """
+    sleep = sleep or time.sleep
+    run = runner or _default_runner
     result = _invoke('start-camera', runner=runner)
     if not result.ok:
+        for attempt in range(max(1, grace_polls)):
+            if _target_coming_up(run):
+                log.warning(
+                    'privileged: start-camera reported a failure but '
+                    'pibuddycam.target is coming up (helper cut off by the '
+                    'provisioning stop); treating the start as successful')
+                return True
+            if attempt + 1 < max(1, grace_polls):
+                sleep(1)
         return False
-    import time
     deadline = time.monotonic() + poll_timeout
-    run = runner or _default_runner
     while time.monotonic() < deadline:
         try:
             probe = run(
@@ -193,7 +225,7 @@ def start_camera(runner=None, poll_timeout=30):
                 return True
         except Exception:
             pass
-        time.sleep(2)
+        sleep(2)
     log.warning('privileged: pibuddycam.target did not reach active within '
                 f'{poll_timeout}s after --no-block start')
     return False
