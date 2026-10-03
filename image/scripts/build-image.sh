@@ -3,6 +3,13 @@
 #
 # Usage:
 #   RPI_IMAGE_GEN_DIR=/path/to/rpi-image-gen image/scripts/build-image.sh
+#   RPI_IMAGE_GEN_DIR=... PIBUDDYCAM_DEV_SSH_PUBKEY_FILE=~/.ssh/<KEY>.pub \
+#      image/scripts/build-image.sh --dev
+#
+# Build channel: `release` (default) ships with SSH off. `--dev` (or
+# PIBUDDYCAM_BUILD_CHANNEL=dev) builds a developer image with key-only SSH, a
+# `pibuddydev` login with passwordless sudo, and the given PUBLIC key. A dev
+# image must never be published; release.yml always builds `release`.
 #
 # Steps:
 #   1. Verify the checkout at $RPI_IMAGE_GEN_DIR is exactly the revision pinned
@@ -23,6 +30,32 @@ LOCK="$IMAGE_DIR/rpi-image-gen.lock"
 CONFIG="$IMAGE_DIR/config/pibuddycam-pi-zero2w.yaml"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
+
+CHANNEL="${PIBUDDYCAM_BUILD_CHANNEL:-release}"
+for arg in "$@"; do
+   case "$arg" in
+      --dev) CHANNEL=dev ;;
+      *) die "unknown argument: $arg (supported: --dev)" ;;
+   esac
+done
+case "$CHANNEL" in
+   release|dev) ;;
+   *) die "PIBUDDYCAM_BUILD_CHANNEL must be 'release' or 'dev', got '$CHANNEL'" ;;
+esac
+
+# A dev image needs exactly one SSH PUBLIC key. The key travels base64-encoded so
+# it survives the builder's argument handling; private key material is refused.
+DEV_SSH_PUBKEY_B64=""
+if [ "$CHANNEL" = dev ]; then
+   : "${PIBUDDYCAM_DEV_SSH_PUBKEY_FILE:?a dev image needs PIBUDDYCAM_DEV_SSH_PUBKEY_FILE (an SSH public key)}"
+   [ -r "$PIBUDDYCAM_DEV_SSH_PUBKEY_FILE" ] || die "cannot read $PIBUDDYCAM_DEV_SSH_PUBKEY_FILE"
+   if grep -q 'PRIVATE KEY' "$PIBUDDYCAM_DEV_SSH_PUBKEY_FILE"; then
+      die "$PIBUDDYCAM_DEV_SSH_PUBKEY_FILE contains private key material; pass the .pub file"
+   fi
+   grep -Eq '^(ssh-(ed25519|rsa)|ecdsa-sha2-nistp[0-9]+|sk-ssh-ed25519@openssh.com) ' \
+      "$PIBUDDYCAM_DEV_SSH_PUBKEY_FILE" || die "no OpenSSH public key line in $PIBUDDYCAM_DEV_SSH_PUBKEY_FILE"
+   DEV_SSH_PUBKEY_B64="$(grep -E '^(ssh-|ecdsa-|sk-)' "$PIBUDDYCAM_DEV_SSH_PUBKEY_FILE" | base64 -w0)"
+fi
 
 read_lock() {
    awk -F= -v key="$1" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$LOCK"
@@ -70,6 +103,7 @@ WORKROOT="${WORKROOT:-$IMAGE_DIR/work}"
 
 echo "builder:   $LOCK_URL @ $LOCK_COMMIT ($LOCK_TAG)"
 echo "source:    $SOURCE_COMMIT ($VERSION)"
+echo "channel:   $CHANNEL"
 echo "epoch:     $SOURCE_DATE_EPOCH"
 echo "workroot:  $WORKROOT"
 
@@ -80,7 +114,9 @@ echo "workroot:  $WORKROOT"
    -B "$WORKROOT" \
    -- "IGconf_artefact_version=$VERSION" \
       "PIBUDDYCAM_SOURCE_COMMIT=$SOURCE_COMMIT" \
-      "RPI_IMAGE_GEN_REVISION=$LOCK_COMMIT"
+      "RPI_IMAGE_GEN_REVISION=$LOCK_COMMIT" \
+      "PIBUDDYCAM_BUILD_CHANNEL=$CHANNEL" \
+      "PIBUDDYCAM_DEV_SSH_PUBKEY_B64=$DEV_SSH_PUBKEY_B64"
 
 # --- 4a. ROOT utilisation must stay below 75% of 4 GiB (AC-13) --------------
 root_img="$(find "$WORKROOT" -name 'root.ext4' -print -quit 2>/dev/null || true)"

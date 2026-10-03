@@ -218,7 +218,7 @@ after the next successful boot.
   `Secure`/`HttpOnly`/`SameSite`, and every change carries a CSRF token.
 - **Redaction.** Tokens, Wi-Fi keys, MQTT credentials and cookies are redacted from the UI,
   logs, diagnostics and MQTT state.
-- **SSH** is off by default.
+- **SSH** is off by default. Only developer builds, which are never published, enable it.
 - **Unauthenticated local streams.** ONVIF, `/snapshot.jpg` and RTSP (`8554`/`8555`) have no
   authentication, by design, for Home Assistant compatibility. **Keep the device on a trusted LAN
   and never expose ports 80, 443, 8554 or 8555 to the Internet.**

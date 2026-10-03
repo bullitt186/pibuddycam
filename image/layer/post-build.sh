@@ -23,7 +23,25 @@ rm -f "$fs"/etc/ssh/ssh_host_*
 # runs `enable-units ssh ssh-hostkeys-generate.service` AFTER our image-layer
 # customize hook, so the disable must happen here, after every layer. `disable`
 # (not `mask`) keeps Raspberry Pi Imager able to re-enable SSH later.
+#
+# The developer channel (build-image.sh --dev) is the only exception: its
+# build-info.json says channel=dev and install-factory-app.sh has installed the
+# key-only sshd drop-in, so SSH stays enabled. Anything else, including a missing
+# or unreadable build-info.json, takes the release path.
 SSH_UNITS="ssh.service ssh.socket ssh-hostkeys-generate.service"
+channel="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("channel",""))' \
+   "$fs/usr/share/pibuddycam/build-info.json" 2>/dev/null || true)"
+if [ "$channel" = dev ]; then
+   [ -f "$fs/etc/ssh/sshd_config.d/10-pibuddycam-dev.conf" ] || {
+      echo "pibuddycam-image: ERROR: dev channel without the key-only sshd drop-in" >&2
+      exit 1; }
+   chroot "$fs" systemctl enable ssh.service ssh-hostkeys-generate.service >/dev/null
+   if ! ls "$fs/etc/systemd/system/"*.wants/ssh.service >/dev/null 2>&1; then
+      echo "pibuddycam-image: ERROR: dev channel but ssh.service is not enabled" >&2
+      exit 1
+   fi
+   echo "pibuddycam-image: dev channel: SSH enabled (key-only)"
+else
 for unit in $SSH_UNITS sshd.service; do
    rm -f "$fs/etc/systemd/system/"*.wants/"$unit"
 done
@@ -35,6 +53,7 @@ for unit in $SSH_UNITS sshd.service; do
       fi
    done
 done
+fi
 
 # No Wi-Fi profile or captured connection.
 rm -f "$fs"/etc/NetworkManager/system-connections/*.nmconnection 2>/dev/null || true

@@ -112,6 +112,10 @@ plus `update-manifest.json`); see [releasing](../docs/releasing.md).
     with no Zero-2-W-only tag, so Imager may also offer the image for a Pi 3. It is validated for
     the Zero 2 W only.
   - `init_format` is `systemd`. Override it with `PIBUDDYCAM_IMAGER_INIT_FORMAT`.
+- **Channels.** Release images (the default) have SSH off. `build-image.sh --dev` with
+  `PIBUDDYCAM_DEV_SSH_PUBKEY_FILE` builds a developer image: `ssh.service` enabled, key-only login
+  for `pibuddydev` with passwordless `sudo`, `channel: dev` in `build-info.json`. Never publish it.
+  See [development](../docs/development.md#testing-on-hardware).
 - **Signing.** With `--key` the scripts require `minisign` and sign every artifact. Only the public
   key is in the repository (see [keys/](keys/README.md)).
 - **Secret scan.** `scripts/scan-secrets.sh` runs over every produced artifact and fails the
