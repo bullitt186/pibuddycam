@@ -340,9 +340,12 @@ UNIT
    # claim an unclaimed dev camera, which is why this is dev-only.
    install -d -m 0755 "$root/etc/systemd/system/pibuddycam-provisioning.service.d"
    cat > "$root/etc/systemd/system/pibuddycam-provisioning.service.d/10-pibuddycam-dev.conf" <<'UNIT'
-# PiBuddyCam DEVELOPER image only: serve the setup wizard on all interfaces.
+# PiBuddyCam DEVELOPER image only: serve the setup wizard on all interfaces and
+# accept any Host header (the portal guard would redirect LAN clients to the
+# hotspot address).
 [Service]
 Environment=ADMIN_HOST=0.0.0.0
+Environment=ADMIN_SETUP_ANY_HOST=1
 UNIT
    log "dev channel: key-only SSH login $dev_user with sudo (do not publish this image)"
 fi

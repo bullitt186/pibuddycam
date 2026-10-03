@@ -887,7 +887,8 @@ class RootfsValidationTests(unittest.TestCase):
         system = root / "etc" / "systemd" / "system"
         (system / "pibuddycam-provisioning.service.d").mkdir(parents=True)
         (system / "pibuddycam-provisioning.service.d" / "10-pibuddycam-dev.conf").write_text(
-            "[Service]\nEnvironment=ADMIN_HOST=0.0.0.0\n", encoding="utf-8"
+            "[Service]\nEnvironment=ADMIN_HOST=0.0.0.0\n"
+            "Environment=ADMIN_SETUP_ANY_HOST=1\n", encoding="utf-8"
         )
         (system / "ssh.service.d").mkdir(parents=True)
         (system / "ssh.service.d" / "10-pibuddycam-dev.conf").write_text(
@@ -932,7 +933,8 @@ class RootfsValidationTests(unittest.TestCase):
         dropin = root / "etc" / "systemd" / "system" / "pibuddycam-provisioning.service.d"
         dropin.mkdir(parents=True)
         (dropin / "10-pibuddycam-dev.conf").write_text(
-            "[Service]\nEnvironment=ADMIN_HOST=0.0.0.0\n", encoding="utf-8"
+            "[Service]\nEnvironment=ADMIN_HOST=0.0.0.0\n"
+            "Environment=ADMIN_SETUP_ANY_HOST=1\n", encoding="utf-8"
         )
         result = run_validator("--image", self.image, "--mount-root", root)
         self.assertNotEqual(result.returncode, 0)
