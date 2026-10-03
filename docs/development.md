@@ -120,7 +120,8 @@ in [image/README.md](../image/README.md).
   debugging. Point `PIBUDDYCAM_DEV_SSH_PUBKEY_FILE` at an SSH **public** key. The image has a
   `pibuddydev` login (key only, no password, no root login) with passwordless `sudo`, so you can
   remount `ROOT` read-write and edit `/opt/pibuddycam` or `/data/pibuddycam`. The build records
-  `channel: dev` in `build-info.json`. **Never publish a dev image**: `release.yml` always builds
+  `channel: dev` in `build-info.json`. `ROOT` is read-only, so the SSH host key is created once on
+  `/data/pibuddycam/ssh` and survives reboots. **Never publish a dev image**: `release.yml` always builds
   the `release` channel, and `validate-image.sh` fails a release image that carries dev SSH material.
 - A diagnostic card with SSH enabled (Raspberry Pi Imager can do this) and a USB Ethernet adapter
   (`[pi02] dtoverlay=dwc2,dr_mode=host`) make on-device iteration much faster.

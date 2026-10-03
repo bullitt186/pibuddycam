@@ -301,7 +301,39 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin no
 AllowUsers pibuddydev
+# ROOT is read-only, so sshd cannot generate keys under /etc/ssh. The host key
+# lives on /data and is created once by pibuddycam-dev-hostkey.service.
+HostKey /data/pibuddycam/ssh/ssh_host_ed25519_key
 SSHD
+   cat > "$root/etc/systemd/system/pibuddycam-dev-hostkey.service" <<'UNIT'
+# PiBuddyCam DEVELOPER image only. ssh-hostkeys-generate.service is skipped on a
+# read-only ROOT (ConditionPathIsReadWrite=/etc/ssh), which left sshd without a
+# host key. Create one durable key on /data, once, before ssh.service.
+[Unit]
+Description=PiBuddyCam dev image: persistent SSH host key on /data
+After=data-ready.target
+Wants=data-ready.target
+Before=ssh.service
+ConditionPathExists=!/data/pibuddycam/ssh/ssh_host_ed25519_key
+ConditionPathIsReadWrite=/data
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/install -d -m 0700 -o root -g root /data/pibuddycam/ssh
+ExecStart=/usr/bin/ssh-keygen -q -t ed25519 -N "" -f /data/pibuddycam/ssh/ssh_host_ed25519_key
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+   install -d -m 0755 "$root/etc/systemd/system/ssh.service.d"
+   cat > "$root/etc/systemd/system/ssh.service.d/10-pibuddycam-dev.conf" <<'UNIT'
+# PiBuddyCam DEVELOPER image only: start sshd after the /data host key exists.
+[Unit]
+Wants=pibuddycam-dev-hostkey.service
+After=pibuddycam-dev-hostkey.service data-ready.target
+UNIT
+   chroot "$root" systemctl enable pibuddycam-dev-hostkey.service >/dev/null
    log "dev channel: key-only SSH login $dev_user with sudo (do not publish this image)"
 fi
 
