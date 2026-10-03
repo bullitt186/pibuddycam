@@ -66,6 +66,13 @@
         </div>
       </header>
 
+      <!-- Shown while the camera has no Prusa Connect token (setup answered "Later"). -->
+      <div id="prusa-token-banner" class="notice notice--warn" role="status" hidden>
+        <strong>Prusa Connect is not set up.</strong>
+        The camera has no registration token yet, so it is not registered with Prusa Connect.
+        <button id="prusa-token-banner-open" class="btn btn--ghost btn--small" type="button">Add the token</button>
+      </div>
+
       <nav class="nav" aria-label="Console sections">
         <button class="nav__item" type="button" data-view="overview" aria-current="page">Overview</button>
         <button class="nav__item" type="button" data-view="camera">Camera</button>

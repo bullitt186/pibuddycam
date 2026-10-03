@@ -39,6 +39,19 @@ function configuredHint(id, configured, label) {
   el.textContent = configured ? `${label} configured` : `${label} not configured`;
 }
 
+function setTokenBanner(configured) {
+  if (els.prusaTokenBanner) els.prusaTokenBanner.hidden = configured === true;
+}
+
+/** Show the "no Prusa token" banner when the camera was set up with "Later". */
+export function refreshTokenBanner() {
+  request('/api/integrations').then((result) => {
+    if (result.ok && result.data && result.data.ok === true) {
+      setTokenBanner((result.data.prusa || {}).token_configured);
+    }
+  });
+}
+
 export function loadIntegrations() {
   request('/api/integrations').then((result) => {
     if (result.status === 401) {
@@ -60,6 +73,7 @@ export function loadIntegrations() {
 
 function renderIntegrations(data) {
   const prusa = data.prusa || {};
+  setTokenBanner(prusa.token_configured);
   setTextValue('prusa-server', prusa.server);
   configuredHint('prusa-token-state', prusa.token_configured, 'Token');
   configuredHint('prusa-fingerprint-state', prusa.fingerprint_configured, 'Fingerprint');
@@ -349,7 +363,9 @@ export async function submitPrusa(event) {
   }
   const data = result.data || {};
   if (result.ok && data.ok) {
-    const warning = (data.warnings || [])[0] || 'Saved.';
+    const warning = data.active
+      ? 'Saved. The camera restarted and registers with Prusa Connect now.'
+      : ((data.warnings || [])[0] || 'Saved.');
     integrationStatus(els.prusaForm, 'ok', warning);
     const tokenInput = document.getElementById('prusa-token');
     const fingerprint = document.getElementById('prusa-fingerprint');

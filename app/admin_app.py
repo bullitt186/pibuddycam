@@ -647,7 +647,8 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
                     dashboard_provider=None, settings_actions=None,
                     live_monitor=None, local_webrtc_viewers=None, build_manager=None,
                     update_manager=None, diagnostics_provider=None, reboot_fn=None,
-                    network_controller=None, wifi_scan=None):
+                    network_controller=None, wifi_scan=None,
+                    camera_restart_fn=None):
     """Build the stdlib :class:`admin_http.AdminApp` with real dependencies.
 
     Paths default to the durable ``/data`` locations through the core's own
@@ -722,6 +723,10 @@ def build_admin_app(mode, *, device_path=None, secrets_path=None,
         ),
         reboot_fn=(
             reboot_fn if reboot_fn is not None else privileged.reboot
+        ),
+        camera_restart_fn=(
+            camera_restart_fn if camera_restart_fn is not None
+            else privileged.camera_restart
         ),
         network_controller=(
             network_controller if network_controller is not None

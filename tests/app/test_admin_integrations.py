@@ -554,6 +554,65 @@ class IntegrationApiTests(unittest.TestCase):
         self.assertEqual(secrets['prusa']['token'], 'new-token-value')
         self.assertEqual(stat.S_IMODE(os.stat(self.secrets_path).st_mode), 0o600)
 
+    def _put_new_token(self, app, **extra):
+        token, csrf = self._login(app)
+        self._reauth(app, token, csrf)
+        body = {'server': 'webcam.connect.prusa3d.com', 'token': 'new-token-value'}
+        body.update(extra)
+        return app.handle(_make_request(
+            'PUT', '/api/integrations/prusa', body=body,
+            headers=self._headers(token, csrf)))
+
+    def test_prusa_new_token_restarts_the_camera_and_is_active(self):
+        self._seed()
+        calls = []
+        app = self._build_app(camera_restart_fn=lambda: calls.append('restart') or True)
+        response = self._put_new_token(app)
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertEqual(calls, ['restart'])
+        self.assertTrue(payload['active'])
+        self.assertFalse(payload['restart_required'])
+        self.assertEqual(payload['warnings'], [])
+        secrets = config_schema.load_secrets(str(self.secrets_path))
+        self.assertEqual(secrets['prusa']['token'], 'new-token-value')
+
+    def test_prusa_failed_restart_keeps_restart_required(self):
+        # An older image's helper lacks the verb: saved, but the user must restart.
+        self._seed()
+        app = self._build_app(camera_restart_fn=lambda: False)
+        payload = json.loads(self._put_new_token(app).body)
+        self.assertFalse(payload['active'])
+        self.assertTrue(payload['restart_required'])
+        self.assertTrue(payload['warnings'])
+
+    def test_prusa_restart_error_does_not_fail_the_save(self):
+        self._seed()
+
+        def boom():
+            raise RuntimeError('systemctl exploded')
+
+        app = self._build_app(camera_restart_fn=boom)
+        response = self._put_new_token(app)
+        self.assertEqual(response.status, 200)
+        self.assertTrue(json.loads(response.body)['restart_required'])
+        secrets = config_schema.load_secrets(str(self.secrets_path))
+        self.assertEqual(secrets['prusa']['token'], 'new-token-value')
+
+    def test_prusa_save_without_a_new_token_does_not_restart(self):
+        self._seed()
+        calls = []
+        app = self._build_app(camera_restart_fn=lambda: calls.append('restart') or True)
+        token, csrf = self._login(app)
+        self._reauth(app, token, csrf)
+        response = app.handle(_make_request(
+            'PUT', '/api/integrations/prusa',
+            body={'server': 'webcam.connect.prusa3d.com', 'token': ''},
+            headers=self._headers(token, csrf)))
+        self.assertEqual(response.status, 200)
+        self.assertEqual(calls, [])
+        self.assertTrue(json.loads(response.body)['restart_required'])
+
     def test_prusa_explicit_clear_removes_token_and_fingerprint(self):
         self._seed()
         app = self._build_app()

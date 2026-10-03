@@ -31,7 +31,7 @@
 import { submitSettingForm, syncCameraView, updateRotationWarning } from './camera.js?v=__ASSET_VERSION__';
 import { SESSION_STATE, cacheElements, cancelPendingReauth, clearSession, els, handleExpired, request, resolveReauth, setBusy, submitReauth } from './common.js?v=__ASSET_VERSION__';
 import { wireGpio } from './gpio.js?v=__ASSET_VERSION__';
-import { copyLocalAccess, invalidateMqttTest, loadIntegrations, renderLocalAccess, submitMqtt, submitPrusa, testMqtt } from './integrations.js?v=__ASSET_VERSION__';
+import { copyLocalAccess, invalidateMqttTest, loadIntegrations, refreshTokenBanner, renderLocalAccess, submitMqtt, submitPrusa, testMqtt } from './integrations.js?v=__ASSET_VERSION__';
 import { disconnectLocalWebrtc, downloadLiveSnapshot, startLiveMonitor, stopLiveMonitor, syncLiveMonitor, toggleLivePause, toggleLocalWebrtc } from './live.js?v=__ASSET_VERSION__';
 import { loadNetwork, wireNetwork } from './network.js?v=__ASSET_VERSION__';
 import { pollDashboard, scheduleDashboard, startDashboardPolling, stopDashboardPolling } from './overview.js?v=__ASSET_VERSION__';
@@ -76,6 +76,7 @@ function showApp(mode) {
   }
   renderLocalAccess();
   selectView('overview');
+  refreshTokenBanner();
   startDashboardPolling();
 }
 
@@ -120,6 +121,9 @@ function wireNavigation() {
   els.navItems.forEach((item) => {
     item.addEventListener('click', () => selectView(item.dataset.view));
   });
+  if (els.prusaTokenBannerOpen) {
+    els.prusaTokenBannerOpen.addEventListener('click', () => selectView('integrations'));
+  }
 }
 
 async function probeSession() {

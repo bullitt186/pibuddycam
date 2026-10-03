@@ -35,8 +35,8 @@ Flash an SD card, answer a few questions in a setup wizard, and your printer has
    microSD card (16 GB recommended).
 2. **Flash** the image from the [latest release](https://github.com/bullitt186/pibuddycam/releases/latest)
    with Raspberry Pi Imager.
-3. **Power on and join `PiBuddyCam-Setup-…`**. The wizard asks for your Wi-Fi, your Prusa Connect
-   camera token and an admin password.
+3. **Power on and join `PiBuddyCam-Setup-…`**. The wizard asks for your Wi-Fi and an admin
+   password, and for your Prusa Connect camera token, which you can add later in the console.
 
 The full walkthrough is in [docs/install.md](docs/install.md).
 

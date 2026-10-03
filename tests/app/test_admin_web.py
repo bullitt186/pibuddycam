@@ -271,6 +271,45 @@ class AdminShellTests(unittest.TestCase):
 # Static assets                                                                #
 # --------------------------------------------------------------------------- #
 
+class SetupLaterTests(unittest.TestCase):
+    """The wizard offers "Later" for the optional steps; the console nags once."""
+
+    def setUp(self):
+        self.html = (WEB_DIR / admin_http.SETUP_SHELL_FILE).read_text(encoding='utf-8')
+        self.code = (WEB_DIR / 'setup.js').read_text(encoding='utf-8')
+
+    def test_setup_page_has_later_buttons_for_the_optional_steps(self):
+        for button_id in ('prusa-later', 'options-later'):
+            self.assertIn(f'id="{button_id}"', self.html)
+            self.assertIn(f"$('{button_id}').addEventListener('click'", self.code)
+        # Wi-Fi and the password stay required: no Later there.
+        self.assertNotIn('id="wifi-later"', self.html)
+        self.assertNotIn('id="password-later"', self.html)
+
+    def test_later_sends_skip_for_token_fingerprint_and_mqtt(self):
+        self.assertIn("submitStep('prusa_token', { skip: true })", self.code)
+        self.assertIn("submitStep('fingerprint', { skip: true })", self.code)
+        self.assertIn("submitStep('mqtt', { skip: true })", self.code)
+
+    def test_review_marks_a_skipped_token_as_later(self):
+        # A skipped step is "done" server-side (done_steps), so Finish unlocks;
+        # the review says the token is still to come.
+        self.assertIn("skipped('prusa_token')", self.code)
+        self.assertIn('Later (add it in the console)', self.code)
+
+    def test_done_page_explains_the_missing_token(self):
+        self.assertIn('id="done-later"', self.html)
+        self.assertIn("$('done-later').hidden = !prusaPending", self.code)
+
+    def test_console_shows_a_banner_while_the_token_is_missing(self):
+        index = (WEB_DIR / 'index.html').read_text(encoding='utf-8')
+        self.assertIn('id="prusa-token-banner"', index)
+        integrations = (WEB_DIR / 'integrations.js').read_text(encoding='utf-8')
+        self.assertIn('setTokenBanner(prusa.token_configured)', integrations)
+        app = (WEB_DIR / 'app.js').read_text(encoding='utf-8')
+        self.assertIn('refreshTokenBanner();', app)
+
+
 class AdminAssetTests(unittest.TestCase):
     """AC-2: only allowlisted local assets, safe and correctly typed."""
 

@@ -63,7 +63,10 @@ factory → storage_ready → camera_validated → unclaimed → claimed → con
 ```
 
 *Claimed* means an administrator password is set and the durable configuration validated, not
-just that a token exists. `boot_mode.py` starts the setup hotspot while unclaimed, or when the
+just that a token exists. A camera set up with *Later* on the token step is therefore `claimed`
+(not `running`): `pibuddycam.target` starts, but `main.py` skips every Prusa Connect loop (info
+upload, snapshots, OTA check-in, signaling) while the token is empty. Saving a token in the console
+runs the `camera-restart` helper verb (`try-restart pibuddycam.service`) so it takes effect. `boot_mode.py` starts the setup hotspot while unclaimed, or when the
 `pibuddycam-recovery` sentinel is on `BOOT` or `/data` is unusable. Otherwise it starts
 `pibuddycam.target`.
 

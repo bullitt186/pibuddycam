@@ -621,6 +621,13 @@ async def main():
     cfg = load_config()
     token = cfg['identity']['token']
     server = cfg['upload']['server']
+    # A camera set up with "Later" has no Prusa token yet. Every Prusa Connect
+    # loop is skipped until one is saved (a restart picks it up), so an empty
+    # token never hammers the cloud; the local camera, RTSP, ONVIF, MQTT and the
+    # console keep working.
+    cloud_enabled = bool(token and token.strip())
+    if not cloud_enabled:
+        log.warning('No Prusa Connect token configured; Prusa Connect is disabled until one is added')
 
     # WP-1 AC-4: one settings coordinator is the sole mutation path for every
     # control source. The WebRTC service callables are declared up front (bound
@@ -762,18 +769,19 @@ async def main():
     # GAP-HTTP-03: one session for the whole application lifetime, reused by the
     # info service loop, snapshots and the OTA check-in; closed on shutdown.
     session = make_session()
-    status, result_class, body = await upload_info(
-        session, state, token, fingerprint, mac, ip, ssid, server
-    )
-    log.info(f'/c/info upload: {status} ({result_class})')
-    # Same dirty policy as the service loop: success clears, transient keeps
-    # dirty for bounded retry, ordinary 4xx stops rather than retrying.
-    state.info_dirty = info_dirty_after_result(result_class, 0)
-    summary = summarize_info_response(body, token, fingerprint)
-    origin = summary.get('origin') if isinstance(summary, dict) else None
-    registered = summary.get('registered') if isinstance(summary, dict) else None
-    log.info(f'/c/info response: origin={origin!r} registered={registered!r} summary={summary!r}')
-    await ota_checkin(token, fingerprint, session)
+    if cloud_enabled:
+        status, result_class, body = await upload_info(
+            session, state, token, fingerprint, mac, ip, ssid, server
+        )
+        log.info(f'/c/info upload: {status} ({result_class})')
+        # Same dirty policy as the service loop: success clears, transient keeps
+        # dirty for bounded retry, ordinary 4xx stops rather than retrying.
+        state.info_dirty = info_dirty_after_result(result_class, 0)
+        summary = summarize_info_response(body, token, fingerprint)
+        origin = summary.get('origin') if isinstance(summary, dict) else None
+        registered = summary.get('registered') if isinstance(summary, dict) else None
+        log.info(f'/c/info response: origin={origin!r} registered={registered!r} summary={summary!r}')
+        await ota_checkin(token, fingerprint, session)
     await detect_timezone(session)
 
     sig = PrusaSignaling(fingerprint, token, state, mac=mac, ip=ip, ssid=ssid)
@@ -1307,9 +1315,10 @@ async def main():
         log.warning(f'Runtime control socket unavailable: {e}')
         runtime_server = None
 
-    asyncio.create_task(snapshot_loop(token, fingerprint, server, session))
-    asyncio.create_task(info_service_loop(token, fingerprint, server, session, mac, ip, ssid))
-    asyncio.create_task(ota_loop(token, fingerprint, session))
+    if cloud_enabled:
+        asyncio.create_task(snapshot_loop(token, fingerprint, server, session))
+        asyncio.create_task(info_service_loop(token, fingerprint, server, session, mac, ip, ssid))
+        asyncio.create_task(ota_loop(token, fingerprint, session))
     asyncio.create_task(timelapse_loop(shot_queue, gpio))
     http_runner = None
     try:
@@ -1327,10 +1336,11 @@ async def main():
             # ONVIF host entry remains available through the HTTP facade.
             log.warning(f'ONVIF WS-Discovery unavailable: {e}')
     try:
-        await sig.connect()
-        # WP-1: own the reconnect loop so a server-closed session is replaced
-        # with a fresh client (firmware CheckSocketServerConnection parity).
-        asyncio.create_task(sig.supervise())
+        if cloud_enabled:
+            await sig.connect()
+            # WP-1: own the reconnect loop so a server-closed session is replaced
+            # with a fresh client (firmware CheckSocketServerConnection parity).
+            asyncio.create_task(sig.supervise())
         await asyncio.Event().wait()
     finally:
         # WP-R2 (AC-27): cancel the scheduled start and stop MQTT best-effort,

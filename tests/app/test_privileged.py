@@ -69,7 +69,7 @@ class AllowlistTests(unittest.TestCase):
                 'start-camera', 'stop-provisioning', 'hotspot-start',
                 'hotspot-stop', 'wifi-station-apply', 'install-update',
                 'check-update', 'reboot',
-                'rtsp-start', 'rtsp-stop', 'quality-restart',
+                'rtsp-start', 'rtsp-stop', 'quality-restart', 'camera-restart',
                 'network-apply', 'hostname-apply', 'wifi-scan', 'ntp-apply',
                 'timezone-apply',
             }),
@@ -84,7 +84,7 @@ class AllowlistTests(unittest.TestCase):
             / 'pibuddycam-priv'
         ).read_text(encoding='utf-8')
         for verb in ('rtsp-start', 'rtsp-stop', 'quality-restart',
-                     'check-update', 'reboot'):
+                     'camera-restart', 'check-update', 'reboot'):
             self.assertIn(f'{verb})', helper)
 
     def test_unknown_verb_is_rejected_without_running(self):
@@ -229,6 +229,21 @@ class WrapperTests(unittest.TestCase):
             ['sudo', '-n', '/usr/libexec/pibuddycam/pibuddycam-priv',
              'quality-restart'],
         )
+
+    def test_camera_restart_uses_fixed_helper_verb(self):
+        runner = make_runner()
+        result = privileged.camera_restart(runner=runner)
+        self.assertTrue(result)
+        self.assertEqual(
+            runner.calls[0][0],
+            ['sudo', '-n', '/usr/libexec/pibuddycam/pibuddycam-priv',
+             'camera-restart'],
+        )
+
+    def test_camera_restart_failure_is_falsy(self):
+        # An older image whose helper lacks the verb exits 2: not an exception.
+        runner = make_runner(default=FakeResult(2, ''))
+        self.assertFalse(privileged.camera_restart(runner=runner))
 
     def test_start_camera_failure_returns_false(self):
         runner = make_runner(default=FakeResult(1, ''))

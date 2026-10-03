@@ -101,6 +101,7 @@
       <section class="setup__screen" data-screen="prusa" aria-labelledby="prusa-title" hidden>
         <h2 id="prusa-title" class="view__title">Prusa Connect</h2>
         <p class="setup__lede">Register the camera with your printer in Prusa Connect.</p>
+        <p class="notice">No internet on this setup network, or the token is in the Prusa app on your phone? Choose <strong>Later</strong>. After the camera has joined your Wi-Fi, add the token in the console under Integrations.</p>
         <ol class="setup__howto">
           <li>Open Prusa Connect and select your printer.</li>
           <li>Open <strong>Camera</strong> and add a camera.</li>
@@ -115,6 +116,7 @@
           <p id="prusa-error" class="form-error" role="alert" hidden></p>
           <div class="form-actions setup__actions">
             <button class="btn btn--ghost" type="button" data-back>Back</button>
+            <button id="prusa-later" class="btn btn--ghost" type="button">Later</button>
             <button id="prusa-next" class="btn btn--primary" type="submit">Continue</button>
           </div>
         </form>
@@ -181,6 +183,7 @@
           <p id="options-error" class="form-error" role="alert" hidden></p>
           <div class="form-actions setup__actions">
             <button class="btn btn--ghost" type="button" data-back>Back</button>
+            <button id="options-later" class="btn btn--ghost" type="button">Later</button>
             <button id="options-next" class="btn btn--primary" type="submit">Continue</button>
           </div>
         </form>
@@ -217,6 +220,7 @@
           <li>Open the local console at <code id="done-url" class="setup__url">the camera's address</code>. Your browser warns about the self-signed certificate once; that is expected.</li>
           <li>Sign in with the administrator password you just set.</li>
         </ol>
+        <p id="done-later" class="notice" hidden><strong>Prusa Connect is not set up yet.</strong> Once you are back on your Wi-Fi, open the console, go to Integrations and paste the camera token from Prusa Connect. The camera then registers with Prusa Connect.</p>
         <p class="notice">If the camera cannot join your Wi-Fi, the setup network <strong id="done-setup-ssid">PiBuddyCam-Setup</strong> comes back after a short while. Join it again and this page reopens so you can correct the details.</p>
       </section>
     </div>

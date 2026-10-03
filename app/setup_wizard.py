@@ -102,8 +102,15 @@ STEP_TITLES = {
 #: real parser must not be guessed and is delivered by WP-4.
 QR_PAIRING_HOOK = 'WP-4'
 
-#: Steps that must be complete before the configuration may be persisted.
-PERSIST_PREREQUISITES = frozenset({'wifi', 'prusa_token', 'admin_password'})
+#: Steps that must be complete before the configuration may be persisted. The
+#: Prusa token is deliberately absent: a camera claimed without one is the
+#: supported ``claimed`` state, and the token is added later in the console
+#: (Integrations). The administrator password stays required: it is the claim.
+PERSIST_PREREQUISITES = frozenset({'wifi', 'admin_password'})
+
+#: Steps the user may answer with ``{"skip": true}`` ("Later"). Skipping stages
+#: the same value an empty answer would, so a skipped step never blocks persist.
+SKIPPABLE_STEPS = frozenset({'prusa_token', 'fingerprint', 'mqtt'})
 
 #: MQTT defaults reused when the user enables MQTT without overriding them.
 DEFAULT_MQTT_URI = 'mqtts://broker.example:8883'
@@ -199,9 +206,11 @@ class WizardSession:
                 storage_ready = False
         self.storage_ready = bool(storage_ready)
 
-        # Current UI position and completed steps.
+        # Current UI position and completed steps. ``skipped`` is the subset the
+        # user answered with "Later"; it is also part of ``completed``.
         self.step = STEP_ORDER[0]
         self.completed = set()
+        self.skipped = set()
 
         # Staged, non-secret state.
         self.status = {}
@@ -254,29 +263,48 @@ class WizardSession:
             return StepResult(False, 'unknown wizard step', step)
         if not isinstance(data, dict):
             return StepResult(False, 'step data must be a mapping', step)
+        skip = data.get('skip')
+        if skip is not None and not isinstance(skip, bool):
+            return StepResult(False, 'skip must be a boolean', step)
+        if skip and step not in SKIPPABLE_STEPS:
+            return StepResult(False, 'this step cannot be skipped', step)
         if step == 'persist' and not PERSIST_PREREQUISITES <= self.completed:
             return StepResult(
                 False,
-                'complete Wi-Fi, Prusa token and admin password steps first',
+                'complete the Wi-Fi and admin password steps first',
                 step,
             )
         if step == 'finish' and not self.persisted:
             return StepResult(False, 'configuration has not been persisted', step)
 
-        handler = getattr(self, '_step_' + step)
-        try:
-            ok, reason = handler(data)
-        except Exception as e:  # noqa: BLE001 - never leak internals/secrets
-            log.warning(f'setup_wizard: step {step} failed: {e}')
-            ok, reason = False, 'step failed'
-        if not ok:
-            return StepResult(False, reason, step)
+        if skip:
+            self._apply_skip(step)
+            self.skipped.add(step)
+        else:
+            handler = getattr(self, '_step_' + step)
+            try:
+                ok, reason = handler(data)
+            except Exception as e:  # noqa: BLE001 - never leak internals/secrets
+                log.warning(f'setup_wizard: step {step} failed: {e}')
+                ok, reason = False, 'step failed'
+            if not ok:
+                return StepResult(False, reason, step)
+            self.skipped.discard(step)
 
         self.completed.add(step)
         index = STEP_ORDER.index(step)
         if index + 1 < len(STEP_ORDER):
             self.step = STEP_ORDER[index + 1]
         return StepResult(True, '', step, self.provisioning_state)
+
+    def _apply_skip(self, step):
+        """Stage the "Later" value of a skippable step (an empty answer)."""
+        if step == 'prusa_token':
+            self.token = ''
+        elif step == 'fingerprint':
+            self.fingerprint = self._derived_fingerprint()
+        elif step == 'mqtt':
+            self.mqtt = {'enabled': False, 'uri': DEFAULT_MQTT_URI, 'username': '', 'password': ''}
 
     # -- step handlers ------------------------------------------------------- #
 

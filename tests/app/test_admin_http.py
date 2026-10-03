@@ -1018,6 +1018,35 @@ class WizardTests(AdminHttpTestBase):
         self.assertEqual(payload['admin_url'], 'https://pibuddycam-ddeeff.local')
         self.assertEqual(response.headers['Cache-Control'], admin_http.NO_STORE_CACHE_CONTROL)
 
+    def test_setup_state_reports_skipped_steps_and_resumes_past_them(self):
+        app = self._setup_app()
+        for number, body in (
+            (1, {}), (2, {}), (3, {'ssid': 'Home', 'psk': 'wifi-psk-route-secret'}),
+            (4, {'skip': True}),
+            (5, {'skip': True}),
+            (6, {'password': ADMIN_PASSWORD, 'confirm': ADMIN_PASSWORD}),
+            (7, {'skip': True}),
+        ):
+            response = app.handle(self.req('POST', f'/setup/step/{number}', body=body))
+            self.assertEqual(response.status, 200, (number, response.body))
+        payload = json.loads(app.handle(self.req('GET', '/setup/state')).body)
+        # Skipped steps count as done (the page resumes past them) and are also
+        # listed on their own; no token is staged.
+        self.assertEqual(payload['done_steps'], [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(payload['skipped_steps'], [4, 5, 7])
+        self.assertFalse(payload['saved']['prusa_ready'])
+        self.assertTrue(payload['saved']['admin_ready'])
+
+    def test_setup_step_refuses_to_skip_a_required_step(self):
+        app = self._setup_app()
+        for number in (3, 6):
+            response = app.handle(self.req('POST', f'/setup/step/{number}', body={'skip': True}))
+            self.assertEqual(response.status, 400)
+            self.assertIn(b'cannot be skipped', response.body)
+        payload = json.loads(app.handle(self.req('GET', '/setup/state')).body)
+        self.assertEqual(payload['skipped_steps'], [])
+        self.assertEqual(payload['done_steps'], [])
+
     def test_setup_state_closed_after_claim(self):
         path = self.root / 'provisioning.json'
         path.write_text(json.dumps({'state': 'running'}), encoding='utf-8')

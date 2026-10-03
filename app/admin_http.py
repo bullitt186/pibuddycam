@@ -521,6 +521,7 @@ class _AdminAppCore:
         update_manager=None,
         diagnostics_provider=None,
         reboot_fn=None,
+        camera_restart_fn=None,
         release_identity_fn=None,
         application_version_fn=None,
         hostname_fn=None,
@@ -603,6 +604,7 @@ class _AdminAppCore:
         # WP-UI7/AC-16: the fixed-privileged reboot callable. ``None`` reports
         # the reboot action unavailable; the 60 s rate limit is shared here.
         self._reboot_fn = reboot_fn
+        self._camera_restart_fn = camera_restart_fn
         self._reboot_state = _RebootState()
         # WP-UI7/AC-14: bounded active-release identity and hostname sources.
         # Defaults are the existing app_version readers; injectable for tests.
@@ -1879,6 +1881,12 @@ class _AdminAppCore:
             'done_steps': sorted(
                 order.index(name) + 1
                 for name in (getattr(wizard, 'completed', ()) or ())
+                if name in order
+            ),
+            # Steps answered with "Later" (numbers, for the same reason as above).
+            'skipped_steps': sorted(
+                order.index(name) + 1
+                for name in (getattr(wizard, 'skipped', ()) or ())
                 if name in order
             ),
             'persisted': bool(getattr(wizard, 'persisted', False)),

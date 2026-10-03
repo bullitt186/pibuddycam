@@ -110,6 +110,8 @@ export function cacheElements() {
   els.cameraState = document.getElementById('camera-state');
   els.integrationsState = document.getElementById('integrations-state');
   els.prusaForm = document.getElementById('prusa-form');
+  els.prusaTokenBanner = document.getElementById('prusa-token-banner');
+  els.prusaTokenBannerOpen = document.getElementById('prusa-token-banner-open');
   els.mqttForm = document.getElementById('mqtt-form');
   els.mqttTest = document.getElementById('mqtt-test');
   els.mqttSaveAnyway = document.getElementById('mqtt-save-anyway');

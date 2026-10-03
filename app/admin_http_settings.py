@@ -292,11 +292,29 @@ class SettingsHandlers:
         warnings = [INTEGRATION_RESTART_WARNING]
         if fingerprint_changed:
             warnings.insert(0, FINGERPRINT_BINDING_WARNING)
+        # A newly pasted token is applied right away by restarting the camera
+        # application, so a camera set up with "Later" registers without a
+        # reboot. If the restart cannot be done (no helper, an older image),
+        # the response keeps saying a restart is required.
+        applied = bool(strings['token']) and self._restart_camera()
+        if applied:
+            warnings = [w for w in warnings if w != INTEGRATION_RESTART_WARNING]
         return self._json(request, 200, {
             'ok': True,
             'saved': True,
-            'active': False,
-            'restart_required': True,
+            'active': applied,
+            'restart_required': not applied,
             'warnings': warnings,
             'prusa': _prusa_integration_view(device_cfg, secrets_cfg),
         }, secrets=submitted)
+
+    def _restart_camera(self):
+        """Restart the camera application; True only if the helper reports success."""
+        restart = getattr(self, '_camera_restart_fn', None)
+        if restart is None:
+            return False
+        try:
+            return bool(restart())
+        except Exception as e:  # noqa: BLE001 - saving the token must not fail on this
+            log.warning(f'admin_http: camera restart failed: {type(e).__name__}')
+            return False
