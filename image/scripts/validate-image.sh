@@ -1038,6 +1038,13 @@ PY
       else
          report fail "dev image: 10-pibuddycam-dev.conf must disable passwords and root login"
       fi
+      if grep -qx 'HostKey /data/pibuddycam/ssh/ssh_host_ed25519_key' "$dev_sshd_conf" 2>/dev/null \
+         && [ -f "$MOUNT_ROOT/etc/systemd/system/pibuddycam-dev-hostkey.service" ] \
+         && [ -f "$MOUNT_ROOT/etc/systemd/system/ssh.service.d/10-pibuddycam-dev.conf" ]; then
+         report ok "dev image: sshd host key is created on /data (ROOT is read-only)"
+      else
+         report fail "dev image: sshd needs HostKey on /data and pibuddycam-dev-hostkey.service"
+      fi
       if [ -f "$MOUNT_ROOT/etc/systemd/system/multi-user.target.wants/ssh.service" ]; then
          report ok "dev image: ssh.service enabled"
       else

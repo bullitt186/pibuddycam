@@ -880,8 +880,17 @@ class RootfsValidationTests(unittest.TestCase):
         dropin.mkdir()
         (dropin / "10-pibuddycam-dev.conf").write_text(
             "PasswordAuthentication no\nKbdInteractiveAuthentication no\n"
-            "PermitRootLogin no\nAllowUsers pibuddydev\n",
+            "PermitRootLogin no\nAllowUsers pibuddydev\n"
+            "HostKey /data/pibuddycam/ssh/ssh_host_ed25519_key\n",
             encoding="utf-8",
+        )
+        system = root / "etc" / "systemd" / "system"
+        (system / "ssh.service.d").mkdir(parents=True)
+        (system / "ssh.service.d" / "10-pibuddycam-dev.conf").write_text(
+            "[Unit]\nWants=pibuddycam-dev-hostkey.service\n", encoding="utf-8"
+        )
+        (system / "pibuddycam-dev-hostkey.service").write_text(
+            "[Service]\nType=oneshot\n", encoding="utf-8"
         )
         wants = root / "etc" / "systemd" / "system" / "multi-user.target.wants"
         wants.mkdir(parents=True, exist_ok=True)
@@ -895,6 +904,15 @@ class RootfsValidationTests(unittest.TestCase):
             line for line in result.stdout.splitlines() if "dev image" in line
         ))
         self.assertIn("developer channel image", result.stdout)
+
+    def test_dev_channel_without_data_hostkey_fails(self):
+        # ROOT is read-only, so a dev sshd without a /data host key never starts.
+        root = self._root()
+        self._make_dev(root)
+        (root / "etc" / "systemd" / "system" / "pibuddycam-dev-hostkey.service").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("HostKey on /data", result.stdout)
 
     def test_dev_channel_without_key_only_dropin_fails(self):
         root = self._root()
