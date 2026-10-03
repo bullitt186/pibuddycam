@@ -789,6 +789,21 @@ class ImageScaffoldingTests(unittest.TestCase):
         self.assertIn("exit 1", ssh_block)
         self.assertIn("SSH enablement symlink survived", ssh_block)
 
+    def test_dev_channel_is_the_only_ssh_exception(self):
+        text = read_text(LAYER_DIR / "post-build.sh")
+        self.assertIn('[ "$channel" = dev ]', text)
+        # Anything but an explicit dev channel keeps the release disable path.
+        self.assertIn("SSH enablement symlink survived", text)
+        build = read_text(IMAGE / "scripts" / "build-image.sh")
+        self.assertIn('CHANNEL="${PIBUDDYCAM_BUILD_CHANNEL:-release}"', build)
+        self.assertIn("PRIVATE KEY", build)
+        installer = read_text(ASSETS / "install-factory-app.sh")
+        self.assertIn('[ "${PIBUDDYCAM_BUILD_CHANNEL:-release}" = dev ]', installer)
+        self.assertIn("PasswordAuthentication no", installer)
+        self.assertIn("AllowUsers pibuddydev", installer)
+        release = read_text(REPO_ROOT / ".github" / "workflows" / "release.yml")
+        self.assertIn("PIBUDDYCAM_BUILD_CHANNEL: release", release)
+
     def test_factory_installer_records_package_manifest(self):
         text = read_text(ASSETS / "install-factory-app.sh")
 

@@ -865,6 +865,65 @@ class RootfsValidationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("personal home", result.stdout)
 
+    def _make_dev(self, root):
+        """Turn the synthetic release rootfs into a developer-channel one."""
+        info = root / "usr" / "share" / "pibuddycam" / "build-info.json"
+        doc = json.loads(info.read_text(encoding="utf-8"))
+        doc["channel"] = "dev"
+        info.write_text(json.dumps(doc), encoding="utf-8")
+        keys = root / "home" / "pibuddydev" / ".ssh"
+        keys.mkdir(parents=True)
+        (keys / "authorized_keys").write_text(
+            "ssh-ed25519 AAAASYNTHETICKEY dev@example\n", encoding="utf-8"
+        )
+        dropin = root / "etc" / "ssh" / "sshd_config.d"
+        dropin.mkdir()
+        (dropin / "10-pibuddycam-dev.conf").write_text(
+            "PasswordAuthentication no\nKbdInteractiveAuthentication no\n"
+            "PermitRootLogin no\nAllowUsers pibuddydev\n",
+            encoding="utf-8",
+        )
+        wants = root / "etc" / "systemd" / "system" / "multi-user.target.wants"
+        wants.mkdir(parents=True, exist_ok=True)
+        (wants / "ssh.service").symlink_to("/usr/lib/systemd/system/ssh.service")
+
+    def test_dev_channel_with_key_only_ssh_passes_ssh_checks(self):
+        root = self._root()
+        self._make_dev(root)
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotIn("FAIL", " ".join(
+            line for line in result.stdout.splitlines() if "dev image" in line
+        ))
+        self.assertIn("developer channel image", result.stdout)
+
+    def test_dev_channel_without_key_only_dropin_fails(self):
+        root = self._root()
+        self._make_dev(root)
+        (root / "etc" / "ssh" / "sshd_config.d" / "10-pibuddycam-dev.conf").unlink()
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("10-pibuddycam-dev.conf", result.stdout)
+
+    def test_release_channel_with_dev_ssh_material_fails(self):
+        root = self._root()
+        self._make_dev(root)
+        info = root / "usr" / "share" / "pibuddycam" / "build-info.json"
+        doc = json.loads(info.read_text(encoding="utf-8"))
+        doc["channel"] = "release"
+        info.write_text(json.dumps(doc), encoding="utf-8")
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("authorized_keys present", result.stdout)
+
+    def test_release_with_service_account_authorized_keys_fails(self):
+        root = self._root()
+        ssh = root / "opt" / "pibuddycam" / ".ssh"
+        ssh.mkdir(parents=True)
+        (ssh / "authorized_keys").write_text("ssh-ed25519 AAAA x\n", encoding="utf-8")
+        result = run_validator("--image", self.image, "--mount-root", root)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("authorized_keys present", result.stdout)
+
     def test_ssh_host_key_present_fails(self):
         root = self._root()
         (root / "etc" / "ssh" / "ssh_host_ed25519_key").write_text(

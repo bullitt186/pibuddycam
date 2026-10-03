@@ -1013,11 +1013,46 @@ PY
    # and library test vectors, which are not release secrets.
 
    # --- SSH and password login disabled by default ------------------------
-   authkeys="$(find "$MOUNT_ROOT/root/.ssh" "$MOUNT_ROOT/home" -name 'authorized_keys' 2>/dev/null || true)"
-   if [ -n "$authkeys" ]; then
-      report fail "authorized_keys present: $(printf '%s ' $authkeys)"
+   # Release images ship no SSH at all. A developer image (build-image.sh --dev,
+   # build-info.json channel=dev) instead ships key-only SSH for pibuddydev.
+   image_channel="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("channel","release"))' \
+      "$MOUNT_ROOT/usr/share/pibuddycam/build-info.json" 2>/dev/null || echo release)"
+   dev_sshd_conf="$MOUNT_ROOT/etc/ssh/sshd_config.d/10-pibuddycam-dev.conf"
+   dev_sudoers="$MOUNT_ROOT/etc/sudoers.d/pibuddycam-dev"
+   authkeys="$(find "$MOUNT_ROOT/root/.ssh" "$MOUNT_ROOT/home" "$MOUNT_ROOT/opt/pibuddycam/.ssh" -name 'authorized_keys' 2>/dev/null || true)"
+   if [ "$image_channel" = dev ]; then
+      report ok "developer channel image (SSH allowed, key-only)"
+      dev_user=pibuddydev
+      expected_keys="$MOUNT_ROOT/home/$dev_user/.ssh/authorized_keys"
+      if [ "$authkeys" = "$expected_keys" ] && grep -Eq '^(ssh-|ecdsa-|sk-)' "$expected_keys" \
+         && ! grep -q 'PRIVATE KEY' "$expected_keys"; then
+         report ok "dev image: authorized_keys only for pibuddydev, public key"
+      else
+         report fail "dev image: authorized_keys must exist only for pibuddydev: $(printf '%s ' $authkeys)"
+      fi
+      if [ -f "$dev_sshd_conf" ] && grep -qx 'PasswordAuthentication no' "$dev_sshd_conf" \
+         && grep -qx 'PermitRootLogin no' "$dev_sshd_conf" && grep -qx 'AllowUsers pibuddydev' "$dev_sshd_conf"; then
+         report ok "dev image: sshd is key-only for pibuddydev, no root login"
+      else
+         report fail "dev image: 10-pibuddycam-dev.conf must disable passwords and root login"
+      fi
+      if [ -f "$MOUNT_ROOT/etc/systemd/system/multi-user.target.wants/ssh.service" ]; then
+         report ok "dev image: ssh.service enabled"
+      else
+         report fail "dev image: ssh.service is not enabled"
+      fi
    else
-      report ok "no authorized_keys installed"
+      if [ -n "$authkeys" ]; then
+         report fail "authorized_keys present: $(printf '%s ' $authkeys)"
+      else
+         report ok "no authorized_keys installed"
+      fi
+      if [ -e "$dev_sshd_conf" ] || [ -e "$dev_sudoers" ] \
+         || grep -q '^pibuddydev:' "$MOUNT_ROOT/etc/passwd" 2>/dev/null; then
+         report fail "developer SSH material (pibuddydev, sudoers or sshd drop-in) in a release image"
+      else
+         report ok "no developer SSH material in the release image"
+      fi
    fi
 
    shadow="$MOUNT_ROOT/etc/shadow"
@@ -1058,10 +1093,12 @@ PY
          ssh_enabled="$candidate"
       fi
    done
-   if [ -n "$ssh_enabled" ]; then
-      report fail "ssh.service is enabled by default"
-   else
-      report ok "ssh.service is not enabled by default"
+   if [ "$image_channel" != dev ]; then
+      if [ -n "$ssh_enabled" ]; then
+         report fail "ssh.service is enabled by default"
+      else
+         report ok "ssh.service is not enabled by default"
+      fi
    fi
 
    # --- overlayroot -------------------------------------------------------
@@ -1400,6 +1437,9 @@ except Exception as exc:  # noqa: BLE001 - report, never raise
 
 required = ["source_commit", "builder_revision", "os_suite", "kernel_package", "package_manifest"]
 missing = [key for key in required if not doc.get(key)]
+if doc.get("channel", "release") not in ("release", "dev"):
+    print(f"fail|build-info.json channel must be release or dev, got {doc.get('channel')!r}")
+    sys.exit(0)
 if missing:
     print(f"fail|build-info.json missing/empty keys: {missing}")
 else:
