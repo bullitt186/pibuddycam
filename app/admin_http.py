@@ -522,6 +522,7 @@ class _AdminAppCore:
         diagnostics_provider=None,
         reboot_fn=None,
         camera_restart_fn=None,
+        allow_any_host=None,
         release_identity_fn=None,
         application_version_fn=None,
         hostname_fn=None,
@@ -605,6 +606,15 @@ class _AdminAppCore:
         # the reboot action unavailable; the 60 s rate limit is shared here.
         self._reboot_fn = reboot_fn
         self._camera_restart_fn = camera_restart_fn
+        # Developer images serve the unclaimed wizard on every interface, so a
+        # request arrives with the device's LAN address or name as ``Host``. The
+        # portal guard (see _captive_redirect) would bounce all of them to the
+        # hotspot address, which a LAN client cannot reach. Off by default; only
+        # the dev-image drop-in sets ADMIN_SETUP_ANY_HOST=1.
+        self._allow_any_host = (
+            bool(allow_any_host) if allow_any_host is not None
+            else os.environ.get('ADMIN_SETUP_ANY_HOST') == '1'
+        )
         self._reboot_state = _RebootState()
         # WP-UI7/AC-14: bounded active-release identity and hostname sources.
         # Defaults are the existing app_version readers; injectable for tests.
@@ -919,6 +929,8 @@ class _AdminAppCore:
         never affected.
         """
         if self.mode != 'setup':
+            return None
+        if self._allow_any_host:
             return None
         host = _header(request.headers, 'Host')
         if not isinstance(host, str) or not host.strip():

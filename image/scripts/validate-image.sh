@@ -1045,11 +1045,12 @@ PY
       else
          report fail "dev image: sshd needs HostKey on /data and pibuddycam-dev-hostkey.service"
       fi
-      if grep -qx 'Environment=ADMIN_HOST=0.0.0.0' \
-         "$MOUNT_ROOT/etc/systemd/system/pibuddycam-provisioning.service.d/10-pibuddycam-dev.conf" 2>/dev/null; then
+      wizard_dropin="$MOUNT_ROOT/etc/systemd/system/pibuddycam-provisioning.service.d/10-pibuddycam-dev.conf"
+      if grep -qx 'Environment=ADMIN_HOST=0.0.0.0' "$wizard_dropin" 2>/dev/null \
+         && grep -qx 'Environment=ADMIN_SETUP_ANY_HOST=1' "$wizard_dropin" 2>/dev/null; then
          report ok "dev image: setup wizard is served on all interfaces"
       else
-         report fail "dev image: pibuddycam-provisioning.service needs the ADMIN_HOST=0.0.0.0 drop-in"
+         report fail "dev image: pibuddycam-provisioning.service needs the ADMIN_HOST=0.0.0.0 and ADMIN_SETUP_ANY_HOST=1 drop-in"
       fi
       if [ -f "$MOUNT_ROOT/etc/systemd/system/multi-user.target.wants/ssh.service" ]; then
          report ok "dev image: ssh.service enabled"

@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
@@ -2279,6 +2280,43 @@ class CaptivePortalTests(AdminHttpTestBase):
         response = app.handle(self.req(
             'POST', '/setup/step/1', body={}, headers={'Host': 'evil.example'}))
         self.assertEqual(response.status, 421)
+
+    def _any_host_app(self, **kwargs):
+        return self._build_app(
+            mode='setup',
+            provisioning_state=provisioning.ProvisioningState(state='unclaimed'),
+            **kwargs,
+        )
+
+    def test_any_host_switch_serves_the_wizard_to_a_lan_client(self):
+        # Developer images serve the wizard on Ethernet: a LAN client sends the
+        # device's own address as Host and must get the wizard, not a redirect.
+        app = self._any_host_app(allow_any_host=True)
+        for host in ('192.0.2.10', '192.0.2.10:80', 'pibuddycam.lan', 'example.org'):
+            response = app.handle(self.req('GET', '/setup', headers={'Host': host}))
+            self.assertEqual(response.status, 200, host)
+        step = app.handle(self.req(
+            'POST', '/setup/step/1', body={}, headers={'Host': '192.0.2.10'}))
+        self.assertEqual(step.status, 200)
+
+    def test_any_host_is_off_by_default(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('ADMIN_SETUP_ANY_HOST', None)
+            app = self._any_host_app()
+        response = app.handle(self.req('GET', '/setup', headers={'Host': '192.0.2.10'}))
+        self.assertEqual(response.status, 302)
+        self.assertEqual(response.headers['Location'], 'http://192.168.4.1/')
+
+    def test_any_host_switch_follows_the_environment(self):
+        with patch.dict(os.environ, {'ADMIN_SETUP_ANY_HOST': '1'}):
+            app = self._any_host_app()
+        response = app.handle(self.req('GET', '/setup', headers={'Host': '192.0.2.10'}))
+        self.assertEqual(response.status, 200)
+        # Anything but exactly "1" keeps the guard on.
+        with patch.dict(os.environ, {'ADMIN_SETUP_ANY_HOST': 'true'}):
+            app = self._any_host_app()
+        response = app.handle(self.req('GET', '/setup', headers={'Host': '192.0.2.10'}))
+        self.assertEqual(response.status, 302)
 
     def test_admin_mode_never_redirects(self):
         for host, path in self.PROBES:
