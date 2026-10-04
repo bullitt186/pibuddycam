@@ -148,16 +148,35 @@ class HardwareAvailabilityTests(unittest.TestCase):
         self.assertTrue(device_control.apply_light_control('night', state))
         self.assertEqual(state.ir_mode, 3)
 
-    def test_status_hardware_bytes_unchanged_pending_descriptor(self):
-        # GAP-DEVICE-02 limitation: the nested camera-status tag map is not
-        # recovered, so the existing IR-mode/speaker-volume bytes are left as-is
-        # rather than guessed. This pins the current encoding so a future
-        # descriptor-driven change is deliberate, not accidental.
+    def test_status_hardware_values_follow_the_recovered_descriptor(self):
+        # camera_status (descriptor 0x3f6cd0): 3 = light mode (1 auto), 4 = snapshot
+        # interval in seconds, 5 = upload state (1 uploading, 2 disabled), 6 = speaker
+        # volume (firmware default 40). The Pi has neither IR light nor speaker and
+        # keeps reporting the defaults; tags 1 and 2 are never populated.
         state = CameraState()
         top = decode_message(build_status_message(state, token='t', mac='m', ip='i'))
         camera_status = nested(top[3])
+        self.assertEqual(sorted(camera_status), [3, 4, 5, 6])
+        self.assertEqual(camera_status[3], 1)
+        self.assertEqual(camera_status[4], state.snapshot_interval)
         self.assertEqual(camera_status[5], 1)
         self.assertEqual(camera_status[6], 40)
+
+    def test_status_reports_a_disabled_snapshot_upload(self):
+        state = CameraState()
+        state.snapshot_upload_enabled = False
+        top = decode_message(build_status_message(state, token='t', mac='m', ip='i'))
+        self.assertEqual(nested(top[3])[5], 2)
+        state.snapshot_upload_enabled = True
+        top = decode_message(build_status_message(state, token='t', mac='m', ip='i'))
+        self.assertEqual(nested(top[3])[5], 1)
+
+    def test_status_carries_no_brightness_value(self):
+        # No camera_status tag is a brightness: the firmware reports only the light
+        # mode, never a level. Pin the tag set so one is not added by guesswork.
+        state = CameraState()
+        top = decode_message(build_status_message(state, token='t', mac='m', ip='i'))
+        self.assertLessEqual(set(nested(top[3])), {3, 4, 5, 6})
 
 
 class MainWiringTests(unittest.TestCase):

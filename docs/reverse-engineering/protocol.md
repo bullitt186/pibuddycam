@@ -407,9 +407,11 @@ wraps the whole string in literal `[` and `]` before protobuf encoding.
 message CameraInfoMessage {
     SubMessage field1 = 1;             // 32 bytes; descriptor confirmed, not populated in SendCameraInfoMessage decompile
     SubMessage timelapse_status = 2;   // 32 bytes; timelapse service interval/enable/name/state/temp-like values
-    SubMessage camera_status = 3;      // 32 bytes; fields 1/3 = ir_mode/speaker_volume (features
-                                       // pruned); 4-6 unresolved but moot. The truthful MicroSd
-                                       // status is in extended_status.4, NOT here.
+    SubMessage camera_status = 3;      // 32 bytes; 3 = light mode (1 auto/2 day/3 night),
+                                       // 4 = snapshot upload interval (s), 5 = upload state (1 on/
+                                       // 2 disabled), 6 = speaker volume (default 40); 1/2 unused.
+                                       // See firmware-behaviour.md. The truthful MicroSd status is
+                                       // in extended_status.4, NOT here.
     SubMessage network_info = 4;       // 68 bytes; ssid, mac/bssid, ipv4, signal
     SubMessage extended_status = 5;    // 152 bytes; firmware, HW, camera name, RTSP, services, WebRTC
     SubMessage field6 = 6;             // 8 bytes; descriptor confirmed, not populated in SendCameraInfoMessage decompile

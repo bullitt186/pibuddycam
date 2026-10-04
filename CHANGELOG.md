@@ -49,6 +49,10 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   Needs a new image. The hotspot is open, so its login page is reachable in range while it runs.
 
 ### Fixed
+- The status message tells Prusa Connect when snapshot upload is switched off (`camera_status` tag
+  5: `1` uploading, `2` disabled) instead of always saying it is on. All four fields of
+  `camera_status` are now recovered and documented; the lamp brightness slider in the Prusa app
+  does not come from them.
 - Connect shows the camera's snapshot again ("The snapshot is not available" is gone). Prusa
   moved the camera API: `webcam.connect.prusa3d.com` now answers every upload with a `301`, which
   the camera does not follow, and the redirect target has no camera API. The default server is

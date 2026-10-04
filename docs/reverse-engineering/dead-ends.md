@@ -55,6 +55,19 @@ lives in [`journal/findings.md`](../../_archive/docs/journal/findings.md) and [`
 - **How it was caught:** reading the official pairing manual and the PrusaLink camera-setup PDF
   after the maintainer pointed both out; see the [status history](../../_archive/docs/status-history.md).
 
+## `camera_status` tag 6 is a lamp brightness (2026-10-04)
+
+- **Believed:** the constant `6: 40` in the status message is the level of the camera's lamps, so
+  the brightness slider that the Prusa phone app showed for PiBuddyCam comes from there.
+- **Reality:** tag 6 is the **speaker volume**, and `40` is the firmware's default when
+  `/data/xhr_config.ini` holds none. `camera_status` has no brightness at all: tag 3 is the
+  light/IR *mode* (auto, day, night), tag 4 the upload interval, tag 5 the upload state. The slider
+  showed 66 %, which no field of the Pi's status ever carried. Its source is not the camera's status
+  (a candidate is the printer's own chamber light, which Connect shows next to the camera).
+- **How it was caught:** the owner reported the slider value; the descriptor at `0x3f6cd0` was then
+  decoded and every field traced to its getter (see *Recovered `camera_status`* in
+  [firmware-behaviour.md](firmware-behaviour.md)).
+
 ## `origin: WEB`'s rejection doesn't corroborate `origin: OTHER`'s (2026-07-09)
 
 - **Believed:** since both our `WEB` and `OTHER` tokens got the identical ACK-`5` rejection, that

@@ -58,17 +58,20 @@ def build_status_message(state, *, token='', mac='', ip='', ssid='',
         7: 0,
     })
 
-    # GAP-DEVICE-02: fields 5/6 carry the hardware-implying IR-mode/speaker
-    # values under the current mapping. The recovered descriptor does not pin
-    # the nested tag-to-field mapping yet, so per the tracker rule ("do not
-    # invent or guess nested status tags") these bytes are left unchanged even
-    # though the Pi has no such hardware (CameraState.*_available is False and
-    # device_control.apply_light_control never claims a mode). Changing this
-    # encoding requires the descriptor fixture.
+    # camera_status (descriptor 0x3f6cd0, recovered 2026-10-04 [confirmed]; see
+    # docs/reverse-engineering/firmware-behaviour.md, "camera_status"). Tags 1 and
+    # 2 are never populated by the firmware. The rest:
+    #   3  light/IR mode, 1=auto 2=day 3=night (the firmware default is auto);
+    #      the Pi has no IR light and keeps reporting the default.
+    #   4  snapshot upload interval in seconds (the firmware stores milliseconds).
+    #   5  snapshot upload state: 1 = uploading, 2 = upload disabled.
+    #   6  speaker volume; 40 is the firmware's default when none is configured.
+    #      The Pi has no speaker and keeps reporting the default.
+    # None of them is a brightness: the app's lamp slider does not come from here.
     camera_status = encode_message({
         3: 1,
         4: state.snapshot_interval,
-        5: 1,
+        5: 1 if state.snapshot_upload_enabled else 2,
         6: 40,
     })
 
