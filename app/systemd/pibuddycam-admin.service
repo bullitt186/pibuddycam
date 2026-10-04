@@ -26,6 +26,9 @@ Type=simple
 User=pibuddycam
 WorkingDirectory=/opt/pibuddycam
 Environment=ADMIN_MODE=admin
+# The local live monitor runs GStreamer in this process. Without a writable cache the plugin
+# registry is rescanned on every capture (~12 s on a Zero 2 W) and no frame ever arrives.
+Environment=XDG_CACHE_HOME=/tmp/pibuddycam
 EnvironmentFile=-/etc/pibuddycam/admin.env
 # WP-R4c: start through the launcher so an installed signed release under DATA
 # (and its per-release venv) runs; the launcher falls back to the factory app.

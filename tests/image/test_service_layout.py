@@ -168,6 +168,14 @@ class UnitLayoutTests(unittest.TestCase):
                 self.assertTrue(
                     any('data-ready.target' in ln for ln in requires), text)
 
+    def test_units_running_gstreamer_have_a_writable_cache(self):
+        # The admin unit serves the live monitor, which runs gst-launch. Without
+        # XDG_CACHE_HOME the plugin registry is rescanned (~12 s) on every capture.
+        for name in ('pibuddycam.service', 'pibuddycam-admin.service',
+                     'pibuddycam-rtsp.service', 'pibuddycam-ha-rtsp.service'):
+            with self.subTest(unit=name):
+                self.assertIn('Environment=XDG_CACHE_HOME=/tmp/pibuddycam', unit(name))
+
     def test_ha_unit_still_requires_rpicam_source(self):
         self.assertIn('Requires=rpicam-source.service', unit('pibuddycam-ha-rtsp.service'))
 
