@@ -113,7 +113,7 @@ PERSIST_PREREQUISITES = frozenset({'wifi', 'admin_password'})
 SKIPPABLE_STEPS = frozenset({'prusa_token', 'fingerprint', 'mqtt'})
 
 #: MQTT defaults reused when the user enables MQTT without overriding them.
-DEFAULT_MQTT_URI = 'mqtts://broker.example:8883'
+DEFAULT_MQTT_URI = 'mqtt://broker.example:1883'
 
 
 # --------------------------------------------------------------------------- #

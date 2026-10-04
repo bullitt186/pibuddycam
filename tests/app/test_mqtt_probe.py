@@ -182,7 +182,7 @@ class ProbeFailureTests(unittest.TestCase):
             raise ssl.SSLError('bad certificate')
         ok, reason = self._probe(FakeBackend(), tls_handshake=handshake)
         self.assertFalse(ok)
-        self.assertEqual(reason, 'TLS handshake failed')
+        self.assertTrue(reason.startswith('TLS handshake failed'))
 
     def test_auth_failure(self):
         ok, reason = self._probe(FakeBackend(fail_step='auth'))

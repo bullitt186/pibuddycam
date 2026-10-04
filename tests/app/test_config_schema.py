@@ -35,7 +35,7 @@ class DefaultDeviceTests(unittest.TestCase):
         self.assertEqual(cfg['fingerprint'], '')
         self.assertEqual(cfg['prusa']['server'], 'connect.prusa3d.com')
         self.assertIs(cfg['mqtt']['enabled'], False)
-        self.assertEqual(cfg['mqtt']['uri'], 'mqtts://broker.example:8883')
+        self.assertEqual(cfg['mqtt']['uri'], 'mqtt://broker.example:1883')
         self.assertEqual(cfg['mqtt']['client_id'], '')
         self.assertEqual(cfg['mqtt']['discovery_prefix'], 'homeassistant')
         self.assertEqual(cfg['mqtt']['topic_prefix'], 'pibuddycam')

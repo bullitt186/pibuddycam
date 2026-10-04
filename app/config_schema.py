@@ -121,7 +121,7 @@ def default_device():
         'prusa': {'server': DEFAULT_PRUSA_SERVER},
         'mqtt': {
             'enabled': False,
-            'uri': 'mqtts://broker.example:8883',
+            'uri': 'mqtt://broker.example:1883',
             'client_id': '',
             'discovery_prefix': 'homeassistant',
             'topic_prefix': 'pibuddycam',

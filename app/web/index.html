@@ -531,8 +531,8 @@ G4 S<span data-gpio="dwell">8</span></code></pre>
               <div class="field">
                 <label for="mqtt-uri">Broker URI</label>
                 <input id="mqtt-uri" name="uri" type="text" autocomplete="off" spellcheck="false"
-                       placeholder="mqtts://broker.example:8883">
-                <p class="field__hint">Credentials must not be embedded in the URI; use the username/password fields.</p>
+                       placeholder="mqtt://broker.example:1883">
+                <p class="field__hint">Use <code>mqtt://</code> (port 1883) for a plain, unencrypted broker or <code>mqtts://</code> (port 8883) for TLS. Credentials must not be embedded in the URI; use the username/password fields.</p>
               </div>
               <div class="field">
                 <label for="mqtt-client-id">Client ID</label>

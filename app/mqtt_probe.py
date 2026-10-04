@@ -286,7 +286,8 @@ def _probe(config, *, backend_factory, timeout, resolve, connect, tls_handshake)
             tls_sock = handshaker(raw, host, getattr(config, 'ca_file', ''), timeout)
         except Exception:  # noqa: BLE001
             _close(raw)
-            return False, 'TLS handshake failed'
+            return False, ('TLS handshake failed (use mqtt:// for a broker '
+                           'without TLS)')
         _close(tls_sock)
     else:
         _close(raw)

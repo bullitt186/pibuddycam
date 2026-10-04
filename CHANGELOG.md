@@ -74,6 +74,7 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 ### Changed
 - When a claimed camera falls back to the setup hotspot, the phone's sign-in window shows how to
   reach the console (`https://192.168.4.1/admin`) instead of "404: Not Found".
+- MQTT now defaults to plain `mqtt://` (port 1883) instead of `mqtts://`. The console shows both schemes, and a failed TLS handshake tells you to use `mqtt://` for a broker without TLS. A stored `mqtts://` URI is unchanged.
 - The setup wizard's Wi-Fi scan uses the root `wifi-scan` verb.
 - Setup requests (`/setup/step/<n>`, `/setup/finish`, `/setup/wifi/scan`) must be JSON and are
   refused for a foreign `Host`; new read route `GET /setup/state`.
