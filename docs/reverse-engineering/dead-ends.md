@@ -62,11 +62,14 @@ lives in [`journal/findings.md`](../../_archive/docs/journal/findings.md) and [`
 - **Reality:** tag 6 is the **speaker volume**, and `40` is the firmware's default when
   `/data/xhr_config.ini` holds none. `camera_status` has no brightness at all: tag 3 is the
   light/IR *mode* (auto, day, night), tag 4 the upload interval, tag 5 the upload state. The slider
-  showed 66 %, which no field of the Pi's status ever carried. Its source is not the camera's status
-  (a candidate is the printer's own chamber light, which Connect shows next to the camera).
+  showed 66 %, which no field of the Pi's status ever carried. The slider belongs to the
+  **printer's own chamber light** (a Core One), not to the camera **[confirmed]**: the owner set it
+  to 29 %, the camera log showed no `configuration` event for the change, and the printer's light
+  followed.
 - **How it was caught:** the owner reported the slider value; the descriptor at `0x3f6cd0` was then
   decoded and every field traced to its getter (see *Recovered `camera_status`* in
-  [firmware-behaviour.md](firmware-behaviour.md)).
+  [firmware-behaviour.md](firmware-behaviour.md)), and the slider change was checked against the
+  camera log.
 
 ## `origin: WEB`'s rejection doesn't corroborate `origin: OTHER`'s (2026-07-09)
 
