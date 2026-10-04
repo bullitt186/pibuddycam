@@ -304,6 +304,36 @@ token field 8 is assigned from the HTTP configuration getter, and field 10 is co
 impersonator must omit fields that firmware leaves absent rather than encoding arbitrary empty
 submessages.
 
+### Recovered `camera_status` (2026-10-04)
+
+`camera_status` is field 3 of the status message. Its nanopb descriptor is at `0x3f6cd0`: six
+fields, a 32-byte struct, decoded from the `lp_app` ELF (the field-info words at `0x3f6cb0`). In
+`CameraInfoMessage` the struct starts at offset `0x4c`; `0x48` is its presence flag. Every
+assignment below is traced to the status builder `FUN_000a1394` and the getters it calls
+**[confirmed]**.
+
+| Tag | Wire type | Struct offset | Meaning | Source in the firmware |
+|---:|---|---|---|---|
+| 1 | uvarint | `0x4c` | never populated | no assignment in `FUN_000a1394` |
+| 2 | sub-message (8 bytes) | `0x54` | never populated | no assignment in `FUN_000a1394` |
+| 3 | uvarint | `0x5c` | **light/IR mode**: `1` auto, `2` day, `3` night | getter `FUN_00071a4c` on the device-service singleton `FUN_00072e98`; internal `3→1`, `1→2`, `2→3`; the constructor `FUN_00072d78` sets the default `3`, so a fresh camera reports `1` |
+| 4 | uvarint | `0x60` | **snapshot upload interval in seconds** | `FUN_0005af74` reads the upload service's interval in **milliseconds** (default `10000`); the builder divides by 1000 (multiply-shift constant `0x10624dd3`). Setter `FUN_0005bafc` multiplies seconds by 1000 and logs `Change upload interval: %d`; the inbound `configuration` tag `3.5` (10..600) feeds it |
+| 5 | uvarint | `0x64` | **snapshot upload state**: `1` uploading, `2` upload disabled | `FUN_0005af7c` reads the upload service's *disable-upload flag* (default `0`); internal `0→1`, `1→2`. The two setters `FUN_0005bb50` (flag `1`) and `FUN_0005bb98` (flag `0`) log `SetDisableUploadFlag: %d` |
+| 6 | uvarint | `0x68` | **speaker volume** | `FUN_00071b4c` → `FUN_00083fc8` → `FUN_00083e70` reads `config.volume`/`VOLUME` from `/data/xhr_config.ini` with the default `0x28` = **40** (inbound `set_volume`, 5..100) |
+
+The upload service is the code in `upload_service/xhr_upload_service.cpp` (the log strings name the
+file). The light mode is the one the firmware's IR LEDs use (`init_irled` logs the mode, the PWM
+channel and the ambient-light thresholds); there is no brightness anywhere in this message, and no
+string in `lp_app` names a lamp brightness setting. The Pi's `6: 40` is therefore the **default**
+volume, not a level. PiBuddyCam sends `3: 1` and `6: 40` as constants (it has neither IR light nor
+speaker), `4` from `snapshot_interval` and `5` from `snapshot_upload_enabled`.
+
+**Not established:** which firmware path sets the disable-upload flag to `1` in normal operation (the
+two setters are `std::function` bodies registered elsewhere; the likely trigger is the `403`
+"Upload image BLOCKED by server" branch of the snapshot response handler `FUN_0005c568`
+**[assumption]**), and whether Connect or the phone app change what they show for the fields `3`
+and `6` when a camera omits them (never tried on a genuine camera or on the Pi).
+
 ### Recovered outbound identity/metadata messages
 
 These are the implementation targets established jointly by nanopb descriptors, sender assignment
@@ -421,7 +451,7 @@ closing the gap.
 | `GAP-OTA-01` | `FW-CONFIG:174-192`; `start_fw_update` at `lp_app.strings:15084`; OTA endpoint/response keys in `journal/findings.md:1173-1181` | Full OTA state machine still needs focused call-path annotation |
 | `GAP-TIMELAPSE-01` | `FW-TIMELAPSE-SEND`, `FW-TIMELAPSE-REGISTER`; action strings `lp_app.strings:15309-15310` | None for the list envelope; make-video/list not yet exercised by the app |
 | `GAP-DEVICE-01` | `reboot_device` at `lp_app.strings:14127`; trigger dispatcher recovery item | Trigger enum/result response required |
-| `GAP-DEVICE-02` | `camera_status` descriptor `0x3f6cd0` (6 fields); `FW-CONFIG:193-228`; advertised list from `FW-FEATURES`; truthful `MicroSd` is in `extended_status.4` | **Closed [x]:** `camera_status` fields 1/3 are `ir_mode`/`speaker_volume` (features pruned); fields 4-6 unresolved but moot; no action |
+| `GAP-DEVICE-02` | `camera_status` descriptor `0x3f6cd0` (6 fields); `FW-CONFIG:193-228`; advertised list from `FW-FEATURES`; truthful `MicroSd` is in `extended_status.4` | **Closed [x]:** `camera_status` is fully recovered, see *Recovered `camera_status`* above (tag 3 light mode, 4 upload interval in s, 5 upload state, 6 speaker volume; tags 1/2 unused) |
 | `GAP-WEBRTC-07` | Codec/SDP strings summarized in `journal/findings.md:1040-1057` | **Closed [x]:** the Pi's video-only offer plays live in the app and browser, so Connect accepts video-only; audio is optional/not required |
 | `GAP-IDENTITY-01` | `FW-ID-MAC`, `FW-ID-SEED`, `FW-ID-MD5` | None for algorithm; persistence policy is Pi-specific |
 | `GAP-IDENTITY-02` | `FUN_00096cd8` (generateFingerPrint), `FW-ID-MAC`/`FW-ID-SEED`/`FW-ID-MD5`; `/c/info` use at `FW-INFO-BUILD:242-251` | **Resolved 2026-09-20:** already `wlan0`-MAC-derived with the token bound (live ACK `0`, `/c/info` 200); the runbook in `next-steps.md` applies only if the fingerprint is ever changed |
