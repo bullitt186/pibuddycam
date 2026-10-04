@@ -182,7 +182,26 @@ def _target_coming_up(run):
     return out.strip() in ('active', 'activating')
 
 
-def start_camera(runner=None, poll_timeout=30, grace_polls=4, sleep=None):
+def _start_job_queued(run):
+    """True while a start job for ``pibuddycam.target`` is still queued.
+
+    The target conflicts with the provisioning unit, so systemd keeps the start job
+    waiting (the target still reads ``inactive``) until that unit has finished
+    stopping, which takes several seconds.
+    """
+    try:
+        probe = run(['systemctl', 'list-jobs', '--no-legend'], timeout=5)
+    except Exception:  # noqa: BLE001 - a probe must never raise
+        return False
+    out = getattr(probe, 'stdout', '') or ''
+    if isinstance(out, bytes):
+        out = out.decode('utf-8', 'replace')
+    return any(
+        'pibuddycam.target' in line and 'start' in line.split()
+        for line in out.splitlines())
+
+
+def start_camera(runner=None, poll_timeout=30, grace_polls=20, sleep=None):
     """Start ``pibuddycam.target`` as root; returns a plain ``bool``.
 
     The helper issues ``systemctl --no-block start`` (the target conflicts with
@@ -198,14 +217,17 @@ def start_camera(runner=None, poll_timeout=30, grace_polls=4, sleep=None):
     Treating that as a failed hand-off made the wizard restart the setup hotspot
     and tear down the Wi-Fi it had just joined. A failed ``_invoke`` therefore
     only counts as failure when the target is not coming up either: it is
-    re-checked for *grace_polls* seconds before giving up.
+    re-checked for *grace_polls* seconds before giving up. "Coming up" includes a start
+    job that is still queued behind the provisioning unit's stop, when the target
+    itself still reads ``inactive``; judging that as a failure restarted the hotspot
+    and dropped the station link the wizard had just brought up.
     """
     sleep = sleep or time.sleep
     run = runner or _default_runner
     result = _invoke('start-camera', runner=runner)
     if not result.ok:
         for attempt in range(max(1, grace_polls)):
-            if _target_coming_up(run):
+            if _target_coming_up(run) or _start_job_queued(run):
                 log.warning(
                     'privileged: start-camera reported a failure but '
                     'pibuddycam.target is coming up (helper cut off by the '

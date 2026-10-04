@@ -49,6 +49,7 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   Needs a new image. The hotspot is open, so its login page is reachable in range while it runs.
 
 ### Fixed
+- The setup wizard no longer drops the Wi-Fi it just joined when the camera target is slow to start. It waited only about 3 s for `pibuddycam.target`, which stays `inactive` until the setup service has stopped, then treated that as a failure and restarted the hotspot over the live station link. It now waits up to 20 s and counts a queued start job as coming up. Needs a new image.
 - The status message tells Prusa Connect when snapshot upload is switched off (`camera_status` tag
   5: `1` uploading, `2` disabled) instead of always saying it is on. All four fields of
   `camera_status` are now recovered and documented; the lamp brightness slider in the Prusa app

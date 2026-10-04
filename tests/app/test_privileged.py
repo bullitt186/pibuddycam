@@ -257,6 +257,24 @@ class WrapperTests(unittest.TestCase):
             self.assertTrue(
                 privileged.start_camera(runner=runner, sleep=lambda _s: None), state)
 
+    def test_start_camera_waits_for_a_start_job_queued_behind_provisioning(self):
+        # The target conflicts with the provisioning unit and reads "inactive"
+        # until that unit has stopped; the queued start job is not a failure.
+        slept = []
+        jobs = iter(['', '', '', '  42 pibuddycam.target start waiting\n'])
+
+        def runner(args, timeout, input=None):
+            if 'start-camera' in ' '.join(args):
+                return FakeResult(-15, '')
+            if 'is-active' in args:
+                return FakeResult(3, 'inactive\n')
+            if 'list-jobs' in args:
+                return FakeResult(0, next(jobs))
+            return FakeResult(0, '')
+
+        self.assertTrue(privileged.start_camera(runner=runner, sleep=slept.append))
+        self.assertEqual(slept, [1, 1, 1])
+
     def test_start_camera_still_fails_when_the_target_is_not_coming_up(self):
         for state in ('inactive\n', 'failed\n', ''):
             slept = []
