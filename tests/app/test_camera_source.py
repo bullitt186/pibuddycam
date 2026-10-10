@@ -42,7 +42,17 @@ class CommandTests(unittest.TestCase):
                 self.assertEqual(cmd, (
                     '/usr/bin/rpicam-vid -v 0 --codec h264 -t 0 --width 1920 --height 1080 '
                     f'--framerate 30 --rotation {degrees} --profile baseline --intra 30 '
-                    f'--flush --inline -o - | {PY} {MUX}'))
+                    f'--bitrate 4000000 --flush --inline -o - | {PY} {MUX}'))
+
+    def test_bitrate_follows_the_picture_size(self):
+        # Without --bitrate rpicam-vid uses the encoder default (about 10 Mbit/s).
+        for (width, height), bits in (((640, 480), 1_500_000), ((1280, 720), 3_000_000),
+                                      ((1920, 1080), 4_000_000)):
+            with self.subTest(size=(width, height)):
+                self.assertEqual(camera_source.bitrate_for(width, height), bits)
+                self.assertIn(f'--bitrate {bits} ', build(width, height, 0))
+                self.assertIn(f'video_bitrate={bits}"',
+                              build(width, height, 90, camera_source.BACKEND_ISP))
 
     def test_isp_backend_rotates_in_v4l2convert_with_swapped_caps(self):
         cmd = build(1920, 1080, 90, camera_source.BACKEND_ISP)

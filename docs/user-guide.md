@@ -37,7 +37,7 @@ from Prusa Connect or MQTT.
 | Setting | Values | Notes |
 |---|---|---|
 | Camera name | text | Shown in Prusa Connect and Home Assistant |
-| Video quality | SD 640×480, HD 1280×720, FHD 1920×1080 | While a WebRTC viewer uses a relay (TURN), raising quality is refused, as on the genuine camera |
+| Video quality | SD 640×480, HD 1280×720, FHD 1920×1080 | Encoder bitrate follows the size: about 1.5, 3 and 4 Mbit/s (the encoder default was about 10 Mbit/s). While a WebRTC viewer uses a relay (TURN), raising quality is refused, as on the genuine camera |
 | Image rotation | 0°, 90°, 180°, 270° clockwise | Applies to every stream, snapshot and timelapse frame, and survives reboots. Video restarts briefly. 90°/270° produce portrait video, use more CPU and may lower the frame rate |
 | Snapshot upload / interval | on/off, 10–600 s | Periodic uploads to Prusa Connect |
 | Timelapse capture / interval / playback FPS | on/off, 1–3600 s, 1–30 | |

@@ -37,6 +37,14 @@ FRAMERATE = 30
 SOFTWARE_FRAMERATE = 10
 INTRA_PERIOD = 30
 
+#: Encoder bitrate (bit/s) by picture size. Without ``--bitrate`` rpicam-vid falls back
+#: to the encoder default (about 10 Mbit/s at 1080p), far more than a static printer
+#: scene needs. The HD/FHD values follow ONVIF's ``BitrateLimit`` (4000 kbit/s).
+#: **assumption**: the values are picked for a still scene; measure on hardware.
+BITRATE_SD = 1_500_000    # up to 640x480
+BITRATE_HD = 3_000_000    # up to 1280x720
+BITRATE_FHD = 4_000_000   # above that
+
 BACKEND_ISP = 'isp'
 BACKEND_SOFTWARE = 'software'
 
@@ -71,12 +79,22 @@ def settings_from_env(env):
     return width, height, rotation
 
 
+def bitrate_for(width, height):
+    """Return the encoder bitrate in bit/s for a ``width`` x ``height`` picture."""
+    pixels = width * height
+    if pixels <= 640 * 480:
+        return BITRATE_SD
+    if pixels <= 1280 * 720:
+        return BITRATE_HD
+    return BITRATE_FHD
+
+
 def rpicam_command(width, height, rotation):
     """The zero-cost ``rpicam-vid`` capture for 0/180 degrees."""
     return (
         f'/usr/bin/rpicam-vid -v 0 --codec h264 -t 0 --width {width} --height {height} '
         f'--framerate {FRAMERATE} --rotation {rotation} --profile baseline '
-        f'--intra {INTRA_PERIOD} --flush --inline -o -'
+        f'--intra {INTRA_PERIOD} --bitrate {bitrate_for(width, height)} --flush --inline -o -'
     )
 
 
@@ -96,7 +114,8 @@ def gstreamer_command(width, height, rotation, backend):
         f'! {rotate} '
         f'! video/x-raw,format=NV12,width={out_w},height={out_h} '
         '! v4l2h264enc extra-controls="controls,repeat_sequence_header=1,'
-        f'h264_profile=0,h264_i_frame_period={INTRA_PERIOD}" '
+        f'h264_profile=0,h264_i_frame_period={INTRA_PERIOD},'
+        f'video_bitrate={bitrate_for(width, height)}" '
         '! video/x-h264,level=(string)4 '
         '! h264parse config-interval=-1 '
         '! video/x-h264,stream-format=byte-stream,alignment=au '
