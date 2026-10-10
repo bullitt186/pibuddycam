@@ -18,7 +18,9 @@ firmware. Anything else is stated as open or as an assumption.
 | Local RTSP (`:8554` Prusa-controlled, `:8555` always on), ONVIF, JPEG snapshot | ✅ Working **[confirmed]** |
 | Home Assistant via ONVIF / MQTT discovery | ✅ Camera-side working **[confirmed]**. A long Home Assistant + Prusa soak has not been recorded |
 | Timelapse capture and AVI build, Samba share | ✅ Working **[confirmed]**. Connect's `file_list` path isn't exercised by the app |
-| Local web console (HTTPS, settings, monitor, local WebRTC, updates, diagnostics) | ✅ Working **[confirmed]** |
+| Local web console (HTTPS, settings, monitor, local WebRTC, updates, diagnostics) | ✅ Working **[confirmed]**. The local monitor shows snapshots on the dev image `v1.4.0-35-gacfa0fb` (2026-10-11) after the admin service got a GStreamer cache (`XDG_CACHE_HOME`) |
+| Setup wizard joins the home Wi-Fi from the hotspot | ✅ Working **[confirmed]** on the dev image `v1.4.0-35-gacfa0fb` (2026-10-11, one run). Earlier images restarted the hotspot over the new link because the camera target was slow to start |
+| MQTT with plain `mqtt://` to a local broker | ✅ Working **[confirmed]** (2026-10-04, dev image `v1.4.0-33-g94bcd05`): availability, state, update state and the Home Assistant discovery document were retained on the broker. The console restarting the camera on save, the quicker snapshot capture and the fixed encoder bitrate (1.5/3/4 Mbit/s) are **not yet verified on hardware** |
 | Signed OTA application updates with rollback | ✅ Working **[confirmed]** (install and deliberate rollback tested) |
 | Image rotation 0°/180° | ✅ Zero-cost `rpicam-vid` flip |
 | Image rotation 90°/270° | ❓ Implemented. **Not yet verified on hardware** (see [hardware](hardware.md#camera-and-rotation)) |
