@@ -130,5 +130,57 @@ class CaptureAfterTests(unittest.TestCase):
         self.assertIn('quality=95', seen['args'])
 
 
+class CaptureJpegTests(CaptureAfterTests):
+    """capture_jpeg returns as soon as the first complete frame is written."""
+
+    def _capture(self, script, **kw):
+        def popen(args, **_kw):
+            pattern = next(a.split('=', 1)[1] for a in args if a.startswith('location='))
+            proc = FakeProc(pattern, script, self.clock)
+            self.procs.append(proc)
+            return proc
+
+        def sleep(seconds):
+            self.clock[0] += seconds
+            for proc in self.procs:
+                proc.tick()
+
+        return camera.capture_jpeg(
+            popen=popen, clock=lambda: self.clock[0], sleep=sleep, **kw)
+
+    def jpeg(self, tag):
+        return tag * 200 + b'\xff\xd9'
+
+    def test_returns_the_first_complete_frame_and_stops_the_pipeline(self):
+        script = [(1000.2, self.jpeg(b'A')), (1000.3, self.jpeg(b'B'))]
+        data = self._capture(script)
+        self.assertEqual(data[:1], b'A')
+        self.assertTrue(self.procs[0].terminated)
+        self.assertLess(self.clock[0], 1001.0)      # not the old fixed 10 s run
+
+    def test_a_half_written_frame_is_not_returned(self):
+        script = [(1000.1, b'T' * 200), (1000.4, self.jpeg(b'C'))]
+        data = self._capture(script)
+        # The truncated file 0 has no EOI marker; the complete file 1 wins.
+        self.assertTrue(data.endswith(b'\xff\xd9'))
+        self.assertEqual(data[:1], b'C')
+
+    def test_times_out_when_no_frame_arrives(self):
+        with self.assertRaises(RuntimeError):
+            self._capture([], timeout=1.0)
+        self.assertTrue(self.procs[0].terminated)
+        self.assertGreaterEqual(self.clock[0], 1001.0)
+
+    def test_the_newest_sizeable_file_is_used_once_the_writer_has_stopped(self):
+        # Nothing ends with the EOI marker, but the pipeline did write a frame.
+        script = [(1000.1, b'Z' * 200)]
+        data = self._capture(script, timeout=1.0)
+        self.assertEqual(data, b'Z' * 200)
+
+    def test_an_empty_frame_is_an_error(self):
+        with self.assertRaises(RuntimeError):
+            self._capture([(1000.1, b'x')], timeout=1.0)
+
+
 if __name__ == '__main__':
     unittest.main()

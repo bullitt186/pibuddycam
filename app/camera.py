@@ -4,32 +4,71 @@ import os
 import glob
 import time
 
-def capture_jpeg(width=1920, height=1080):
-    # Grab a frame from the always-running mux stream (port 8888).
-    # libcamera is single-consumer; rpicam-source owns the sensor via stream_mux.py.
-    # 'timeout' stops the pipeline after a frame is written. Hardware-found: 5s
-    # was too short on a Pi Zero 2 W (OV5647 @1080p) -- GStreamer startup plus
-    # the first keyframe exceeded it, so multifilesink wrote nothing and every
-    # snapshot failed with "no frame captured". 10s proved reliable.
+#: Upper bound for one capture. Hardware-found: 5 s was too short on a Pi Zero 2 W
+#: (OV5647 @1080p) because GStreamer startup plus the first keyframe exceeded it;
+#: 10 s proved reliable. It is only a ceiling now: a frame is returned as soon as one
+#: has been written completely.
+CAPTURE_TIMEOUT = 10.0
+_JPEG_EOI = b'\xff\xd9'
+
+
+def _first_jpeg(directory, final=False):
+    """Return the first complete JPEG in ``directory``, or ``None``.
+
+    ``multifilesink`` writes each frame as it is encoded, so a file can still be
+    half written; a JPEG is complete when it ends with the EOI marker. With
+    ``final`` (the writer has stopped) the newest sizeable file is taken instead.
+    """
+    files = sorted(glob.glob(os.path.join(directory, 'snap*.jpg')))
+    if final:
+        files = files[-1:]
+    for path in files:
+        try:
+            with open(path, 'rb') as handle:
+                data = handle.read()
+        except OSError:
+            continue
+        if len(data) >= 100 and (final or data.endswith(_JPEG_EOI)):
+            return data
+    return None
+
+
+def capture_jpeg(width=1920, height=1080, *, timeout=CAPTURE_TIMEOUT,
+                 popen=subprocess.Popen, clock=time.monotonic, sleep=time.sleep):
+    """Grab one frame from the always-running mux stream (port 8888).
+
+    libcamera is single-consumer; rpicam-source owns the sensor via stream_mux.py,
+    so this only decodes the mux's H.264 and never touches the camera. Returns as
+    soon as the first complete frame is written (a second or two instead of a
+    fixed 10 s run); the mux bootstraps a new client with its last keyframe, which
+    is at most one GOP old. Raises :class:`RuntimeError` when nothing arrives
+    within ``timeout``.
+    """
     with tempfile.TemporaryDirectory() as d:
         pattern = os.path.join(d, 'snap%05d.jpg')
-        subprocess.run(
-            ['timeout', '10',
-             'gst-launch-1.0', '-q',
+        proc = popen(
+            ['gst-launch-1.0', '-q',
              'tcpclientsrc', 'host=127.0.0.1', 'port=8888', 'do-timestamp=true',
              '!', 'h264parse',
              '!', 'openh264dec',
              '!', 'videoconvert',
              '!', 'jpegenc', 'quality=95',  # GAP-SNAPSHOT-03: firmware JPEG quality is 95
              '!', 'multifilesink', f'location={pattern}'],
-            capture_output=True, timeout=13
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        files = sorted(glob.glob(os.path.join(d, 'snap*.jpg')))
-        if not files:
+        try:
+            deadline = clock() + timeout
+            data = _first_jpeg(d)
+            while data is None and proc.poll() is None and clock() < deadline:
+                sleep(0.05)
+                data = _first_jpeg(d)
+            if data is None:
+                _stop(proc)
+                data = _first_jpeg(d, final=True)
+        finally:
+            _stop(proc)
+        if data is None:
             raise RuntimeError('capture_jpeg: no frame captured')
-        data = open(files[-1], 'rb').read()
-        if len(data) < 100:
-            raise RuntimeError('capture_jpeg: empty frame')
         return data
 
 

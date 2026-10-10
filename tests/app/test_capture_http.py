@@ -89,20 +89,26 @@ class SnapshotJpegQualityTests(unittest.TestCase):
     def test_capture_pipeline_uses_jpegenc_quality_95(self):
         captured = {}
 
-        class _Result:
-            returncode = 0
+        class _Proc:
+            def poll(self):
+                return 0
 
-        def fake_run(args, **kwargs):
+            def terminate(self):
+                pass
+
+            def wait(self, timeout=None):
+                return 0
+
+        def fake_popen(args, **kwargs):
             captured['args'] = list(args)
             location = next(a.split('location=', 1)[1] for a in args if a.startswith('location='))
-            with open(location, 'wb') as f:
-                f.write(b'\xff' * 200)
-            return _Result()
+            with open(location % 0, 'wb') as f:
+                f.write(b'\xff' * 200 + b'\xd9')
+            return _Proc()
 
-        with mock.patch.object(camera.subprocess, 'run', fake_run):
-            data = camera.capture_jpeg()
+        data = camera.capture_jpeg(popen=fake_popen)
 
-        self.assertEqual(len(data), 200)
+        self.assertEqual(len(data), 201)
         args = captured['args']
         self.assertIn('jpegenc', args)
         quality_index = args.index('jpegenc') + 1
