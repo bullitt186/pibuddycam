@@ -49,6 +49,7 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   Needs a new image. The hotspot is open, so its login page is reachable in range while it runs.
 
 ### Fixed
+- Saving MQTT settings in the console restarts the camera application, so MQTT connects right away. It used to need a manual restart: the MQTT service is only built when the application starts, and the console just said a restart was required. Saving without a change restarts nothing.
 - The console's local monitor shows a picture again. The admin service lacked `XDG_CACHE_HOME`, so every capture rescanned the GStreamer plugins (about 12 s on a Zero 2 W) and hit the 10 s limit before the first frame. Needs a new image.
 - The setup wizard no longer drops the Wi-Fi it just joined when the camera target is slow to start. It waited only about 3 s for `pibuddycam.target`, which stays `inactive` until the setup service has stopped, then treated that as a failure and restarted the hotspot over the live station link. It now waits up to 20 s and counts a queued start job as coming up. Needs a new image.
 - The status message tells Prusa Connect when snapshot upload is switched off (`camera_status` tag

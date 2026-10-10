@@ -365,6 +365,52 @@ class IntegrationApiTests(unittest.TestCase):
             headers=self._headers(token, csrf)))
         self.assertEqual(response.status, 400)
 
+    def _put_mqtt(self, app, **body):
+        token, csrf = self._login(app)
+        self._reauth(app, token, csrf)
+        return app.handle(_make_request(
+            'PUT', '/api/integrations/mqtt', body=body,
+            headers=self._headers(token, csrf)))
+
+    def test_mqtt_change_restarts_the_camera_and_is_active(self):
+        # The MQTT service is built when the camera application starts, so a changed
+        # configuration is applied by restarting it, as for the Prusa form.
+        self._seed()
+        calls = []
+        app = self._build_app(camera_restart_fn=lambda: calls.append('restart') or True)
+        response = self._put_mqtt(app, uri='mqtt://broker2.example:1883')
+        self.assertEqual(response.status, 200)
+        payload = json.loads(response.body)
+        self.assertEqual(calls, ['restart'])
+        self.assertTrue(payload['active'])
+        self.assertFalse(payload['restart_required'])
+        self.assertEqual(payload['warnings'], [])
+
+    def test_mqtt_failed_restart_keeps_restart_required(self):
+        self._seed()
+        app = self._build_app(camera_restart_fn=lambda: False)
+        payload = json.loads(self._put_mqtt(app, uri='mqtt://broker2.example:1883').body)
+        self.assertFalse(payload['active'])
+        self.assertTrue(payload['restart_required'])
+        self.assertTrue(payload['warnings'])
+
+    def test_mqtt_save_without_a_change_restarts_nothing(self):
+        self._seed()
+        calls = []
+        app = self._build_app(camera_restart_fn=lambda: calls.append('restart') or True)
+        payload = json.loads(self._put_mqtt(app, uri='mqtts://broker.example:8883').body)
+        self.assertEqual(calls, [])
+        self.assertFalse(payload['active'])
+        self.assertFalse(payload['restart_required'])
+        self.assertEqual(payload['warnings'], [])
+
+    def test_mqtt_new_password_counts_as_a_change(self):
+        self._seed()
+        calls = []
+        app = self._build_app(camera_restart_fn=lambda: calls.append('restart') or True)
+        self._put_mqtt(app, password='a-new-broker-password')
+        self.assertEqual(calls, ['restart'])
+
     def test_mqtt_put_saves_atomically_with_modes(self):
         self._seed()
         app = self._build_app()

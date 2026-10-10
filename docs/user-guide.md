@@ -100,7 +100,9 @@ PiBuddyCam extension: Prusa Connect still sees only the enable flag and the inte
   - Settings: broker URI, client ID, credentials, CA file, discovery and topic prefixes.
   - *Test connection* checks the broker without saving. Saving after a failed test requires
     *Save anyway*.
-  - Changes take effect after the camera runtime restarts; the console says so.
+  - Saving a changed configuration restarts the camera application (video drops briefly) so MQTT
+    connects right away. Saving without a change restarts nothing. If the restart can't be done,
+    the console says so and the change takes effect after the next restart.
 
 ### Timelapses
 

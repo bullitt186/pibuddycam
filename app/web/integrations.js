@@ -307,7 +307,9 @@ export async function submitMqtt(event) {
   }
   const data = result.data || {};
   if (result.ok && data.ok) {
-    const warning = (data.warnings || [])[0] || 'Saved.';
+    const warning = data.active
+      ? 'Saved. The camera restarted and MQTT is connecting now.'
+      : ((data.warnings || [])[0] || 'Saved.');
     integrationStatus(els.mqttForm, 'ok', warning);
     // Drop the typed broker credentials and every test/override flag now that
     // the server holds them; a blank field means "keep the stored value".

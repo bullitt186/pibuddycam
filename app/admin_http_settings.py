@@ -176,6 +176,8 @@ class SettingsHandlers:
                 request, 409, 'existing configuration is invalid; use the expert editor')
 
         mqtt = device_cfg.setdefault('mqtt', {})
+        secret_before = secrets_cfg.get('mqtt')
+        before = (dict(mqtt), dict(secret_before) if isinstance(secret_before, dict) else {})
         if 'enabled' in body_data:
             mqtt['enabled'] = body_data['enabled']
         for name in ('uri', 'client_id', 'discovery_prefix', 'topic_prefix', 'ca_file'):
@@ -214,12 +216,19 @@ class SettingsHandlers:
             return self._json(request, 500, {
                 'ok': False, 'error': 'could not save MQTT configuration',
             }, secrets=submitted)
+        # The MQTT service is built once, when the camera application starts, so a
+        # changed configuration only takes effect after a restart. Do it here, as the
+        # Prusa form does; if it cannot be done (no helper, an older image) the
+        # response keeps saying a restart is required. An unchanged save restarts nothing.
+        changed = before != (dict(mqtt), dict(secrets_cfg.get('mqtt') or {}))
+        applied = changed and self._restart_camera()
+        warnings = [] if applied or not changed else [INTEGRATION_RESTART_WARNING]
         return self._json(request, 200, {
             'ok': True,
             'saved': True,
-            'active': False,
-            'restart_required': True,
-            'warnings': [INTEGRATION_RESTART_WARNING],
+            'active': applied,
+            'restart_required': changed and not applied,
+            'warnings': warnings,
             'mqtt': _mqtt_integration_view(device_cfg, secrets_cfg),
         }, secrets=submitted)
 
