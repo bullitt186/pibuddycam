@@ -6,6 +6,12 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 
 ## [Unreleased]
 
+## [1.5.0]: 2026-10-11 (needs a new image)
+
+A real setup wizard, network, time-zone and timelapse-trigger settings in the console, the
+Connect snapshot and live stream working again, and a steadier, lighter video stream. Several
+features need a new image; see *Upgrade notes*.
+
 ### Added
 - Setup wizard: **Later** for the Prusa Connect token, the fingerprint and MQTT. Only Wi-Fi and the
   administrator password are required, so you can set up Wi-Fi first, switch your phone back to
@@ -49,6 +55,7 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   Needs a new image. The hotspot is open, so its login page is reachable in range while it runs.
 
 ### Fixed
+- At 180° the picture is no longer sometimes upside down with red and blue swapped. `rpicam-vid --rotation 180` relied on sensor flips that did not always reach the OV5647; the camera now flips in the Pi's ISP. 1080p runs at 25 fps. App change, no new image.
 - Video readers no longer freeze at random. When a snapshot or other reader disconnected, the stream multiplexer could remove a *different* reader's queue (empty queues compare equal), so RTSP, WebRTC or the monitor stopped getting frames while their connection stayed open, and the dropped queue's memory and polling thread leaked. The multiplexer also forwarded the stream in 64 KB batches, so frames arrived in bursts with 0.2–0.4 s pauses; it now forwards each write of the encoder right away. Arrives with the application update and takes effect the next time the camera source restarts (for example a reboot or a quality change).
 - Saving MQTT settings in the console restarts the camera application, so MQTT connects right away. It used to need a manual restart: the MQTT service is only built when the application starts, and the console just said a restart was required. Saving without a change restarts nothing.
 - The console's local monitor shows a picture again. The admin service lacked `XDG_CACHE_HOME`, so every capture rescanned the GStreamer plugins (about 12 s on a Zero 2 W) and hit the 10 s limit before the first frame. Needs a new image.
@@ -165,7 +172,8 @@ the new names, the built-in update source and the new signing key.
 - The default rotation is 0°. Before this release 180° was hard-coded, so select 180° once if
   your camera is mounted upside down.
 
-[Unreleased]: https://github.com/bullitt186/pibuddycam/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/bullitt186/pibuddycam/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/bullitt186/pibuddycam/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/bullitt186/pibuddycam/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/bullitt186/pibuddycam/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/bullitt186/pibuddycam/releases/tag/v1.3.0
