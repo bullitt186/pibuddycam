@@ -77,6 +77,7 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 
 ### Changed
 - The video stream uses a fixed encoder bitrate by quality: about 1.5 Mbit/s (SD), 3 Mbit/s (HD) and 4 Mbit/s (FHD). Without `--bitrate` rpicam-vid used its default of about 10 Mbit/s. This also lowers the load on the snapshot decoder and the Wi-Fi link. The values are **[assumption]** for a still scene, so check picture quality on your device. App change, no new image.
+- The stream multiplexer uses about half the CPU (7.6–7.7% of a core instead of 14.8–15.9% under the same load): each reader now sleeps until new video arrives instead of checking its queue 200 times a second. Takes effect the next time the camera source restarts.
 - A snapshot and the console's local monitor return as soon as the first frame is decoded, not after a fixed 10 s run: the monitor refreshes every few seconds instead of every ~10 s. The 10 s stay as the upper limit.
 - When a claimed camera falls back to the setup hotspot, the phone's sign-in window shows how to
   reach the console (`https://192.168.4.1/admin`) instead of "404: Not Found".

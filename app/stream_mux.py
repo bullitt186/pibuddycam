@@ -67,7 +67,7 @@ class Channel:
         self.patch = patch
         self.clients = []
         self.keyframe = b''
-        self._lock = threading.Lock()
+        self._lock = threading.Condition()  # guards clients/keyframe; broadcast wakes idle clients
         threading.Thread(target=self._serve, daemon=True).start()
 
     def _serve(self):
@@ -93,10 +93,11 @@ class Channel:
             self.clients.append(q)
         try:
             while True:
-                if not q:
-                    threading.Event().wait(0.005)
-                    continue
-                conn.sendall(q.popleft())
+                with self._lock:
+                    while not q:
+                        self._lock.wait()
+                    data = q.popleft()
+                conn.sendall(data)  # never under the lock: a blocked send must not stall broadcast
         except Exception:
             pass
         finally:
@@ -114,6 +115,7 @@ class Channel:
                 q.append(data)
                 while len(q) > MAX_QUEUE:
                     q.popleft()
+            self._lock.notify_all()
 
     def set_keyframe(self, data: bytes):
         with self._lock:

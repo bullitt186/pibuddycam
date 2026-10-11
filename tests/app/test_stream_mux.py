@@ -30,7 +30,7 @@ class ChannelDisconnectTests(unittest.TestCase):
     def _channel(self):
         ch = stream_mux.Channel.__new__(stream_mux.Channel)  # no listening socket
         ch.port, ch.patch, ch.clients, ch.keyframe = 0, False, [], b''
-        ch._lock = threading.Lock()
+        ch._lock = threading.Condition()
         return ch
 
     def _wait(self, cond):
@@ -60,6 +60,27 @@ class ChannelDisconnectTests(unittest.TestCase):
         self.assertEqual(len(ch.clients), 1)
         ch.broadcast(b'two')
         self.assertEqual(live_peer.recv(16), b'two')
+
+    def test_idle_clients_sleep_until_a_broadcast(self):
+        ch = self._channel()
+        peers = []
+        for _ in range(100):
+            conn, peer = socket.socketpair()
+            peer.settimeout(2)
+            peers.append(peer)
+            self.addCleanup(peer.close)
+            threading.Thread(target=ch._handle, args=(conn,), daemon=True).start()
+        self._wait(lambda: len(ch.clients) == 100)
+        time.sleep(0.1)
+
+        cpu = time.process_time()
+        time.sleep(0.5)
+        # A 5 ms poll costs 100 clients x 100 wakeups here; blocking waits cost ~nothing.
+        self.assertLess(time.process_time() - cpu, 0.05)
+
+        ch.broadcast(b'go')
+        for peer in peers:
+            self.assertEqual(peer.recv(16), b'go')
 
 
 if __name__ == '__main__':
