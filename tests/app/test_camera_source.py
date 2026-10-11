@@ -1,4 +1,5 @@
 """Camera source pipeline builder (rpicam-source.service entry point)."""
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -35,14 +36,34 @@ class SettingsFromEnvTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
-    def test_zero_and_180_use_rpicam_rotation_flag(self):
-        for degrees in (0, 180):
-            with self.subTest(degrees=degrees):
-                cmd = build(1920, 1080, degrees)
-                self.assertEqual(cmd, (
-                    '/usr/bin/rpicam-vid -v 0 --codec h264 -t 0 --width 1920 --height 1080 '
-                    f'--framerate 30 --rotation {degrees} --profile baseline --intra 30 '
-                    f'--bitrate 4000000 --flush --inline -o - | {PY} {MUX}'))
+    def test_zero_uses_plain_rpicam(self):
+        self.assertEqual(build(1920, 1080, 0), (
+            '/usr/bin/rpicam-vid -v 0 --codec h264 -t 0 --width 1920 --height 1080 '
+            '--framerate 30 --rotation 0 --profile baseline --intra 30 '
+            f'--bitrate 4000000 --flush --inline -o - | {PY} {MUX}'))
+
+    def test_180_flips_in_the_isp_not_the_sensor(self):
+        # Sensor flips (rpicam --rotation 180) intermittently swap red and blue.
+        cmd = build(1920, 1080, 180, camera_source.BACKEND_ISP)
+        self.assertNotIn('rpicam-vid', cmd)
+        self.assertIn('v4l2convert disable-passthrough=true capture-io-mode=dmabuf '
+                      'extra-controls="c,horizontal_flip=1,vertical_flip=1"', cmd)
+        self.assertIn('video/x-raw,format=NV12,width=1920,height=1080 '
+                      '! v4l2h264enc output-io-mode=dmabuf-import', cmd)
+        self.assertIn('videoflip video-direction=180',
+                      build(1920, 1080, 180, camera_source.BACKEND_SOFTWARE))
+
+    def test_isp_backend_runs_1080p_at_its_measured_rate(self):
+        self.assertIn('framerate=25/1', build(1920, 1080, 180, camera_source.BACKEND_ISP))
+        self.assertIn('framerate=30/1', build(1280, 720, 180, camera_source.BACKEND_ISP))
+
+    def test_every_pipeline_is_valid_bash(self):
+        for degrees in (0, 90, 180, 270):
+            for backend in (camera_source.BACKEND_ISP, camera_source.BACKEND_SOFTWARE):
+                with self.subTest(degrees=degrees, backend=backend):
+                    cmd = build(1920, 1080, degrees, backend)
+                    result = subprocess.run(['bash', '-n', '-c', cmd], capture_output=True)
+                    self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_bitrate_follows_the_picture_size(self):
         # Without --bitrate rpicam-vid uses the encoder default (about 10 Mbit/s).
@@ -57,8 +78,8 @@ class CommandTests(unittest.TestCase):
     def test_isp_backend_rotates_in_v4l2convert_with_swapped_caps(self):
         cmd = build(1920, 1080, 90, camera_source.BACKEND_ISP)
         self.assertTrue(cmd.startswith('/usr/bin/gst-launch-1.0 -q libcamerasrc'))
-        self.assertIn('width=1920,height=1080,framerate=30/1', cmd)
-        self.assertIn('v4l2convert extra-controls="c,rotate=90"', cmd)
+        self.assertIn('width=1920,height=1080,framerate=25/1', cmd)
+        self.assertIn('extra-controls="c,rotate=90"', cmd)
         self.assertIn('video/x-raw,format=NV12,width=1080,height=1920', cmd)
         self.assertIn('repeat_sequence_header=1', cmd)
         self.assertIn('stream-format=byte-stream', cmd)
@@ -101,18 +122,26 @@ class BackendDetectionTests(unittest.TestCase):
             self.assertEqual(camera_source.detect_rotation_backend(),
                              camera_source.BACKEND_ISP)
 
+    def test_backend_is_detected_for_the_requested_rotation(self):
+        with patch.object(camera_source, 'find_isp_device', return_value='/dev/video12'), \
+             patch.object(camera_source, 'isp_supports_rotation', return_value=True) as sup:
+            camera_source.detect_rotation_backend(180)
+        sup.assert_called_once_with('/dev/video12', 180)
+
     def test_unopenable_device_has_no_rotation(self):
         self.assertFalse(camera_source.isp_supports_rotation('/nonexistent/video99'))
 
 
 class MainTests(unittest.TestCase):
     def test_execs_bash_with_pipefail_and_release_local_mux(self):
-        with patch.object(camera_source.os, 'execv') as execv:
+        with patch.object(camera_source.os, 'execv') as execv, \
+             patch.object(camera_source, 'detect_rotation_backend',
+                          return_value=camera_source.BACKEND_ISP):
             camera_source.main({'CAM_WIDTH': '640', 'CAM_HEIGHT': '480', 'CAM_ROTATION': '180'})
         path, argv = execv.call_args.args
         self.assertEqual(path, '/bin/bash')
         self.assertEqual(argv[:4], ['/bin/bash', '-o', 'pipefail', '-c'])
-        self.assertIn('--rotation 180', argv[4])
+        self.assertIn('vertical_flip=1', argv[4])
         self.assertIn(str(PI_DIR / 'stream_mux.py'), argv[4])
 
     def test_zero_rotation_never_probes_the_isp(self):

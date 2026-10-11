@@ -65,11 +65,19 @@ changes no configuration. Its result settles the chip-label assumption above.
   but stay experimental until they pass the capture matrix. libcamera allows **one** process to
   own the sensor. `rpicam-source` owns it and fans H.264 out on `127.0.0.1:8888`; everything else
   (RTSP, WebRTC, snapshots, timelapse, console) reads that stream.
-- **Rotation 0°/180°:** `rpicam-vid --rotation`, done with sensor flips at no cost.
+- **Rotation 0°:** plain `rpicam-vid`.
+- **Rotation 180°:** a GStreamer source that flips in the bcm2835 ISP (`v4l2convert` with
+  `horizontal_flip`/`vertical_flip`, dmabuf to the encoder). On a Pi Zero 2 W the m2m ISP
+  manages 30 fps up to 720p but only about 25 fps at 1080p, so 1080p runs at 25 fps. It uses
+  about 10 percentage points more total CPU than `rpicam-vid` (≈21% instead of ≈11%)
+  **[confirmed]**. Sensor flips (`rpicam-vid --rotation 180`) are not used; see field note 22.
+  Without ISP flip controls it falls back to software `videoflip`, which manages only about
+  2–3 fps at 1080p.
 - **Rotation 90°/270°:** the ISP can't transpose through libcamera, so a GStreamer source is used
   instead. It rotates in the bcm2835 ISP (`v4l2convert`) when the kernel exposes a rotate control,
-  and falls back to software `videoflip` at 10 fps otherwise. **Not yet verified on hardware.** To
-  verify on a device:
+  and falls back to software `videoflip` at 10 fps otherwise. The tested kernel (6.18, Pi Zero 2 W)
+  exposes **no** rotate control, so 90°/270° run in software there. **Not yet verified on
+  hardware.** To verify on a device:
   1. `gst-inspect-1.0 libcamerasrc` shows the element (package `gstreamer1.0-libcamera`).
   2. `v4l2-ctl -d /dev/video12 -l`, run on the node named `bcm2835-codec-isp`, lists `rotate`.
      `camera_source.detect_rotation_backend` uses the same probe.
@@ -105,6 +113,7 @@ with an OV5647. Read this before changing the image, units, camera path or netwo
 | 19 | Connect configuration reached the app, but video quality never changed; journal said `sudo: pibuddycam : command not allowed` | the quality path still called broad `sudo systemctl` commands, which the appliance's intentionally narrow sudoers policy rejects | add fixed `pibuddycam-priv quality-restart` and route quality changes through it (`c1d3e76`; live-verified HD→FHD on `1.0.4`) |
 | 20 | claimed admin console served **plaintext HTTP on :443** (diagnosed live) | `/etc/pibuddycam/admin.env` was absent: `admin_app.py` consumed `ADMIN_TLS_CERT`/`ADMIN_TLS_KEY` but no boot-time generator existed, and `/etc/pibuddycam` is tmpfs while ROOT is read-only | boot-time `admin_tls.ensure()` from `pi-persist.service` generates a durable `/data` keypair and recreates `admin.env`; `admin_app` now fails closed without it. Live-verified on release `1.1.8` (`0474b46`) on 2026-09-26; fresh-image/setup-hotspot verification remains pending |
 | 21 | local console rendered the boot spinner, sign-in form and authenticated shell **all at once**; ghost buttons invisible on light cards; 360px viewport scrolled horizontally; monitor/snapshot frames never appeared | `[hidden]` was overridden by per-component `display` rules, the dark topbar ghost-button palette leaked onto light cards, the mobile nav could not shrink/wrap, and the CSP `img-src` omitted `blob:` while the monitor used `createObjectURL`; the re-auth promise was dropped on expiry and the MQTT/Prusa forms also ran the generic settings submit | enforce `[hidden]` with `display:none !important`, scope the dark ghost style to `.topbar`, let the mobile nav wrap/shrink, add `blob:` to `img-src`, settle a pending re-auth as cancelled, and skip the generic submit without a `data-setting` (`44a2a58`; live-verified on application release `1.1.9` on 2026-09-26) |
+| 22 | At 180° the picture was sometimes upside down with red and blue swapped (orange looked blue); a restart could fix or cause it | `rpicam-vid --rotation 180` uses OV5647 sensor flips; on some starts the flip did not reach the sensor while libcamera still assumed the flipped Bayer order (kernel 6.18). The 90°/270° GStreamer pipeline also never ran: its unquoted `level=(string)4` is a bash syntax error | 180° flips in the ISP instead; quote the caps; a test runs `bash -n` on every pipeline. The cause in the driver is an **[assumption]** |
 
 ### Operational lessons
 
