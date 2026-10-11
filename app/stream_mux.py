@@ -101,31 +101,19 @@ class Channel:
             pass
         finally:
             with self._lock:
-                try:
-                    self.clients.remove(q)
-                except ValueError:
-                    pass
+                # By identity: deques compare by value, so list.remove(q) would drop
+                # whichever *other* client's queue is equally empty, orphaning it.
+                self.clients = [c for c in self.clients if c is not q]
             conn.close()
 
     def broadcast(self, data: bytes):
         if self.patch:
             data = patch_sps(data)
         with self._lock:
-            dead = []
             for q in self.clients:
-                if q is None:
-                    continue
-                try:
-                    q.append(data)
-                    while len(q) > MAX_QUEUE:
-                        q.popleft()
-                except Exception:
-                    dead.append(q)
-            for q in dead:
-                try:
-                    self.clients.remove(q)
-                except ValueError:
-                    pass
+                q.append(data)
+                while len(q) > MAX_QUEUE:
+                    q.popleft()
 
     def set_keyframe(self, data: bytes):
         with self._lock:
@@ -145,36 +133,42 @@ def _is_keyframe_start(data: bytes) -> bool:
     return False
 
 
-channels = [Channel(PORT), Channel(PORT_PATCHED, patch=True)]
+def main():
+    channels = [Channel(PORT), Channel(PORT_PATCHED, patch=True)]
 
-# ponytail: accumulate a rolling keyframe buffer (SPS+PPS+IDR) so new clients
-# get a clean start. Cleared after each IDR so it only holds the latest one.
-_kf_buf = b''
+    # ponytail: accumulate a rolling keyframe buffer (SPS+PPS+IDR) so new clients
+    # get a clean start. Cleared after each IDR so it only holds the latest one.
+    _kf_buf = b''
 
-stdin = sys.stdin.buffer
-while True:
-    chunk = stdin.read(BUFSIZE)
-    if not chunk:
-        break
+    stdin = sys.stdin.buffer
+    while True:
+        # read1: forward what the encoder wrote now; read() would wait for a full 64 KB
+        chunk = stdin.read1(BUFSIZE)
+        if not chunk:
+            break
 
-    if _is_keyframe_start(chunk):
-        # Trim to the first SPS/IDR start code so we never send leading slice data
-        sps_pos = len(chunk)
-        for sc_offset in range(len(chunk) - 4):
-            if chunk[sc_offset:sc_offset + 4] == START:
-                nal_type = chunk[sc_offset + 4] & 0x1F
-                if nal_type in (5, 7):
-                    sps_pos = sc_offset
-                    break
-        _kf_buf = chunk[sps_pos:]
-    elif _kf_buf:
-        # Continuation of the current keyframe sequence
-        _kf_buf += chunk
-        # Promote once we have SPS+PPS+IDR plus at least one full P-frame worth (> 32 KB)
-        if len(_kf_buf) > 32768:
-            for ch in channels:
-                ch.set_keyframe(ch.patch and patch_sps(_kf_buf) or _kf_buf)
-            _kf_buf = b''
+        if _is_keyframe_start(chunk):
+            # Trim to the first SPS/IDR start code so we never send leading slice data
+            sps_pos = len(chunk)
+            for sc_offset in range(len(chunk) - 4):
+                if chunk[sc_offset:sc_offset + 4] == START:
+                    nal_type = chunk[sc_offset + 4] & 0x1F
+                    if nal_type in (5, 7):
+                        sps_pos = sc_offset
+                        break
+            _kf_buf = chunk[sps_pos:]
+        elif _kf_buf:
+            # Continuation of the current keyframe sequence
+            _kf_buf += chunk
+            # Promote once we have SPS+PPS+IDR plus at least one full P-frame worth (> 32 KB)
+            if len(_kf_buf) > 32768:
+                for ch in channels:
+                    ch.set_keyframe(ch.patch and patch_sps(_kf_buf) or _kf_buf)
+                _kf_buf = b''
 
-    for ch in channels:
-        ch.broadcast(chunk)
+        for ch in channels:
+            ch.broadcast(chunk)
+
+
+if __name__ == '__main__':
+    main()
