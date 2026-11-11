@@ -100,6 +100,7 @@ export SOURCE_DATE_EPOCH
 SOURCE_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
 VERSION="$(git -C "$REPO_ROOT" describe --tags --always --dirty 2>/dev/null || echo 0.0.0+local)"
 WORKROOT="${WORKROOT:-$IMAGE_DIR/work}"
+mkdir -p "$WORKROOT"
 
 echo "builder:   $LOCK_URL @ $LOCK_COMMIT ($LOCK_TAG)"
 echo "source:    $SOURCE_COMMIT ($VERSION)"
