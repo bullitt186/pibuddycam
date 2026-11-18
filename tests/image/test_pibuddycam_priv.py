@@ -210,6 +210,7 @@ class UpdaterUnitBoundaryTests(unittest.TestCase):
         ]
         self.assertEqual(len(exec_lines), 1)
         self.assertIn('updater_install.py install', exec_lines[0])
+        self.assertIn('UMask=0022', unit.splitlines())
 
     def test_reboot_is_the_fixed_systemctl_reboot(self):
         block = self.helper.split('reboot)', 1)[1].split(';;', 1)[0]

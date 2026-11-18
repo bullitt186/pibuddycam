@@ -29,6 +29,8 @@ StartLimitBurst=3
 [Service]
 Type=oneshot
 User=root
+# Release dirs are activated 0755 for the unprivileged launcher; pin the umask.
+UMask=0022
 WorkingDirectory=/opt/pibuddycam
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=-/etc/pibuddycam-updater.conf
