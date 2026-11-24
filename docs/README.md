@@ -18,7 +18,9 @@
 | [architecture.md](architecture.md) | see how the processes, state, updates and privileges fit together |
 | [development.md](development.md) | set up, test, build images and try changes on hardware |
 | [releasing.md](releasing.md) | cut a release and understand CI/CD and OTA publishing |
+| [SCOPE.md](SCOPE.md) | check what belongs in the project and what does not |
 | [roadmap.md](roadmap.md) | find open work worth picking up |
+| [adr/](adr/README.md) | read the architecture decisions and why they were made |
 | [reverse-engineering/](reverse-engineering/README.md) | understand the Buddy3D protocol and firmware parity |
 | [agents/](agents/README.md) | (coding agents) job-specific instructions |
 

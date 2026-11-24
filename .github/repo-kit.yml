@@ -1,0 +1,4 @@
+# repo-kit settings for PR hygiene. See https://github.com/bullitt186/repo-kit
+exempt_paths:   # not code: archived material that is never edited, firmware-analysis helpers run in Ghidra
+  - _archive/**
+  - research/**

@@ -6,6 +6,14 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 
 ## [Unreleased]
 
+### Changed
+- Contributing: one setup for people and coding agents from
+  [repo-kit](https://github.com/bullitt186/repo-kit). `CONTRIBUTING.md` has the Definition of
+  Done every pull request is reviewed against, `docs/SCOPE.md` says what belongs in the project,
+  architecture decisions live in `docs/adr/`, and feature work starts from an issue the maintainer
+  has labelled `accepted`. New checks on pull requests: `PR hygiene`, a gitleaks secret scan and
+  dependency review. No change for users of the camera.
+
 ## [1.5.0]: 2026-10-11 (needs a new image)
 
 A real setup wizard, network, time-zone and timelapse-trigger settings in the console, the
