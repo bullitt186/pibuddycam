@@ -12,7 +12,7 @@ Contribution rules (commits, PRs, what must never be committed) are in
 | `app/` | The appliance runtime (Python), its systemd units (`app/systemd/`) and the web console (`app/web/`). See [app/README.md](../app/README.md) |
 | `image/` | The SD-card image build (rpi-image-gen layer, installer, validator, release scripts). See [image/README.md](../image/README.md) |
 | `tests/` | `app/`, `image/` and `docs/` unit tests; `e2e/` Playwright console tests |
-| `docs/` | Documentation. `reverse-engineering/` holds the protocol knowledge |
+| `docs/` | Documentation. `reverse-engineering/` holds the protocol knowledge, `adr/` the architecture decisions |
 | `research/` | Firmware-analysis helpers (Ghidra scripts) |
 | `.github/workflows/` | CI and the release pipeline |
 | `_archive/` | Historical material. Not maintained |
@@ -87,6 +87,13 @@ Keeping CI green:
 - **Secret scan.** The scan uses source mode for `.py`/`.rs`/`.proto` files and artifact mode for
   everything else. Test directories, fixtures and docs (including `_archive/docs/`) are excluded. Names like `token=…` or `password=…` in
   shell or YAML trip it, so pick neutral variable names. Placeholders use `<PLACEHOLDER>` form.
+
+Two shared workflows from [repo-kit](https://github.com/bullitt186/repo-kit) run as well:
+`.github/workflows/security.yml` (gitleaks secret scan and dependency review on every pull
+request, a full-history secret scan weekly) and `.github/workflows/pr-hygiene.yml` (`PR hygiene`:
+code changes come with a test change and a `CHANGELOG.md` entry, ADRs are well-formed, Markdown
+links resolve; see [CONTRIBUTING.md](../CONTRIBUTING.md#definition-of-done)). Dependabot proposes
+GitHub Actions updates weekly.
 
 Releases are built by `.github/workflows/release.yml` on a native arm64 runner. See
 [releasing](releasing.md).

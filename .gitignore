@@ -54,3 +54,7 @@ venv/
 .DS_Store
 .codegraph/
 .codex/
+
+# Claude Code: local settings and agent worktrees
+.claude/settings.local.json
+.claude/worktrees/

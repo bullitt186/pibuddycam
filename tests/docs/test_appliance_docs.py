@@ -4,7 +4,8 @@ Stdlib-only; no network or hardware. They keep the documentation navigable and
 safe to publish:
 
 * the community and user/contributor pages exist where the README links them;
-* agent instructions live in one small AGENTS.md that CLAUDE.md imports;
+* agent instructions live in one AGENTS.md that CLAUDE.md imports; its
+  repository part (below the shared repo-kit block) stays a small index;
 * every relative markdown link and ``#anchor`` in maintained docs resolves
   (``_archive/`` is historical and exempt as a *source*, not as a target);
 * no personal literals or the formerly leaked device MAC appear in any tracked
@@ -48,7 +49,9 @@ FORBIDDEN_ACCEPTANCE_CLAIMS = (
     "release matrix is complete",
 )
 
+#: Lines of the repository part of AGENTS.md, below the shared repo-kit block.
 AGENTS_MAX_LINES = 80
+REPO_KIT_END = "<!-- repo-kit:end -->"
 
 
 def _tracked(pattern=None):
@@ -86,9 +89,11 @@ class RequiredDocsTests(unittest.TestCase):
         self.assertLess(len(text.splitlines()), 10)
 
     def test_agents_md_stays_an_index(self):
-        lines = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8").splitlines()
-        self.assertLessEqual(len(lines), AGENTS_MAX_LINES)
-        text = "\n".join(lines)
+        text = (REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        # The shared block above the marker is managed by repo-kit, not by this repository.
+        self.assertIn(REPO_KIT_END, text)
+        text = text.split(REPO_KIT_END, 1)[1]
+        self.assertLessEqual(len(text.splitlines()), AGENTS_MAX_LINES)
         for guide in ("protocol-gap-work", "app-development", "image-appliance",
                       "releases-ci", "live-hardware-ops"):
             self.assertIn(f"docs/agents/{guide}.md", text)
