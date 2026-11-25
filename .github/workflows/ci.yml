@@ -156,6 +156,26 @@ jobs:
           npm ci --no-audit --no-fund
           npm run lint
 
+  # Type check (repo-kit CI standard, category 3): mypy over app/ with mypy.ini. The
+  # runtime lock is installed so aiohttp and paho-mqtt are checked with their types.
+  typecheck:
+    name: type check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install mypy and the runtime lock
+        run: |
+          python3 -m pip install -r requirements-dev.txt
+          python3 -m pip install --require-hashes -r image/requirements.lock
+
+      - name: mypy
+        run: mypy
+
   # The console's offline browser suite (Playwright + Chromium against the fake
   # runtime in tests/e2e/server.py). It needs no device and no network beyond the
   # package install, and E2E_REQUIRED=1 turns a missing browser into a failure

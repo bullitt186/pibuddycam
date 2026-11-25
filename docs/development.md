@@ -41,6 +41,7 @@ for f in image/scripts/*.sh app/*.sh image/assets/*.sh image/assets/pibuddycam-p
          image/assets/networkmanager/dispatcher.d/*; do bash -n "$f"; done   # shell syntax
 python3 scripts/check_lint.py                    # ruff lint, ruff format (changed lines), shellcheck
 npm ci && npm run lint                           # ESLint for app/web/
+mypy                                             # type check of app/ (mypy.ini)
 ```
 
 The lint tools are pinned in `requirements-dev.txt` (ruff) and `package.json` / `package-lock.json`
@@ -72,7 +73,14 @@ to 100 characters) checks only the lines a change touches, so a small change nev
 whole module; format new code with `ruff format --range=<first>-<last> <file>` or format new files
 completely. Existing app modules are exempt from the ruff rules they broke when lint was introduced
 (per-file entries in `ruff.toml`); fix those findings when you change the module for its own reason
-and delete its entry. There is no type checker yet.
+and delete its entry.
+
+mypy checks `app/` strictly (`mypy.ini`; install `requirements-dev.txt` and the runtime lock so
+aiohttp and paho-mqtt bring their types). The app was written without annotations, so each existing
+module is relaxed only in the strict options it broke when the check was introduced. New modules
+are fully strict. When you annotate a module, remove its relaxations; never add a module to a
+section, and keep every module in one section only (a second section silently replaces the first;
+`tests/tooling/test_mypy_config.py` checks this).
 
 ## Continuous integration
 
@@ -81,6 +89,7 @@ and delete its entry. There is no type checker yet.
   runtime dependencies so the aiohttp-based tests run (they skip without it);
 - the console end-to-end suite (a separate `console-e2e` job);
 - lint and format: `scripts/check_lint.py` and ESLint (a separate `lint` job);
+- the type check: mypy over `app/` (a separate `typecheck` job);
 - byte-compilation;
 - `bash -n` on all scripts;
 - a secret scan of the changed files (`image/scripts/scan-secrets.sh`);

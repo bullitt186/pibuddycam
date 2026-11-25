@@ -156,12 +156,11 @@ The full table is in [docs/development.md](docs/development.md#repository-layout
 
 | Task | Command |
 |---|---|
-| Install / set up | Git and Python 3.12 or newer; the unit tests need only the standard library. Optional, so fewer tests skip: `python3 -m pip install PyYAML==6.0.2`, `minisign`, `mtools`, `dosfstools`, `zstd`, and `python3 -m pip install --require-hashes -r image/requirements.lock` for the HTTP route tests. For lint: `python3 -m pip install -r requirements-dev.txt` (ruff), `shellcheck`, Node.js 22 and `npm ci` (ESLint) |
-| Fast check (before every commit, also the stop hook) | `python3 -m unittest discover -s tests -t . && python3 -m compileall -q app tests && python3 scripts/check_lint.py && npm run lint` (ruff lint, ruff format on the changed lines, shellcheck, ESLint for `app/web/`) |
+| Install / set up | Git and Python 3.12 or newer; the unit tests need only the standard library. Optional, so fewer tests skip: `python3 -m pip install PyYAML==6.0.2`, `minisign`, `mtools`, `dosfstools`, `zstd`, and `python3 -m pip install --require-hashes -r image/requirements.lock` for the HTTP route tests. For lint and type check: `python3 -m pip install -r requirements-dev.txt` (ruff, mypy) and the runtime lock, `shellcheck`, Node.js 22 and `npm ci` (ESLint) |
+| Fast check (before every commit, also the stop hook) | `python3 -m unittest discover -s tests -t . && python3 -m compileall -q app tests && python3 scripts/check_lint.py && npm run lint && mypy` (ruff lint, ruff format on the changed lines, shellcheck, ESLint for `app/web/`, mypy over `app/`) |
 | Full check | the fast check, `for f in image/scripts/*.sh app/*.sh image/assets/*.sh image/assets/pibuddycam-priv image/assets/networkmanager/dispatcher.d/*; do bash -n "$f"; done`, and for changes to `app/web/` or the admin HTTP API the console end-to-end suite `NODE_PATH="$(npm root -g)" tests/e2e/run.sh` (set-up in [docs/development.md](docs/development.md#tests)) |
 | Mutation testing of changed code | not set up yet ([#14](https://github.com/bullitt186/pibuddycam/issues/14)); until then, check new assertions by breaking the changed line by hand and confirming a test fails |
 
-There is no type checker yet ([#14](https://github.com/bullitt186/pibuddycam/issues/14)), so never claim one ran.
 
 ### Rules specific to this repository
 

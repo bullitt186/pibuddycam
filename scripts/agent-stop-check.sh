@@ -23,6 +23,12 @@ if command -v ruff >/dev/null 2>&1 && command -v shellcheck >/dev/null 2>&1; the
 else
   echo "Note: lint skipped (ruff or shellcheck not installed)." >&2
 fi
+if command -v mypy >/dev/null 2>&1; then
+  if ! out=$(mypy 2>&1); then
+    printf 'mypy failed. Fix it before stopping:\n%s\n' "$(printf '%s' "$out" | tail -40)" >&2
+    exit 2
+  fi
+fi
 if [ -d node_modules/eslint ]; then
   if ! out=$(npm run --silent lint 2>&1); then
     printf 'ESLint failed. Fix it before stopping:\n%s\n' "$(printf '%s' "$out" | tail -40)" >&2
