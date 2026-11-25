@@ -6,7 +6,7 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 
 ## [Unreleased]
 
-## [1.5.1]: 2026-11-25
+## [1.5.1]: 2026-11-25 (needs a new image)
 
 ### Removed
 - The archived Rust cloud proxy (`_archive/proxy/`) is deleted from the repository, so its outdated
@@ -50,7 +50,9 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   default is (#13). Needs a new image.
 
 ### Upgrade notes
-- **OTA-deliverable:** the loopback-only internal stream, the ONVIF and MQTT hardening and the
+- **Flash the 1.5.1 image.** The release workflow sets the bundle's `min_image_version` to 1.5.1,
+  so a camera on an older image refuses this update over the air.
+- **OTA-deliverable in principle:** the loopback-only internal stream, the ONVIF and MQTT hardening and the
   aiohttp update.
 - **Needs a new image:** the `UMask` of the update install service. On an older image the service
   keeps the system default, as in 1.5.0.
