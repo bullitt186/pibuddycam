@@ -18,6 +18,10 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 - ONVIF and WS-Discovery requests with a document type declaration are rejected, so an XML
   entity expansion in a request can no longer cost memory or CPU.
 - The MQTT connection test refuses TLS 1.0 and 1.1 explicitly.
+- aiohttp, which serves the web console and the camera's local HTTP endpoints, is updated from
+  3.14.3 to 3.14.5. This fixes 17 published advisories against 3.14.3 (PYSEC-2026-4365 to
+  PYSEC-2026-4400), 11 of them rated high (#27). The library ships in the application bundle,
+  not in the image's Debian packages.
 
 ### Changed
 - Contributing: tests that read or parse `app/` files (source-structure checks) moved to

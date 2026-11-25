@@ -840,6 +840,16 @@ class ImageScaffoldingTests(unittest.TestCase):
             "--extra-index-url https://www.piwheels.org/simple", text
         )
 
+    def test_requirements_lock_aiohttp_has_the_advisory_fixes(self):
+        # aiohttp 3.14.3 has 17 advisories (PYSEC-2026-4365 to -4400), fixed
+        # in 3.14.4 (issue #27). The lock must not fall back below the fix.
+        pins = {
+            spec.split("==", 1)[0].strip().lower(): spec.split("==", 1)[1].split()[0]
+            for spec in lock_package_specs(read_text(REQUIREMENTS_LOCK))
+        }
+        version = tuple(int(part) for part in pins["aiohttp"].split("."))
+        self.assertGreaterEqual(version, (3, 14, 4), f"aiohttp {pins['aiohttp']}")
+
     def test_installer_copies_lock_and_builds_hashed_venv(self):
         text = read_text(ASSETS / "install-factory-app.sh")
         # The committed lock is copied into the image verbatim, mode 0644.
