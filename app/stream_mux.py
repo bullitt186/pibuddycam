@@ -27,6 +27,9 @@ import sys, socket, threading, collections
 
 PORT = 8888
 PORT_PATCHED = 8889
+# Loopback only: every consumer (RTSP server, snapshots, WebRTC) runs on the
+# device and connects to 127.0.0.1; the raw stream has no authentication.
+HOST = '127.0.0.1'
 BUFSIZE = 65536
 MAX_QUEUE = 120  # ~4 s at 30 fps; slow clients are dropped, not backpressured
 
@@ -73,7 +76,7 @@ class Channel:
     def _serve(self):
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv.bind(('0.0.0.0', self.port))
+        srv.bind((HOST, self.port))
         srv.listen(8)
         while True:
             conn, _ = srv.accept()

@@ -83,5 +83,42 @@ class ChannelDisconnectTests(unittest.TestCase):
             self.assertEqual(peer.recv(16), b'go')
 
 
+
+class _RecordingSocket:
+    """Records the bind address; accept() ends the serve loop."""
+
+    bound = None
+
+    def __init__(self, *args):
+        pass
+
+    def setsockopt(self, *args):
+        pass
+
+    def bind(self, address):
+        _RecordingSocket.bound = address
+
+    def listen(self, backlog):
+        pass
+
+    def accept(self):
+        raise OSError('stop')
+
+
+class ChannelBindTests(unittest.TestCase):
+    def test_listens_on_loopback_only(self):
+        # docs/architecture.md: the H.264 fan-out is on 127.0.0.1:8888; the raw
+        # stream has no authentication and every consumer runs on the device.
+        ch = stream_mux.Channel.__new__(stream_mux.Channel)
+        ch.port = 8888
+        original = stream_mux.socket.socket
+        stream_mux.socket.socket = _RecordingSocket
+        try:
+            with self.assertRaises(OSError):
+                ch._serve()
+        finally:
+            stream_mux.socket.socket = original
+        self.assertEqual(_RecordingSocket.bound, ('127.0.0.1', 8888))
+
 if __name__ == '__main__':
     unittest.main()
