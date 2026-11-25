@@ -273,5 +273,31 @@ class ProbeImportSafetyTests(unittest.TestCase):
         self.assertNotIn('import paho', head)
 
 
+
+class DefaultTlsHandshakeTests(unittest.TestCase):
+    def test_refuses_tls_below_1_2(self):
+        # RFC 8996 deprecates TLS 1.0 and 1.1.
+        seen = {}
+
+        class _Context:
+            minimum_version = ssl.TLSVersion.MINIMUM_SUPPORTED
+
+            def wrap_socket(self, sock, server_hostname):
+                seen['minimum'] = self.minimum_version
+                seen['host'] = server_hostname
+                return sock
+
+        class _Sock:
+            def settimeout(self, timeout):
+                pass
+
+        original = mqtt_probe.ssl.create_default_context
+        mqtt_probe.ssl.create_default_context = lambda cafile=None: _Context()
+        try:
+            mqtt_probe._default_tls_handshake(_Sock(), 'broker.example', None, 5)
+        finally:
+            mqtt_probe.ssl.create_default_context = original
+        self.assertEqual(seen, {'minimum': ssl.TLSVersion.TLSv1_2, 'host': 'broker.example'})
+
 if __name__ == '__main__':
     unittest.main()

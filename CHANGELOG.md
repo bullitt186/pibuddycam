@@ -12,6 +12,7 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   snapshots and WebRTC are unchanged.
 - ONVIF and WS-Discovery requests with a document type declaration are rejected, so an XML
   entity expansion in a request can no longer cost memory or CPU.
+- The MQTT connection test refuses TLS 1.0 and 1.1 explicitly.
 
 ### Changed
 - Contributing: one setup for people and coding agents from

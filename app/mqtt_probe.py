@@ -117,6 +117,7 @@ def _default_connect(addrinfo, timeout):
 def _default_tls_handshake(sock, host, ca_file, timeout):
     """Wrap ``sock`` in TLS using the system CA or ``ca_file``."""
     context = ssl.create_default_context(cafile=ca_file or None)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2  # no TLS 1.0/1.1 (RFC 8996)
     sock.settimeout(timeout)
     return context.wrap_socket(sock, server_hostname=host)
 
