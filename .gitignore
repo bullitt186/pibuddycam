@@ -59,5 +59,6 @@ venv/
 .claude/settings.local.json
 .claude/worktrees/
 
-# ── Development tools (package.json: ESLint) ─────────────────────────────
+# ── Development tools (ESLint packages, mutation-testing stage) ──────────
 node_modules/
+.mutmut/

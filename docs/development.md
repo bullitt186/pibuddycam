@@ -42,6 +42,7 @@ for f in image/scripts/*.sh app/*.sh image/assets/*.sh image/assets/pibuddycam-p
 python3 scripts/check_lint.py                    # ruff lint, ruff format (changed lines), shellcheck
 npm ci && npm run lint                           # ESLint for app/web/
 mypy                                             # type check of app/ (mypy.ini)
+scripts/mutate.sh                                # mutation testing of the changed app modules
 ```
 
 The lint tools are pinned in `requirements-dev.txt` (ruff) and `package.json` / `package-lock.json`
@@ -82,6 +83,18 @@ are fully strict. When you annotate a module, remove its relaxations; never add 
 section, and keep every module in one section only (a second section silently replaces the first;
 `tests/tooling/test_mypy_config.py` checks this).
 
+Coverage of a line says it ran, not that a test notices a wrong result. `scripts/mutate.sh` runs
+mutmut (`requirements-dev.txt`) on the app modules changed against `origin/main`, against the tests
+in `tests/app/`. It works in a staging copy, `.mutmut/`, because mutmut names mutants after the
+file path while the tests import the app modules as top-level names. Test files that read or
+parse app source files (for example `ast.parse` of `main.py`) are left out of the mutation run:
+they would read the much larger mutated files, which takes minutes per test. Treat a surviving mutant in
+code you changed as a missing or weak assertion: add a test that kills it, or say in the pull
+request why the mutant is equivalent. `scripts/mutate.sh --results` lists the survivors;
+`scripts/mutate.sh --all` mutates all of `app/` (about 40,000 mutants, hours). The weekly
+`Mutation testing` workflow runs the full set, one job per module, and reports the score; it
+never blocks a pull request.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push and pull request, on Python 3.12 and 3.13:
@@ -90,6 +103,8 @@ section, and keep every module in one section only (a second section silently re
 - the console end-to-end suite (a separate `console-e2e` job);
 - lint and format: `scripts/check_lint.py` and ESLint (a separate `lint` job);
 - the type check: mypy over `app/` (a separate `typecheck` job);
+
+`.github/workflows/mutation.yml` runs the full mutation test weekly and only reports the score.
 - byte-compilation;
 - `bash -n` on all scripts;
 - a secret scan of the changed files (`image/scripts/scan-secrets.sh`);
