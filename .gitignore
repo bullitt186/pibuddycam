@@ -40,10 +40,6 @@ api/
 # ── Playwright failure diagnostics (synthetic fixture only) ───────────────
 tests/e2e/.artifacts/
 
-# ── Rust build output ─────────────────────────────────────────────────────
-target/
-**/target/
-
 # ── Python ────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
