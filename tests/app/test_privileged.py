@@ -99,7 +99,7 @@ class NetworkVerbTests(unittest.TestCase):
 
     def test_network_apply_sends_the_request_on_stdin_only(self):
         runner = make_runner()
-        body = '{"ssid": "Home", "psk": "%s"}' % PSK
+        body = f'{{"ssid": "Home", "psk": "{PSK}"}}'
         result = privileged.network_apply(body, runner=runner)
         self.assertTrue(result)
         self.assertEqual(runner.calls[0][0], self.HELPER + ['network-apply'])
@@ -109,7 +109,7 @@ class NetworkVerbTests(unittest.TestCase):
 
     def test_network_apply_failure_reason_carries_no_secret(self):
         runner = make_runner(default=FakeResult(1, PSK, PSK))
-        result = privileged.network_apply('{"psk": "%s"}' % PSK, runner=runner)
+        result = privileged.network_apply(f'{{"psk": "{PSK}"}}', runner=runner)
         self.assertFalse(result)
         self.assertNotIn(PSK, result.reason)
 

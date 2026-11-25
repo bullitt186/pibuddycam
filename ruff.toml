@@ -1,0 +1,54 @@
+# Ruff lint and format (repo-kit CI standard, category 2). Run: python3 scripts/check_lint.py
+line-length = 100
+target-version = "py312"
+# app/ is run with app/ on sys.path, so its modules import each other as top-level names.
+src = ["app", "."]
+extend-exclude = ["_archive", "research"]
+
+[format]
+# The code uses single quotes throughout; the formatter keeps what is written.
+quote-style = "preserve"
+
+[lint]
+select = ["E4", "E7", "E9", "F", "W", "B", "UP", "I"]
+
+# Baseline of the runtime code when lint was introduced (#14): each existing app/ module is
+# exempt only from the rules it broke then, so the device code was not changed by the CI
+# change. New modules get every rule. Remove a module's entry when the module is next changed
+# for its own reason and the findings are fixed with it; never add codes to an entry.
+[lint.per-file-ignores]
+"app/admin_app.py" = ["B904"]
+"app/admin_auth.py" = ["UP032"]
+"app/admin_http.py" = ["F401", "I001"]
+"app/admin_http_media.py" = ["I001"]
+"app/admin_http_network.py" = ["I001"]
+"app/admin_http_settings.py" = ["I001"]
+"app/admin_http_system.py" = ["I001"]
+"app/admin_tls.py" = ["B904"]
+"app/camera.py" = ["I001"]
+"app/config_schema.py" = ["B904", "UP031"]
+"app/factory_reset.py" = ["B904", "UP015", "UP017"]
+"app/gpio_trigger.py" = ["UP031"]
+"app/identity.py" = ["I001"]
+"app/local_http.py" = ["I001"]
+"app/local_webrtc.py" = ["E402", "I001"]
+"app/main.py" = ["E741", "F401", "I001", "UP041"]
+"app/media_build.py" = ["UP017"]
+"app/media_library.py" = ["B904"]
+"app/mqtt_service.py" = ["UP045"]
+"app/onvif_discovery.py" = ["I001"]
+"app/onvif_facade.py" = ["I001", "UP017"]
+"app/provisioning.py" = ["UP017"]
+"app/quality_control.py" = ["I001"]
+"app/rtsp_config.py" = ["I001"]
+"app/rtsp_server.py" = ["E402", "I001"]
+"app/runtime_ipc.py" = ["UP041"]
+"app/settings_coordinator.py" = ["UP045"]
+"app/setup_wizard.py" = ["UP017"]
+"app/signaling.py" = ["F401", "I001", "UP041"]
+"app/state.py" = ["I001"]
+"app/stream_mux.py" = ["E401", "I001"]
+"app/timelapse.py" = ["B905", "UP031"]
+"app/update_control.py" = ["F401"]
+"app/upload.py" = ["UP041"]
+"app/webrtc.py" = ["E402", "E741", "F401", "I001"]

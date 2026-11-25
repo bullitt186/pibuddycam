@@ -8,7 +8,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
@@ -16,7 +16,7 @@ sys.path.insert(0, str(PI_DIR))
 
 import factory_reset  # noqa: E402
 
-FIXED_CLOCK = lambda: datetime(2026, 9, 21, 12, 34, 56, tzinfo=timezone.utc)  # noqa: E731
+FIXED_CLOCK = lambda: datetime(2026, 9, 21, 12, 34, 56, tzinfo=UTC)  # noqa: E731
 FIXED_TOKEN = 'fixed-reset-token-0123456789abcdef'
 
 SECRET_PSK = 'hunter2-super-secret-psk'
@@ -343,7 +343,7 @@ class SecretHygieneTests(FactoryResetTestCase):
         self.assertNotIn(SECRET_PSK, report.reason)
         self.assertNotIn(SECRET_TOKEN, report.reason)
 
-        with open(self.pending_path, 'r', encoding='utf-8') as handle:
+        with open(self.pending_path, encoding='utf-8') as handle:
             marker_text = handle.read()
         self.assertNotIn(SECRET_PSK, marker_text)
         self.assertNotIn(SECRET_TOKEN, marker_text)

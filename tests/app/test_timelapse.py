@@ -50,7 +50,7 @@ def _read_avi(path):
 
     strl_pos = hdrl_start + 8 + avih_size
     assert data[strl_pos:strl_pos + 4] == b'LIST'
-    strl_size = struct.unpack('<I', data[strl_pos + 4:strl_pos + 8])[0]
+    _strl_size = struct.unpack('<I', data[strl_pos + 4:strl_pos + 8])[0]
     assert data[strl_pos + 8:strl_pos + 12] == b'strl'
     strl_start = strl_pos + 12
 
@@ -148,9 +148,7 @@ class TimelapseStorageTests(unittest.TestCase):
     def test_frame_name_timestamp_format(self):
         now = 1700000000.123456
         tm = time.localtime(1700000000)
-        expected = 'timelapse_%02d-%02d-%02d-123.jpg' % (
-            tm.tm_hour, tm.tm_min, tm.tm_sec,
-        )
+        expected = f'timelapse_{tm.tm_hour:02d}-{tm.tm_min:02d}-{tm.tm_sec:02d}-123.jpg'
         self.assertEqual(timelapse.frame_name(now), expected)
         self.assertRegex(
             timelapse.frame_name(now), r'^timelapse_\d{2}-\d{2}-\d{2}-\d{3}\.jpg$'

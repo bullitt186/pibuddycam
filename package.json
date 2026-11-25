@@ -1,0 +1,13 @@
+{
+  "name": "pibuddycam-dev",
+  "private": true,
+  "description": "Development tools only (ESLint for the web console in app/web/); nothing here ships on the device.",
+  "scripts": {
+    "lint": "eslint app/web"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.14.0",
+    "globals": "17.14.0"
+  }
+}

@@ -58,3 +58,6 @@ venv/
 # Claude Code: local settings and agent worktrees
 .claude/settings.local.json
 .claude/worktrees/
+
+# ── Development tools (package.json: ESLint) ─────────────────────────────
+node_modules/

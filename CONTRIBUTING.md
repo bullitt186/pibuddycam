@@ -44,6 +44,8 @@ the web console's end-to-end tests, building an image and testing on a Pi.
    python3 -m compileall -q app tests
    for f in image/scripts/*.sh app/*.sh image/assets/*.sh image/assets/pibuddycam-priv \
             image/assets/networkmanager/dispatcher.d/*; do bash -n "$f"; done
+   python3 scripts/check_lint.py      # needs requirements-dev.txt and shellcheck
+   npm ci && npm run lint             # ESLint for app/web/
    ```
 5. **Write clear commit messages.** [Conventional Commits](https://www.conventionalcommits.org/)
    (`feat:`, `fix:`, `docs:`, …) with an imperative subject (≤ 72 characters) that says what

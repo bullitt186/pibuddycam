@@ -39,7 +39,12 @@ python3 -m unittest tests.app.test_rotation -v   # one module
 python3 -m compileall -q app tests               # byte-compile
 for f in image/scripts/*.sh app/*.sh image/assets/*.sh image/assets/pibuddycam-priv \
          image/assets/networkmanager/dispatcher.d/*; do bash -n "$f"; done   # shell syntax
+python3 scripts/check_lint.py                    # ruff lint, ruff format (changed lines), shellcheck
+npm ci && npm run lint                           # ESLint for app/web/
 ```
+
+The lint tools are pinned in `requirements-dev.txt` (ruff) and `package.json` / `package-lock.json`
+(ESLint); nothing of them ships on the device. shellcheck comes from the system package manager.
 
 The web console has an offline end-to-end suite that drives Chromium against a fake runtime:
 
@@ -62,7 +67,12 @@ state does not advance past `unclaimed` there.
 The `tests/app` package redirects every path that points into `/data` to a throw-away directory
 (`tests/app/__init__.py`); a test that needs a real path must inject it.
 
-There is no formatter or type checker for the repository. Match the surrounding style.
+Lint rules are in `ruff.toml` and `eslint.config.mjs`. `ruff format` (quotes as written, lines up
+to 100 characters) checks only the lines a change touches, so a small change never reformats a
+whole module; format new code with `ruff format --range=<first>-<last> <file>` or format new files
+completely. Existing app modules are exempt from the ruff rules they broke when lint was introduced
+(per-file entries in `ruff.toml`); fix those findings when you change the module for its own reason
+and delete its entry. There is no type checker yet.
 
 ## Continuous integration
 
@@ -70,6 +80,7 @@ There is no formatter or type checker for the repository. Match the surrounding 
 - the unit tests, with PyYAML, minisign, mtools and dosfstools installed, plus the hash-locked
   runtime dependencies so the aiohttp-based tests run (they skip without it);
 - the console end-to-end suite (a separate `console-e2e` job);
+- lint and format: `scripts/check_lint.py` and ESLint (a separate `lint` job);
 - byte-compilation;
 - `bash -n` on all scripts;
 - a secret scan of the changed files (`image/scripts/scan-secrets.sh`);

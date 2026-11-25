@@ -6,9 +6,7 @@ NetworkManager and no service is touched. The sudoers rule is validated with
 """
 import os
 import shutil
-import stat
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path

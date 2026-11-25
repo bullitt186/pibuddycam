@@ -24,8 +24,8 @@ _socketio_stub = types.ModuleType('socketio')
 _socketio_stub.AsyncClient = object
 sys.modules.setdefault('socketio', _socketio_stub)
 
-import webrtc_lifecycle  # noqa: E402
 import signaling  # noqa: E402
+import webrtc_lifecycle  # noqa: E402
 from proto import decode_message, encode_message  # noqa: E402
 
 

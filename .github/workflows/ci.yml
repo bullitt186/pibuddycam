@@ -121,6 +121,41 @@ jobs:
       - name: Whitespace check
         run: git diff --check
 
+  # Lint and format (repo-kit CI standard, category 2): ruff, shellcheck and ESLint.
+  # ruff format checks only the lines a change touches (scripts/check_lint.py).
+  lint:
+    name: lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install the development tools
+        run: python3 -m pip install -r requirements-dev.txt
+
+      # A pull request is checked against its base branch, a push against the
+      # commit before it (a new branch has none: HEAD~1).
+      - name: ruff and shellcheck
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          if [ -z "${BASE//0/}" ]; then BASE=HEAD~1; fi
+          python3 scripts/check_lint.py "$BASE"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: ESLint (web console)
+        run: |
+          npm ci --no-audit --no-fund
+          npm run lint
+
   # The console's offline browser suite (Playwright + Chromium against the fake
   # runtime in tests/e2e/server.py). It needs no device and no network beyond the
   # package install, and E2E_REQUIRED=1 turns a missing browser into a failure

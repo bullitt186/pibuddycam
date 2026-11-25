@@ -22,8 +22,8 @@ import admin_http  # noqa: E402
 import config_schema  # noqa: E402
 import device_control  # noqa: E402
 import factory_reset  # noqa: E402
-import privileged  # noqa: E402
 import live_monitor  # noqa: E402
+import privileged  # noqa: E402
 import provisioning  # noqa: E402
 import setup_wizard  # noqa: E402
 

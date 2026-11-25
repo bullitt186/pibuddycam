@@ -3,7 +3,6 @@
 Each migration is tested for idempotency (applying twice is safe) and
 correctness.  The runner is tested with a fake ROOT and state file.
 """
-import json
 import os
 import sys
 import tempfile
@@ -14,7 +13,7 @@ from pathlib import Path
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
-import migrations
+import migrations  # noqa: E402
 
 
 class CreateMntSdcardTests(unittest.TestCase):

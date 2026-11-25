@@ -1,8 +1,6 @@
-import asyncio
 import sys
 import unittest
 from pathlib import Path
-
 
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
@@ -46,7 +44,7 @@ class StatusClassificationTests(unittest.TestCase):
 
 class ExceptionClassificationTests(unittest.TestCase):
     def test_timeout_exception(self):
-        self.assertEqual(http_result.classify_exception(asyncio.TimeoutError()), http_result.TIMEOUT)
+        self.assertEqual(http_result.classify_exception(TimeoutError()), http_result.TIMEOUT)
         self.assertEqual(http_result.classify_exception(TimeoutError()), http_result.TIMEOUT)
 
     def test_connection_exception(self):

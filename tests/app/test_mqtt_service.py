@@ -281,7 +281,9 @@ class ServiceTestCase(unittest.TestCase):
         # Default to a non-running dispatcher: no real thread ever spins on the
         # frozen fake clock. Tests that exercise dispatch pass a RecordingDispatcher.
         if dispatcher is None:
-            dispatcher = lambda func: None
+
+            def dispatcher(func):
+                return None
         service = mqtt_service.MqttService(
             coordinator, config or valid_config(), backend=backend,
             clock=clock, sleeper=sleeper, jitter=jitter or (lambda low, high: low),
@@ -1086,7 +1088,8 @@ class UpdateEntityTests(ServiceTestCase):
         return [call for call in self.publishes(backend) if call[1] == topic]
 
     def test_update_state_is_published_retained_on_start(self):
-        provider = lambda: dict(self.DOC)
+        def provider():
+            return dict(self.DOC)
         service, _, backend, _, _ = self.make(update_state_provider=provider)
         self.assertTrue(service.start())
         published = self.update_publishes(backend, service.update_state_topic)

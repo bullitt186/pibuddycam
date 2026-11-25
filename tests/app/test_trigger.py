@@ -7,13 +7,12 @@ import sys
 import unittest
 from pathlib import Path
 
-
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
+import trigger  # noqa: E402
 from proto import encode_message  # noqa: E402
 from state import CameraState  # noqa: E402
-import trigger  # noqa: E402
 
 
 def decode(fields):

@@ -17,3 +17,18 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+
+  # Development tools: requirements-dev.txt (ruff) and package.json (ESLint).
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

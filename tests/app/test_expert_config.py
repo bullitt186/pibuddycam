@@ -116,7 +116,7 @@ class ValidateCandidateTests(ExpertTestBase):
         self.assertFalse(ok)
         self.assertNotIn(SECRET, reason)
 
-        malformed_secrets = '[prusa]\ntoken = "%s"\n[unknown]\nx = "y"\n' % SECRET
+        malformed_secrets = f'[prusa]\ntoken = "{SECRET}"\n[unknown]\nx = "y"\n'
         ok, reason, _device, _secrets = expert_config.validate_candidate(
             VALID_DEVICE, malformed_secrets
         )

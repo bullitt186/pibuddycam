@@ -5,7 +5,6 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
@@ -16,8 +15,8 @@ _socketio_stub = types.ModuleType('socketio')
 _socketio_stub.AsyncClient = object
 sys.modules['socketio'] = _socketio_stub
 
-from auth import auth_ack_is_success  # noqa: E402
 import signaling  # noqa: E402
+from auth import auth_ack_is_success  # noqa: E402
 
 
 class AuthAckPredicateTests(unittest.TestCase):

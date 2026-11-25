@@ -148,7 +148,7 @@ class StaticTests(Env):
         self.assertEqual(self.run_tx(self.REQ, nm), 'applied')
         add = nm.commands('add')[0]
         tail = add[add.index('--') + 1:]
-        pairs = dict(zip(tail[::2], tail[1::2]))
+        pairs = dict(zip(tail[::2], tail[1::2], strict=False))
         self.assertEqual(pairs['ipv4.method'], 'manual')
         self.assertEqual(pairs['ipv4.addresses'], '192.0.2.10/24')
         self.assertEqual(pairs['ipv4.gateway'], '192.0.2.1')
@@ -159,7 +159,7 @@ class StaticTests(Env):
         nm = FakeNm(profile='802-11-wireless.ssid:Home\n')
         self.run_tx({'ssid': 'Home', 'psk': PSK}, nm)
         modify = nm.commands('modify')[0]
-        pairs = dict(zip(modify[4::2], modify[5::2]))
+        pairs = dict(zip(modify[4::2], modify[5::2], strict=False))
         self.assertEqual(pairs['ipv4.method'], 'auto')
         self.assertEqual(pairs['ipv4.addresses'], '')
         self.assertEqual(pairs['ipv4.gateway'], '')

@@ -1,5 +1,4 @@
 """capture_jpeg_after: only a live frame newer than the trigger is returned."""
-import glob
 import os
 import sys
 import unittest
@@ -58,7 +57,7 @@ class FakeProc:
         """Write the frames scripted up to the current fake time."""
         while self.written < len(self.script) and self.script[self.written][0] <= self.clock[0]:
             _due, data = self.script[self.written]
-            path = os.path.join(self.dir, 'snap%05d.jpg' % self.written)
+            path = os.path.join(self.dir, f'snap{self.written:05d}.jpg')
             with open(path, 'wb') as handle:
                 handle.write(data)
             os.utime(path, (self.clock[0], self.clock[0]))
