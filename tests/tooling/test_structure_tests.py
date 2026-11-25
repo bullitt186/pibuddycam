@@ -56,7 +56,11 @@ def reads_of_app_files(path):
             continue
         text = ast.get_source_segment(source, receiver) or ''
         used = {n.id for n in ast.walk(receiver) if isinstance(n, ast.Name)}
-        if MODULE_FILE.search(text) or ('__file__' in text and APP_PATH.search(text)) or used & paths:
+        if (
+            MODULE_FILE.search(text)
+            or ('__file__' in text and APP_PATH.search(text))
+            or used & paths
+        ):
             found.append(call.lineno)
     return found
 
@@ -76,9 +80,14 @@ class StructureTestsTest(unittest.TestCase):
 
     def test_the_check_finds_source_reads(self):
         # The patterns the structure files use; if one stops matching, the check above is blind.
-        for name in ('test_main_mqtt_structure.py', 'test_admin_web_structure.py',
-                     'test_camera_probe_structure.py', 'test_persist_restore_structure.py',
-                     'test_main_token_guard_structure.py', 'test_image_guard_structure.py'):
+        for name in (
+            'test_main_mqtt_structure.py',
+            'test_admin_web_structure.py',
+            'test_camera_probe_structure.py',
+            'test_persist_restore_structure.py',
+            'test_main_token_guard_structure.py',
+            'test_image_guard_structure.py',
+        ):
             with self.subTest(file=name):
                 self.assertNotEqual(reads_of_app_files(ROOT / 'tests' / 'app' / name), [])
 
