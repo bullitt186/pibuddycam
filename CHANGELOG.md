@@ -14,7 +14,7 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 ### Security
 - The internal H.264 stream (ports 8888 and 8889) now listens on `127.0.0.1` only, as documented.
   Before, anyone on the LAN could read the raw camera stream without a password. RTSP, ONVIF,
-  snapshots and WebRTC are unchanged.
+  snapshots and WebRTC are unchanged (#24).
 - ONVIF and WS-Discovery requests with a document type declaration are rejected, so an XML
   entity expansion in a request can no longer cost memory or CPU.
 - The MQTT connection test refuses TLS 1.0 and 1.1 explicitly.
@@ -41,6 +41,19 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 - Contributing: mutation testing with mutmut, `scripts/mutate.sh` for the changed modules and a
   weekly full run that reports the score without blocking pull requests. No change for users of
   the camera.
+
+### Fixed
+- The service that installs a signed update sets its file-creation mask (`UMask=0022`) itself, so
+  installed release directories stay readable for the camera application whatever the system
+  default is (#13). Needs a new image.
+
+### Upgrade notes
+- **OTA-deliverable:** the loopback-only internal stream, the ONVIF and MQTT hardening and the
+  aiohttp update.
+- **Needs a new image:** the `UMask` of the update install service. On an older image the service
+  keeps the system default, as in 1.5.0.
+- If you read the raw H.264 stream from another machine on ports 8888 or 8889, switch to RTSP
+  (`rtsp://<device>:8554/live`) or ONVIF; those ports now answer only on the camera itself.
 
 ## [1.5.0]: 2026-10-11 (needs a new image)
 
