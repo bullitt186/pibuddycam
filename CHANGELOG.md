@@ -6,6 +6,8 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 
 ## [Unreleased]
 
+## [1.5.1]: 2026-11-25
+
 ### Removed
 - The archived Rust cloud proxy (`_archive/proxy/`) is deleted from the repository, so its outdated
   dependencies no longer raise security alerts. It was not part of the camera app or the image;
@@ -221,7 +223,8 @@ the new names, the built-in update source and the new signing key.
 - The default rotation is 0°. Before this release 180° was hard-coded, so select 180° once if
   your camera is mounted upside down.
 
-[Unreleased]: https://github.com/bullitt186/pibuddycam/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/bullitt186/pibuddycam/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/bullitt186/pibuddycam/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/bullitt186/pibuddycam/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/bullitt186/pibuddycam/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/bullitt186/pibuddycam/compare/v1.3.0...v1.3.1
