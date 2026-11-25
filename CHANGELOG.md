@@ -6,6 +6,11 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 
 ## [Unreleased]
 
+### Removed
+- The archived Rust cloud proxy (`_archive/proxy/`) is deleted from the repository, so its outdated
+  dependencies no longer raise security alerts. It was not part of the camera app or the image;
+  nothing changes for users. The last version is in tag `v1.5.0`.
+
 ### Security
 - The internal H.264 stream (ports 8888 and 8889) now listens on `127.0.0.1` only, as documented.
   Before, anyone on the LAN could read the raw camera stream without a password. RTSP, ONVIF,

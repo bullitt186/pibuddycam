@@ -14,4 +14,7 @@ or supported**, and its links and paths may be broken. The maintained documentat
 | `docs/camerainfo-verification.md` | Ghidra work plan for the `CameraInfo` message | Done; results are in [protocol](../docs/reverse-engineering/protocol.md) |
 | `docs/status-history.md`, `docs/gap-tracker-closed.md` | Dated session logs and evidence for closed firmware-parity gaps | [docs/status.md](../docs/status.md), [gap tracker](../docs/reverse-engineering/gap-tracker.md) |
 | `legacy-dev-install/` | Pre-appliance developer install (`deploy.sh`, `bootstrap.sh`, `config.ini`), the `config.ini` importer and an unused pairing-QR parser | The flashable image ([install](../docs/install.md)) |
-| `proxy/` | Rust tool that bridged an already-registered genuine camera's cloud stream to local RTSP/MQTT. Not built or tested since 2026-07 | — |
+
+The Rust cloud proxy (`proxy/`), which bridged an already-registered genuine camera's cloud stream to
+local RTSP/MQTT, was removed in 2026-11 because its unmaintained dependencies kept raising security
+alerts. Its last version is in tag `v1.5.0` (and commit `7d6c9e5`): `git show v1.5.0:_archive/proxy/README.md`.
