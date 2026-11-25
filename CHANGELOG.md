@@ -24,6 +24,8 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 - Contributing: CI lints the code. ruff checks Python and formats the lines a change touches,
   shellcheck checks the shell scripts, and ESLint checks the web console. The existing runtime code
   is not changed (baseline in `ruff.toml`). No change for users of the camera.
+- Contributing: CI type-checks `app/` with mypy. New modules are strict, and existing modules keep
+  the relaxations listed in `mypy.ini` until they are annotated. No change for users of the camera.
 
 ## [1.5.0]: 2026-10-11 (needs a new image)
 
