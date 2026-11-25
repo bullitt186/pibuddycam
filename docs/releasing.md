@@ -12,6 +12,7 @@ management, key location) belong in the maintainer's git-ignored `.agent/pi-ops.
 | `.github/workflows/ci.yml` | push to any branch, pull request | `ubuntu-latest` | host gate on Python 3.12 + 3.13: unit tests, byte-compile, `bash -n` of all scripts, secret scan of changed files, `git diff --check` |
 | `.github/workflows/release.yml` | tag `vX.Y.Z` (stable) or `alpha-vX.Y.Z` (alpha prerelease) | host gate on `ubuntu-latest`, then `[self-hosted, linux, arm64]` | builds the appliance image natively, assembles and signs the OS-image and application releases, validates them, uploads a workflow artifact, publishes the GitHub Release |
 | `release.yml` (manual) | `workflow_dispatch` with a `version` input | same | **dry run:** everything above except publishing. Use it to prove the runner after workflow, image or runner changes |
+| `.github/workflows/vulnerability-scan.yml` | weekly, `workflow_dispatch` | `ubuntu-latest` | osv-scanner over `image/requirements.lock`; reports known vulnerabilities and never blocks a pull request |
 
 The host gate installs PyYAML plus `minisign`, `mtools`, `dosfstools` and `zstd`, so the image
 config, signature and boot-partition tests run instead of being skipped. The application itself
