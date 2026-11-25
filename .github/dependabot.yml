@@ -8,3 +8,12 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7   # wait a week after a release before updating
+
+  # Python runtime dependencies of the app: image/requirements.in, compiled with
+  # pip-compile --generate-hashes into image/requirements.lock.
+  - package-ecosystem: pip
+    directory: /image
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
