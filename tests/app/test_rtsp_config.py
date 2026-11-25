@@ -35,15 +35,5 @@ class RtspConfigTests(unittest.TestCase):
                     rtsp_config.load_rtsp_config({'RTSP_PATH': value})
 
 
-class HomeAssistantUnitTests(unittest.TestCase):
-    def test_unit_is_independent_and_always_on(self):
-        unit = (PI_DIR / 'systemd' / 'pibuddycam-ha-rtsp.service').read_text()
-        self.assertIn('RTSP_PORT=8555', unit)
-        self.assertIn('RTSP_PATH=/live', unit)
-        self.assertIn('Requires=rpicam-source.service', unit)
-        self.assertIn('WantedBy=multi-user.target', unit)
-        self.assertNotIn('rtsp.mode', unit)
-
-
 if __name__ == '__main__':
     unittest.main()

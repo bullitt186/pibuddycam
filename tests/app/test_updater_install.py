@@ -7,8 +7,8 @@ The only real filesystem operations are inside per-test temporary directories.
 No network, no ``minisign``/``zstd``/``systemctl`` binary is ever invoked.
 """
 import argparse
-import ast
 import importlib
+import importlib.util
 import json
 import os
 import re
@@ -26,6 +26,15 @@ sys.path.insert(0, str(PI_DIR))
 
 import updater  # noqa: E402
 import updater_install as ui  # noqa: E402
+
+
+def _fresh_updater_install():
+    """Execute app/updater_install.py as a new module object, without touching ``ui``."""
+    spec = importlib.util.spec_from_file_location('updater_install_fresh', ui.__file__)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
 
 SHA_A = 'a' * 64
 
@@ -1135,7 +1144,9 @@ class UpdateStateFileTests(unittest.TestCase):
         self.path = os.path.join(self.tmp.name, 'update-state.json')
 
     def test_default_path_is_under_durable_data(self):
-        self.assertEqual(ui.DEFAULT_UPDATE_STATE_PATH,
+        # tests/app/__init__.py redirects ui's paths into a sandbox; a private copy of the
+        # module has the real default (and leaves ui and the sandbox alone, in any test order).
+        self.assertEqual(_fresh_updater_install().DEFAULT_UPDATE_STATE_PATH,
                          '/data/pibuddycam/update-state.json')
 
     def test_round_trip(self):
@@ -1231,7 +1242,6 @@ class UpdateStateFileTests(unittest.TestCase):
         self.assertFalse(ui.write_update_state(
             {'installed_version': '1.0.0'},
             path=os.path.join(directory, 'nested', 'update-state.json')))
-
 
 
 # --------------------------------------------------------------------------- #
@@ -1744,47 +1754,6 @@ def parse_unit(path):
 
 
 class UpdaterUnitTests(unittest.TestCase):
-    def test_service_is_root_oneshot_gated_on_data_ready(self):
-        unit = parse_unit(PI_DIR / 'systemd' / 'pibuddycam-updater.service')
-        section = unit['Unit']
-        self.assertIn('data-ready.target', section['Requires'].split())
-        self.assertIn('data-ready.target', section['After'].split())
-        service = unit['Service']
-        self.assertEqual(service['Type'], 'oneshot')
-        self.assertEqual(service['User'], 'root')
-        self.assertIn('updater_install.py', service['ExecStart'])
-        self.assertIn(' check', service['ExecStart'])
-        # A documented fixed PATH for the minisign/zstd binaries.
-        self.assertIn('PATH=', service['Environment'])
-        # The oneshot service is triggered by the timer, not enabled directly.
-        self.assertNotIn('Install', unit)
-
-    def test_service_recovers_before_check(self):
-        unit = parse_unit(PI_DIR / 'systemd' / 'pibuddycam-updater.service')
-        service = unit['Service']
-        self.assertIn('updater_install.py recover', service['ExecStartPre'])
-        self.assertIn(' check', service['ExecStart'])
-
-    def test_service_config_is_root_owned_not_service_writable(self):
-        text = (PI_DIR / 'systemd' / 'pibuddycam-updater.service').read_text(
-            encoding='utf-8')
-        service = parse_unit(PI_DIR / 'systemd' / 'pibuddycam-updater.service')['Service']
-        # AC-32: the manifest URL comes from the root-owned file, never from
-        # /etc/pibuddycam (which the unprivileged service account can write).
-        self.assertEqual(service.get('EnvironmentFile'), '-/etc/pibuddycam-updater.conf')
-        self.assertNotIn('/etc/pibuddycam/', text)
-        # The trust anchor cannot be overridden from the environment.
-        self.assertNotIn('PIBUDDYCAM_UPDATE_PUBLIC_KEY', text)
-        # The module itself must never read a public-key env override.
-        source = (PI_DIR / 'updater_install.py').read_text(encoding='utf-8')
-        self.assertNotIn('PIBUDDYCAM_UPDATE_PUBLIC_KEY', source)
-        self.assertNotIn('PUBLIC_KEY_ENV', source)
-
-    def test_timer_triggers_service_and_is_enabled(self):
-        unit = parse_unit(PI_DIR / 'systemd' / 'pibuddycam-updater.timer')
-        self.assertEqual(unit['Timer']['Unit'], 'pibuddycam-updater.service')
-        self.assertIn('24h', unit['Timer']['OnUnitActiveSec'])
-        self.assertIn('multi-user.target', unit['Install']['WantedBy'].split())
 
     def test_camera_target_wants_timer_but_never_requires_it(self):
         unit = parse_unit(
@@ -2013,33 +1982,16 @@ class ValidatorAssertionsTests(unittest.TestCase):
 
 class ImportSafetyTests(unittest.TestCase):
     def test_import_runs_no_subprocess_or_network(self):
+        # A private copy instead of importlib.reload(ui): a reload would undo the path sandbox
+        # of tests/app/__init__.py for every later test.
         with patch.object(subprocess, 'run',
                           side_effect=AssertionError('subprocess on import')), \
              patch.object(urllib.request, 'urlopen',
                           side_effect=AssertionError('network on import')):
-            importlib.reload(ui)
-        self.assertTrue(callable(ui.install_update))
-        self.assertTrue(callable(ui.check_for_update))
-        self.assertTrue(callable(ui.update_state_document))
-
-    def test_source_is_stdlib_plus_local(self):
-        source = (PI_DIR / 'updater_install.py').read_text(encoding='utf-8')
-        tree = ast.parse(source)
-        imported = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    imported.add(alias.name.split('.')[0])
-            elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    imported.add(node.module.split('.')[0])
-        allowed_stdlib = {
-            'argparse', 'dataclasses', 'json', 'logging', 'os', 'random', 're',
-            'shutil', 'socket', 'subprocess', 'sys', 'tempfile', 'time',
-            'urllib',
-        }
-        self.assertTrue(imported <= allowed_stdlib | {'app_version', 'updater'},
-                        f'unexpected imports: {imported}')
+            fresh = _fresh_updater_install()
+        self.assertTrue(callable(fresh.install_update))
+        self.assertTrue(callable(fresh.check_for_update))
+        self.assertTrue(callable(fresh.update_state_document))
 
 
 if __name__ == '__main__':

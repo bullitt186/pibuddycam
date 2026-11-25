@@ -26,18 +26,16 @@ stage() {
     rsync -a --delete --exclude '__pycache__' tests/ "$STAGE/tests/"
     # Some app tests read image/ files (units, configs) next to the app.
     rsync -a --delete image/ "$STAGE/image/"
-    # Tests that read or parse app source files (ast.parse, read_text of a module) would read
-    # the mutated files, which are many times larger and not the real source; parsing them can
-    # take minutes per test. Those test files do not take part in mutation testing.
-    local ignores
-    ignores=$(grep -lE "(PI_DIR|REPO|ROOT)[A-Z_]* / '([a-z_]+\.py|app|web|systemd)'|ast\.parse|inspect\.getsource" \
-        tests/app/*.py | sed 's/.*/"--ignore=&",/' | tr -d '\n')
-    cat > "$STAGE/pyproject.toml" <<TOML
+    # Source-structure tests (tests/app/*_structure.py) read or parse app/ files instead of
+    # running the code: under mutmut they would read the mutated files, which are many times
+    # larger (minutes per test), and they cannot kill a mutant. They do not take part in mutation
+    # testing; tests/tooling/test_structure_tests.py keeps such reads out of the other files.
+    cat > "$STAGE/pyproject.toml" <<'TOML'
 [tool.mutmut]
 source_paths = ["src/"]
 also_copy = ["image/"]
 pytest_add_cli_args_test_selection = ["tests/app/"]
-pytest_add_cli_args = [${ignores%,}]
+pytest_add_cli_args = ["--ignore-glob=tests/app/*_structure.py"]
 TOML
     [ -L "$STAGE/mutants/app" ] || ln -s src "$STAGE/mutants/app"
 }

@@ -47,12 +47,6 @@ class ImageGuardTests(unittest.TestCase):
         image_guard.exit_if_legacy_image(self.new, self.legacy, exit=codes.append)
         self.assertEqual(codes, [])
 
-    def test_entry_points_run_the_guard_before_starting(self):
-        for name in ('main.py', 'admin_app.py'):
-            text = (PI_DIR / name).read_text()
-            main_block = text[text.index("if __name__ == '__main__':"):]
-            self.assertIn('image_guard.exit_if_legacy_image()', main_block, name)
-
 
 if __name__ == '__main__':
     unittest.main()

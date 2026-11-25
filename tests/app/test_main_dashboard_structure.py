@@ -6,6 +6,7 @@ payload is built from the live coordinator and off the event loop, the runtime
 server is started and stopped with the process, and the snapshot paths record
 the observations the dashboard reports.
 """
+
 import ast
 import sys
 import unittest
@@ -23,9 +24,9 @@ def _tree():
 
 def _functions(tree, name):
     return [
-        node for node in ast.walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == name
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
     ]
 
 
@@ -96,13 +97,15 @@ class MainDashboardWiringTests(unittest.TestCase):
 
     def test_runtime_server_registers_the_dashboard_handler(self):
         server_calls = [
-            call for call in _calls(self.tree)
-            if any(chain == ['runtime_ipc', 'RuntimeServer']
-                   for chain in _attr_chains(call))
+            call
+            for call in _calls(self.tree)
+            if any(chain == ['runtime_ipc', 'RuntimeServer'] for chain in _attr_chains(call))
         ]
         self.assertTrue(server_calls)
         handlers = [
-            keyword for call in server_calls for keyword in call.keywords
+            keyword
+            for call in server_calls
+            for keyword in call.keywords
             if keyword.arg == 'handlers'
         ]
         self.assertTrue(handlers, 'RuntimeServer must receive a handlers table')
@@ -111,7 +114,8 @@ class MainDashboardWiringTests(unittest.TestCase):
 
     def test_runtime_server_start_failure_is_non_fatal(self):
         start_calls = [
-            call for call in _calls(self.tree)
+            call
+            for call in _calls(self.tree)
             if any(chain == ['runtime_server', 'start'] for chain in _attr_chains(call))
         ]
         self.assertTrue(start_calls)
@@ -125,8 +129,10 @@ class MainDashboardWiringTests(unittest.TestCase):
             self.assertEqual(len(functions), 1, name)
             text = ast.unparse(functions[0])
             for marker in (
-                'state.last_capture_at', 'state.last_capture_ok',
-                'state.last_snapshot_at', 'state.last_snapshot_ok',
+                'state.last_capture_at',
+                'state.last_capture_ok',
+                'state.last_snapshot_at',
+                'state.last_snapshot_ok',
             ):
                 self.assertIn(marker, text, f'{name}: {marker}')
 
@@ -155,9 +161,12 @@ class MainSettingsDispatchWiringTests(unittest.TestCase):
         chains = _attr_chains(self.tree)
         self.assertIn(['settings_dispatch', 'EventLoopMutationDispatcher'], chains)
         calls = [
-            call for call in _calls(self.tree)
-            if any(chain == ['settings_dispatch', 'EventLoopMutationDispatcher']
-                   for chain in _attr_chains(call))
+            call
+            for call in _calls(self.tree)
+            if any(
+                chain == ['settings_dispatch', 'EventLoopMutationDispatcher']
+                for chain in _attr_chains(call)
+            )
         ]
         self.assertTrue(calls)
         text = ast.unparse(calls[0])
@@ -175,12 +184,14 @@ class MainSettingsDispatchWiringTests(unittest.TestCase):
 
     def test_runtime_server_registers_the_settings_handler(self):
         server_calls = [
-            call for call in _calls(self.tree)
-            if any(chain == ['runtime_ipc', 'RuntimeServer']
-                   for chain in _attr_chains(call))
+            call
+            for call in _calls(self.tree)
+            if any(chain == ['runtime_ipc', 'RuntimeServer'] for chain in _attr_chains(call))
         ]
         handlers = [
-            keyword for call in server_calls for keyword in call.keywords
+            keyword
+            for call in server_calls
+            for keyword in call.keywords
             if keyword.arg == 'handlers'
         ]
         handler_text = ast.unparse(handlers[0].value)
@@ -190,7 +201,6 @@ class MainSettingsDispatchWiringTests(unittest.TestCase):
         # AC-4: the coordinator is mutated through the marshaller; main.py must
         # not add a second direct apply_mutation path.
         self.assertEqual(self.source.count('apply_mutation('), 0)
-
 
 
 if __name__ == '__main__':
