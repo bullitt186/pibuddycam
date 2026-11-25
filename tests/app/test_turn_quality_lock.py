@@ -12,7 +12,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 MAIN_PY = PI_DIR / 'main.py'
 WEBRTC_PY = PI_DIR / 'webrtc.py'

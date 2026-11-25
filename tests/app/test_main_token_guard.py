@@ -4,7 +4,6 @@
 so this pins the guard structurally: every Prusa Connect call is skipped while
 ``cloud_enabled`` is false, and the local services are not.
 """
-import re
 import unittest
 from pathlib import Path
 

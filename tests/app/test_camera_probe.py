@@ -283,7 +283,9 @@ class BinaryStdoutTests(unittest.TestCase):
         # Hardware-found regression: the runner decoded stdout as UTF-8, so a
         # JPEG capture raised and every probe failed. Binary must be accepted.
         jpeg = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00' + b'\x00' * 32
-        runner = lambda args, timeout: FakeResult(0, jpeg)
+
+        def runner(args, timeout):
+            return FakeResult(0, jpeg)
         ok, reason = camera_probe._default_capture(640, 480, 'still', runner)
         self.assertTrue(ok, reason)
 

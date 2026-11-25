@@ -1,5 +1,4 @@
 """The test package must never touch the machine's own /data or remount ``/``."""
-import os
 import sys
 import unittest
 from pathlib import Path

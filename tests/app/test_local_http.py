@@ -11,7 +11,7 @@ try:
     from aiohttp import web  # noqa: E402
     from aiohttp.test_utils import make_mocked_request  # noqa: E402
 except ImportError:  # the host test environment does not always provide aiohttp
-    raise unittest.SkipTest('aiohttp is not installed')
+    raise unittest.SkipTest('aiohttp is not installed') from None
 
 import local_http  # noqa: E402
 

@@ -386,7 +386,7 @@ class MqttTesterTests(WizardTestBase):
 
     def test_failed_test_is_redacted_and_not_staged(self):
         def tester(config):
-            return False, f'bad password mqtt-secret for mqttuser'
+            return False, 'bad password mqtt-secret for mqttuser'
 
         session = self.make_session(mqtt_tester=tester)
         result = session.submit('mqtt', dict(self.MQTT, test=True))

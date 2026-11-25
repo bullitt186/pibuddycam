@@ -20,7 +20,6 @@ PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
 import admin_tls  # noqa: E402
-import config_schema  # noqa: E402
 import persist_restore  # noqa: E402
 
 ADMIN_APP = PI_DIR / 'admin_app.py'

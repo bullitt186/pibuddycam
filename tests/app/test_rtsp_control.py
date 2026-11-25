@@ -4,14 +4,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
+import rtsp_control  # noqa: E402
 from proto import decode_message, encode_message  # noqa: E402
 from state import CameraState  # noqa: E402
 from status import build_status_message  # noqa: E402
-import rtsp_control  # noqa: E402
 
 
 def nested(raw):

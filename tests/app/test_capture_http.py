@@ -2,8 +2,6 @@ import ast
 import sys
 import unittest
 from pathlib import Path
-from unittest import mock
-
 
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))

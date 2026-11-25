@@ -11,7 +11,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
 
@@ -19,8 +18,7 @@ import quality_control  # noqa: E402
 import rtsp_control  # noqa: E402
 import settings_store  # noqa: E402
 from settings_coordinator import SettingsCoordinator, SettingsResult  # noqa: E402
-from state import CameraState, RAW_TO_ENUM  # noqa: E402
-
+from state import RAW_TO_ENUM, CameraState  # noqa: E402
 
 MAIN_PY = PI_DIR / 'main.py'
 

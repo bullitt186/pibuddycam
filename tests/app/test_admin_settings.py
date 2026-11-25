@@ -15,7 +15,6 @@ Stdlib-only; the coordinator uses recording fakes and no filesystem effects.
 import json
 import sys
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -31,7 +30,7 @@ import rtsp_control  # noqa: E402
 import runtime_ipc  # noqa: E402
 import settings_coordinator  # noqa: E402
 from settings_coordinator import SettingsCoordinator  # noqa: E402
-from state import CameraState, RAW_TO_ENUM  # noqa: E402
+from state import RAW_TO_ENUM, CameraState  # noqa: E402
 
 ADMIN_PASSWORD = 'correct horse battery staple'
 ADMIN_HASH = admin_auth.hash_password(ADMIN_PASSWORD)

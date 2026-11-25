@@ -21,6 +21,9 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
   architecture decisions live in `docs/adr/`, and feature work starts from an issue the maintainer
   has labelled `accepted`. New checks on pull requests: `PR hygiene`, a gitleaks secret scan and
   dependency review. No change for users of the camera.
+- Contributing: CI lints the code. ruff checks Python and formats the lines a change touches,
+  shellcheck checks the shell scripts, and ESLint checks the web console. The existing runtime code
+  is not changed (baseline in `ruff.toml`). No change for users of the camera.
 
 ## [1.5.0]: 2026-10-11 (needs a new image)
 

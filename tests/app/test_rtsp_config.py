@@ -2,7 +2,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
 

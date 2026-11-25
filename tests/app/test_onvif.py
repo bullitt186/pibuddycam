@@ -1,11 +1,10 @@
-from datetime import datetime, timezone
 import ast
 import sys
 import unittest
 import uuid
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 PI_DIR = Path(__file__).resolve().parents[2] / 'app'
 sys.path.insert(0, str(PI_DIR))
@@ -43,7 +42,7 @@ class OnvifTestCase(unittest.TestCase):
             service,
             self.context,
             request(namespace, action, inner),
-            now=datetime(2026, 9, 20, 12, 34, 56, tzinfo=timezone.utc),
+            now=datetime(2026, 9, 20, 12, 34, 56, tzinfo=UTC),
         )
 
 

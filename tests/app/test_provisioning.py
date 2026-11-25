@@ -10,7 +10,7 @@ import sys
 import tempfile
 import unittest
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -23,7 +23,7 @@ import identity  # noqa: E402
 import provisioning  # noqa: E402
 import settings_store  # noqa: E402
 
-FIXED_NOW = datetime(2026, 9, 21, 12, 0, 0, tzinfo=timezone.utc)
+FIXED_NOW = datetime(2026, 9, 21, 12, 0, 0, tzinfo=UTC)
 FIXED_ISO = '2026-09-21T12:00:00+00:00'
 
 FACTS_ALL = provisioning.Facts(

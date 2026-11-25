@@ -292,8 +292,6 @@ class MainTests(unittest.TestCase):
         self.assertEqual(captured['psk'], '')
 
     def test_failure_exits_nonzero_without_leaking_psk(self):
-        captured = {}
-
         def fake_apply(ssid, psk='', ifname=wifi_station.DEFAULT_IFNAME, runner=None):
             return False, 'nmcli station activation failed (exit 1)'
 
