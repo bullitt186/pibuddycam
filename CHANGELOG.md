@@ -15,6 +15,9 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 - The MQTT connection test refuses TLS 1.0 and 1.1 explicitly.
 
 ### Changed
+- Contributing: tests that read or parse `app/` files (source-structure checks) moved to
+  `tests/app/test_<module>_structure.py`; mutation testing skips only those files and now counts
+  the behaviour tests of every module (#33). Nothing changes on the device.
 - Contributing: one setup for people and coding agents from
   [repo-kit](https://github.com/bullitt186/repo-kit). `CONTRIBUTING.md` has the Definition of
   Done every pull request is reviewed against, `docs/SCOPE.md` says what belongs in the project,

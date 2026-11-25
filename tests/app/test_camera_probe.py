@@ -289,13 +289,6 @@ class BinaryStdoutTests(unittest.TestCase):
         ok, reason = camera_probe._default_capture(640, 480, 'still', runner)
         self.assertTrue(ok, reason)
 
-    def test_default_runner_does_not_decode_as_text(self):
-        # Guard the runner: text=True would raise on the binary capture.
-        import inspect
-
-        source = inspect.getsource(camera_probe._default_runner)
-        self.assertNotIn('text=True', source)
-
     def test_stdout_handles_bytes(self):
         self.assertEqual(camera_probe._stdout(FakeResult(0, b'abc')), 'abc')
 

@@ -407,15 +407,6 @@ class SettingsApiTests(unittest.TestCase):
             body={'field': 'camera_name', 'value': 'Bench'})
         self.assertEqual(response.status, 503)
 
-    def test_admin_core_never_writes_state_json(self):
-        source = (PI_DIR / 'admin_http.py').read_text(encoding='utf-8')
-        # No durable-state writer is imported or called from the admin core; the
-        # only settings mutation path is the injected runtime action.
-        self.assertNotIn('settings_store', source)
-        self.assertNotIn('save_persisted_state', source)
-        self.assertNotIn('persistable_state', source)
-        self.assertIn('self._settings_actions', source)
-
     def test_route_is_authenticated_and_declared(self):
         routes = {
             (route.method, route.pattern.pattern) for route in admin_http.AdminApp()._routes

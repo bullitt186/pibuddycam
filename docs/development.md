@@ -86,9 +86,13 @@ section, and keep every module in one section only (a second section silently re
 Coverage of a line says it ran, not that a test notices a wrong result. `scripts/mutate.sh` runs
 mutmut (`requirements-dev.txt`) on the app modules changed against `origin/main`, against the tests
 in `tests/app/`. It works in a staging copy, `.mutmut/`, because mutmut names mutants after the
-file path while the tests import the app modules as top-level names. Test files that read or
-parse app source files (for example `ast.parse` of `main.py`) are left out of the mutation run:
-they would read the much larger mutated files, which takes minutes per test. Treat a surviving mutant in
+file path while the tests import the app modules as top-level names. Tests that read or parse
+files of `app/` instead of running the code (for example `ast.parse` of `main.py`, a unit file or
+a web asset) are source-structure tests and live in `tests/app/test_<module>_structure.py`, next
+to the behaviour tests in `tests/app/test_<module>.py`. The mutation run skips the structure files:
+they would read the much larger mutated files, which takes minutes per test, and cannot kill a
+mutant. `tests/tooling/test_structure_tests.py` fails when another test file reads app files.
+Treat a surviving mutant in
 code you changed as a missing or weak assertion: add a test that kills it, or say in the pull
 request why the mutant is equivalent. `scripts/mutate.sh --results` lists the survivors;
 `scripts/mutate.sh --all` mutates all of `app/` (about 40,000 mutants, hours). The weekly

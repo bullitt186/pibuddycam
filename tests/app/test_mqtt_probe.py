@@ -255,24 +255,6 @@ class ProbeSecretHygieneTests(unittest.TestCase):
         host, port = mqtt_probe._host_port('mqtts://user:pass@broker.example:8883')
         self.assertEqual((host, port), ('broker.example', 8883))
 
-    def test_cli_never_accepts_a_password_on_argv(self):
-        # argv is world-readable (/proc/<pid>/cmdline) and shell history; the
-        # manual CLI takes the password from a file or PIBUDDYCAM_MQTT_PASSWORD.
-        source = (PI_DIR / 'mqtt_probe.py').read_text(encoding='utf-8')
-        self.assertNotIn("add_argument('--password'", source)
-        self.assertIn('--password-file', source)
-        self.assertIn('PIBUDDYCAM_MQTT_PASSWORD', source)
-
-
-class ProbeImportSafetyTests(unittest.TestCase):
-    def test_module_import_does_not_require_paho(self):
-        source = (PI_DIR / 'mqtt_probe.py').read_text(encoding='utf-8')
-        # The paho import must be inside default_backend, not module scope.
-        self.assertIn('import paho.mqtt.client', source)
-        head = source.split('def default_backend', 1)[0]
-        self.assertNotIn('import paho', head)
-
-
 
 class DefaultTlsHandshakeTests(unittest.TestCase):
     def test_refuses_tls_below_1_2(self):

@@ -11,17 +11,12 @@ import ast
 import unittest
 from pathlib import Path
 
-MAIN = (
-    Path(__file__).resolve().parents[2]
-    / 'app'
-    / 'main.py'
-)
+MAIN = Path(__file__).resolve().parents[2] / 'app' / 'main.py'
 
 
 def _func(tree, name):
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) \
-                and node.name == name:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
             return node
     raise AssertionError(f'missing function {name!r}')
 

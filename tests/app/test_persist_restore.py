@@ -1,5 +1,4 @@
 """GAP-PERSIST-01: persist_restore pure helpers + import safety."""
-import ast
 import os
 import subprocess
 import sys
@@ -407,28 +406,6 @@ class SessionPruneTests(unittest.TestCase):
 
 class ImportSafetyTests(unittest.TestCase):
     """Importing must not touch the filesystem (the module runs only via main)."""
-
-    def test_no_module_level_io_calls(self):
-        tree = ast.parse(Path(persist_restore.__file__).read_text())
-        forbidden = {
-            'makedirs', 'mkdir', 'remove', 'unlink', 'chown',
-            'write_current', 'write_mode', 'save', 'run',
-        }
-        offenders = []
-        for node in tree.body:
-            # Function/class bodies only run when called; skip them.
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                continue
-            for call in ast.walk(node):
-                if not isinstance(call, ast.Call):
-                    continue
-                func = call.func
-                name = func.attr if isinstance(func, ast.Attribute) else (
-                    func.id if isinstance(func, ast.Name) else ''
-                )
-                if name in forbidden:
-                    offenders.append(name)
-        self.assertEqual(offenders, [])
 
     def test_main_is_inert_when_data_unavailable(self):
         with patch.object(persist_restore.settings_store, 'available', return_value=False):
