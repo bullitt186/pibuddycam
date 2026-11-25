@@ -145,6 +145,11 @@ jobs:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: |
           if [ -z "${BASE//0/}" ]; then BASE=HEAD~1; fi
+          # After a force push the old tip is gone: fall back to the tip commit.
+          if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "WARNING: $BASE is not in the clone; checking against HEAD~1" >&2
+            BASE=HEAD~1
+          fi
           python3 scripts/check_lint.py "$BASE"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
