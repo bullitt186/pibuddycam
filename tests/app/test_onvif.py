@@ -157,6 +157,20 @@ class FaultTests(OnvifTestCase):
         self.assertEqual(status, 500)
         self.assertEqual(texts(body, 'Fault'), [''])
 
+    def test_document_type_declaration_is_rejected(self):
+        # SOAP 1.2 Part 1 section 5: a SOAP message MUST NOT contain a DTD.
+        # Without the check the entity below expands into the operation name.
+        payload = (
+            '<?xml version="1.0"?>'
+            '<!DOCTYPE s:Envelope [<!ENTITY op "GetDeviceInformation">]>'
+            f'<s:Envelope xmlns:s="{onvif.SOAP}"><s:Body>'
+            f'<x:Op xmlns:x="{onvif.TDS}">&op;</x:Op>'
+            '</s:Body></s:Envelope>'
+        ).encode()
+        status, body = onvif.soap_response('device', self.context, payload)
+        self.assertEqual(status, 500)
+        self.assertIn('document type declarations are not allowed', ' '.join(texts(body, 'Text')))
+
     def test_unsupported_action_returns_action_not_supported(self):
         status, body = self.call('device', onvif.TDS, 'SystemReboot')
         self.assertEqual(status, 500)
@@ -210,6 +224,14 @@ class DiscoveryTests(OnvifTestCase):
 
     def test_malformed_datagram_is_ignored(self):
         self.assertIsNone(onvif.discovery_response(self.context, b'<broken'))
+
+    def test_probe_with_document_type_declaration_is_ignored(self):
+        # The same probe matches without the DTD (test_matching_probe_returns_one_match);
+        # here the type name comes from an entity and the datagram must be dropped.
+        _message_id, payload = self.discovery(
+            'Probe', '<d:Types>dn:&nvt;</d:Types>')
+        payload = b'<!DOCTYPE s:Envelope [<!ENTITY nvt "NetworkVideoTransmitter">]>' + payload
+        self.assertIsNone(onvif.discovery_response(self.context, payload))
 
 
 class MainWiringTests(unittest.TestCase):

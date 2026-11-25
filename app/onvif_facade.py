@@ -153,8 +153,21 @@ def _envelope(body_element, action=None, relates_to=None, app_sequence=None):
     return ET.tostring(envelope, encoding='utf-8', xml_declaration=True)
 
 
+def _parse_soap(payload):
+    """Parse an untrusted SOAP/WS-Discovery message without a DTD.
+
+    SOAP 1.2 Part 1, section 5: a SOAP message MUST NOT contain a document type
+    declaration. Rejecting it before parsing also rules out entity expansion
+    ("billion laughs") in the request.
+    """
+    marker = b'<!DOCTYPE' if isinstance(payload, (bytes, bytearray)) else '<!DOCTYPE'
+    if marker in payload:
+        raise ET.ParseError('document type declarations are not allowed')
+    return ET.fromstring(payload)
+
+
 def _request_operation(payload):
-    root = ET.fromstring(payload)
+    root = _parse_soap(payload)
     body = next((node for node in root.iter() if local_name(node.tag) == 'Body'), None)
     if body is None or not list(body):
         raise ValueError('SOAP Body has no operation')
@@ -340,7 +353,7 @@ def soap_response(service, ctx, payload, now=None):
 def discovery_request(payload):
     """Return ``(operation, message_id, types, scopes, address)`` or ``None``."""
     try:
-        root = ET.fromstring(payload)
+        root = _parse_soap(payload)
     except ET.ParseError:
         return None
     message_id = ''

@@ -6,6 +6,13 @@ only reaches a device by reflashing; everything else arrives as an OTA update.
 
 ## [Unreleased]
 
+### Security
+- The internal H.264 stream (ports 8888 and 8889) now listens on `127.0.0.1` only, as documented.
+  Before, anyone on the LAN could read the raw camera stream without a password. RTSP, ONVIF,
+  snapshots and WebRTC are unchanged.
+- ONVIF and WS-Discovery requests with a document type declaration are rejected, so an XML
+  entity expansion in a request can no longer cost memory or CPU.
+
 ### Changed
 - Contributing: one setup for people and coding agents from
   [repo-kit](https://github.com/bullitt186/repo-kit). `CONTRIBUTING.md` has the Definition of
