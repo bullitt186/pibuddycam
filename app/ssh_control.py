@@ -6,11 +6,11 @@ the service is absent or off; it only reports and toggles the live state.
 
 Re-authentication
 -----------------
-Enabling SSH is a re-auth-gated action: it is listed in
-:data:`admin_auth.REAUTH_ACTIONS` as ``ssh_enable``, so a caller must first run
-:func:`admin_auth.requires_reauth` and verify the current admin password via
-:func:`admin_auth.reauth_ok`. **That check is deliberately not implemented
-here** -- :func:`enable_ssh` must only be called after it has passed.
+Enabling SSH is a re-auth-gated action. The gate is the route-policy table in
+:mod:`admin_http`: ``POST /api/ssh`` carries ``_REAUTH_REQUIRED``, which
+``AdminApp._authorize`` enforces before any handler runs. **That check is
+deliberately not implemented here** -- :func:`enable_ssh` must only be called
+from a route with that policy.
 
 Host-only / injectable commands
 -------------------------------
@@ -155,10 +155,8 @@ def _is_enabled_command():
 def enable_ssh(runner=None):
     """Enable and start SSH (``systemctl enable --now ssh``).
 
-    **Re-auth gated:** call this only after
-    ``admin_auth.requires_reauth('ssh_enable')`` (see
-    :data:`admin_auth.REAUTH_ACTIONS`) and the password re-check have passed.
-    This function does not implement that check. Returns an :class:`SshResult`;
+    **Re-auth gated:** call this only from a route with the ``_REAUTH_REQUIRED``
+    policy in :mod:`admin_http`. This function does not implement that check. Returns an :class:`SshResult`;
     a command failure or timeout is reported, never raised.
     """
     runner = runner or _default_runner
