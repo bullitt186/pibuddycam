@@ -38,10 +38,11 @@ This module models that as two calls sharing one reset token:
 Re-authentication gate
 ----------------------
 A factory reset is one of the actions gated behind a fresh admin password check
-(source plan §4.5). Callers **must** verify
-``admin_auth.requires_reauth('factory_reset')`` and complete the re-auth before
-calling :meth:`execute`. That check is deliberately *not* implemented here so
-this module stays a pure data operation; see :data:`admin_auth.REAUTH_ACTIONS`.
+(source plan §4.5). The gate is the route-policy table in :mod:`admin_http`:
+the ``/api/reset/begin|confirm|execute`` routes carry ``_REAUTH_WINDOW_ONLY``,
+which ``AdminApp._authorize`` enforces before any handler runs. That check is
+deliberately *not* implemented here so this module stays a pure data operation.
+A new route that calls :meth:`execute` must use the same policy.
 
 Safety
 ------
